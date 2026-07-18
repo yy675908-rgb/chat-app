@@ -64,7 +64,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       String two(int value) => value.toString().padLeft(2, '0');
       final fileName = 'chat-backup-${now.year}${two(now.month)}'
           '${two(now.day)}-${two(now.hour)}${two(now.minute)}.json';
-      final path = await FilePicker.platform.saveFile(
+      final path = await FilePicker.saveFile(
         dialogTitle: '保存聊天备份',
         fileName: fileName,
         type: FileType.custom,
@@ -81,7 +81,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Future<void> _restoreBackup() async {
     if (_backupBusy) return;
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['json'],
       withData: true,
