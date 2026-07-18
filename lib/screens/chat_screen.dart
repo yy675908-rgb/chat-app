@@ -243,7 +243,7 @@ class _ConversationHeader extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF1C2522),
                     fontSize: 17,
-                    fontWeight: FontWeight.w650,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
                   ),
                 ),
