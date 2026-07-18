@@ -242,7 +242,7 @@ class _Composer extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: '说点什么…',
                 filled: true,
-                fillColor: Colors.white.withOpacity(0.82),
+                fillColor: const Color(0xD1FFFFFF),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 11,
