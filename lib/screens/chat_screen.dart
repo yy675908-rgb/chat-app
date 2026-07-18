@@ -12,6 +12,7 @@ import '../services/chat_store.dart';
 import '../services/provider_store.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
+import 'app_settings_screen.dart';
 import 'character_screen.dart';
 import 'favorites_screen.dart';
 import 'memory_screen.dart';
@@ -38,6 +39,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _memories = [];
   List<String> _stylePreferences = [];
   String _characterMood = '';
+  bool _reasoningExpanded = true;
+  int _contextTokenBudget = 32000;
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
@@ -59,6 +62,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final memories = await _chatStore.loadMemories();
     final stylePreferences = await _chatStore.loadStylePreferences();
     final characterMood = await _chatStore.loadCharacterMood();
+    final reasoningExpanded = await _chatStore.loadReasoningExpanded();
+    final contextTokenBudget = await _chatStore.loadContextTokenBudget();
     final conversations = await _chatStore.loadConversations();
     final providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
@@ -75,6 +80,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _memories = memories;
       _stylePreferences = stylePreferences;
       _characterMood = characterMood;
+      _reasoningExpanded = reasoningExpanded;
+      _contextTokenBudget = contextTokenBudget;
       _conversations = conversations;
       _currentConversation = current;
       _providers = providers;
@@ -425,9 +432,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     final contextMessages = _messages.take(replyIndex).toList();
-    final recent = contextMessages.length > 30
-        ? contextMessages.sublist(contextMessages.length - 30)
-        : contextMessages;
+    final systemPrompt = _assembledSystemPrompt();
+    final recent = _messagesWithinBudget(contextMessages, systemPrompt);
     final service = AiChatService();
     _activeService = service;
     var fullReply = '';
@@ -437,7 +443,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await for (final event in service.streamEvents(
         provider: provider,
         apiKey: apiKey,
-        systemPrompt: _assembledSystemPrompt(),
+        systemPrompt: systemPrompt,
         history: recent,
       )) {
         if (event.kind == AiStreamEventKind.content) {
@@ -795,6 +801,36 @@ class _ChatScreenState extends State<ChatScreen> {
     return _TaggedReply(text: text, mood: mood);
   }
 
+  List<ChatMessage> _messagesWithinBudget(
+    List<ChatMessage> messages,
+    String systemPrompt,
+  ) {
+    var remaining = _contextTokenBudget - _estimateTokens(systemPrompt);
+    if (remaining < 2048) remaining = 2048;
+    final selected = <ChatMessage>[];
+    for (var index = messages.length - 1; index >= 0; index--) {
+      final message = messages[index];
+      final cost = _estimateTokens(message.text) + 12;
+      if (selected.isNotEmpty && cost > remaining) break;
+      selected.add(message);
+      remaining -= cost;
+      if (remaining <= 0) break;
+    }
+    return selected.reversed.toList();
+  }
+
+  int _estimateTokens(String text) {
+    var estimate = 0.0;
+    for (final rune in text.runes) {
+      if (rune <= 0x7f) {
+        estimate += rune == 0x20 || rune == 0x0a ? 0.1 : 0.28;
+      } else {
+        estimate += 1;
+      }
+    }
+    return estimate.ceil();
+  }
+
   String _formatPromptTime(DateTime value) {
     String two(int number) => number.toString().padLeft(2, '0');
     return '${value.year}-${two(value.month)}-${two(value.day)} '
@@ -833,6 +869,26 @@ class _ChatScreenState extends State<ChatScreen> {
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(label: '设置', onPressed: _openProviderSettings),
+      ),
+    );
+  }
+
+  Future<void> _openAppSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => AppSettingsScreen(
+          reasoningExpanded: _reasoningExpanded,
+          contextTokenBudget: _contextTokenBudget,
+          onSave: (reasoningExpanded, contextTokenBudget) async {
+            await _chatStore.saveReasoningExpanded(reasoningExpanded);
+            await _chatStore.saveContextTokenBudget(contextTokenBudget);
+            if (!mounted) return;
+            setState(() {
+              _reasoningExpanded = reasoningExpanded;
+              _contextTokenBudget = contextTokenBudget;
+            });
+          },
+        ),
       ),
     );
   }
@@ -918,6 +974,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onFavorites: _openFavorites,
           onPreferences: _openStylePreferences,
           onSettings: _openProviderSettings,
+          onAppSettings: _openAppSettings,
         ),
         appBar: AppBar(
           leading: IconButton(
@@ -1001,8 +1058,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         return MessageBubble(
                           message: message,
                           characterName: _profile.name,
-                          reasoningInitiallyExpanded:
-                              _profile.reasoningExpanded,
+                          reasoningInitiallyExpanded: _reasoningExpanded,
                           showActions:
                               message.author == MessageAuthor.character &&
                               message.text.isNotEmpty,
@@ -1051,6 +1107,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onFavorites,
     required this.onPreferences,
     required this.onSettings,
+    required this.onAppSettings,
   });
 
   final CharacterProfile profile;
@@ -1063,6 +1120,7 @@ class _ConversationDrawer extends StatelessWidget {
   final VoidCallback onFavorites;
   final VoidCallback onPreferences;
   final VoidCallback onSettings;
+  final VoidCallback onAppSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -1199,6 +1257,12 @@ class _ConversationDrawer extends StatelessWidget {
               leading: const Icon(Icons.tune_rounded),
               title: const Text('模型供应商'),
               onTap: onSettings,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('设置'),
+              onTap: onAppSettings,
             ),
             const SizedBox(height: 8),
           ],
