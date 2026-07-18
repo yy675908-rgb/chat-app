@@ -24,6 +24,7 @@ class AiChatService {
     required String apiKey,
     required String systemPrompt,
     required List<ChatMessage> history,
+    double temperature = 0.85,
   }) {
     return provider.protocol == ProviderProtocol.anthropic
         ? _streamAnthropic(
@@ -31,12 +32,14 @@ class AiChatService {
             apiKey: apiKey,
             systemPrompt: systemPrompt,
             history: history,
+            temperature: temperature,
           )
         : _streamOpenAi(
             provider: provider,
             apiKey: apiKey,
             systemPrompt: systemPrompt,
             history: history,
+            temperature: temperature,
           );
   }
 
@@ -45,6 +48,7 @@ class AiChatService {
     required String apiKey,
     required String systemPrompt,
     required List<ChatMessage> history,
+    required double temperature,
   }) async* {
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': systemPrompt},
@@ -62,7 +66,7 @@ class AiChatService {
         'model': provider.selectedModel.trim(),
         'messages': messages,
         'stream': true,
-        'temperature': 0.85,
+        'temperature': temperature,
       },
     );
 
@@ -91,6 +95,7 @@ class AiChatService {
     required String apiKey,
     required String systemPrompt,
     required List<ChatMessage> history,
+    required double temperature,
   }) async* {
     final response = await _send(
       uri: provider.messagesUri,
@@ -106,7 +111,7 @@ class AiChatService {
         'messages': _historyPayload(history),
         'max_tokens': 2048,
         'stream': true,
-        'temperature': 0.85,
+        'temperature': temperature,
       },
     );
 
