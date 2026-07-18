@@ -221,10 +221,6 @@ class CharacterChatApp extends StatelessWidget {
             color: scheme.primaryContainer,
             borderRadius: BorderRadius.circular(14),
           ),
-          indicatorPadding: const EdgeInsets.symmetric(
-            horizontal: 4,
-            vertical: 5,
-          ),
         ),
         chipTheme: base.chipTheme.copyWith(
           backgroundColor: scheme.surfaceContainer,
