@@ -298,7 +298,9 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   late final TextEditingController _keyController;
   late final TextEditingController _modelsController;
   late ProviderProtocol _protocol;
+  late String _selectedPresetId;
   String _selectedModel = '';
+  bool _editingBaseUrl = false;
   bool _loadingKey = true;
   bool _fetching = false;
   bool _obscureKey = true;
@@ -313,6 +315,9 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     _baseController = TextEditingController(text: provider.baseUrl);
     _keyController = TextEditingController();
     _modelsController = TextEditingController(text: provider.models.join('\n'));
+    final matchedPreset = _matchPreset(provider.protocol, provider.baseUrl);
+    _selectedPresetId = matchedPreset?.id ?? _customPresetId;
+    _editingBaseUrl = matchedPreset == null;
     unawaited(_loadKey());
   }
 
@@ -327,6 +332,68 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       .where((item) => item.isNotEmpty)
       .toSet()
       .toList();
+
+  List<_ProviderPreset> get _availablePresets =>
+      _presetsForProtocol(_protocol);
+
+  _ProviderPreset? _matchPreset(
+    ProviderProtocol protocol,
+    String baseUrl,
+  ) {
+    final normalized = _normalizeBaseUrl(baseUrl);
+    for (final preset in _presetsForProtocol(protocol)) {
+      if (_normalizeBaseUrl(preset.baseUrl) == normalized) return preset;
+    }
+    return null;
+  }
+
+  void _changeProtocol(ProviderProtocol protocol) {
+    if (protocol == _protocol) return;
+    final preset = _presetsForProtocol(protocol).first;
+    setState(() {
+      _protocol = protocol;
+      _selectedPresetId = preset.id;
+      _editingBaseUrl = false;
+      _nameController.text = preset.name;
+      _baseController.text = preset.baseUrl;
+      _modelsController.clear();
+      _selectedModel = '';
+    });
+  }
+
+  void _selectPreset(String? presetId) {
+    if (presetId == null) return;
+    if (presetId == _customPresetId) {
+      setState(() {
+        _selectedPresetId = _customPresetId;
+        _editingBaseUrl = true;
+      });
+      return;
+    }
+    final preset = _availablePresets.firstWhere(
+      (item) => item.id == presetId,
+    );
+    final urlChanged =
+        _normalizeBaseUrl(_baseController.text) !=
+        _normalizeBaseUrl(preset.baseUrl);
+    setState(() {
+      _selectedPresetId = preset.id;
+      _editingBaseUrl = false;
+      _nameController.text = preset.name;
+      _baseController.text = preset.baseUrl;
+      if (urlChanged) {
+        _modelsController.clear();
+        _selectedModel = '';
+      }
+    });
+  }
+
+  void _editBaseUrl() {
+    setState(() {
+      _selectedPresetId = _customPresetId;
+      _editingBaseUrl = true;
+    });
+  }
 
   ProviderProfile _draft() {
     final models = _models;
@@ -420,6 +487,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
                 DropdownButtonFormField<ProviderProtocol>(
+                  key: ValueKey('protocol-${_protocol.name}'),
                   initialValue: _protocol,
                   isExpanded: true,
                   itemHeight: null,
@@ -445,7 +513,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                       child: _ProtocolOption(
                         title: 'OpenAI 兼容',
                         providers:
-                            '常见：OpenAI、DeepSeek、OpenRouter、硅基流动、Kimi、通义千问',
+                            'OpenAI、DeepSeek、OpenRouter、硅基流动、Kimi、通义千问等',
                       ),
                     ),
                     DropdownMenuItem(
@@ -453,18 +521,119 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                       child: _ProtocolOption(
                         title: 'Anthropic',
                         providers:
-                            '常见：Anthropic Claude、DeepSeek Anthropic 接口及兼容代理',
+                            'Anthropic Claude、DeepSeek，以及提供此格式的代理',
                       ),
                     ),
                   ],
                   onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _protocol = value);
+                    if (value != null) _changeProtocol(value);
                   },
                 ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'platform-${_protocol.name}-$_selectedPresetId',
+                  ),
+                  initialValue: _selectedPresetId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: '平台',
+                    filled: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    ..._availablePresets.map(
+                      (preset) => DropdownMenuItem(
+                        value: preset.id,
+                        child: Text(preset.name),
+                      ),
+                    ),
+                    const DropdownMenuItem(
+                      value: _customPresetId,
+                      child: Text('＋ 自定义平台'),
+                    ),
+                  ],
+                  onChanged: _selectPreset,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey(
+                          'url-${_protocol.name}-$_selectedPresetId',
+                        ),
+                        initialValue: _selectedPresetId,
+                        isExpanded: true,
+                        itemHeight: null,
+                        menuMaxHeight: 430,
+                        decoration: const InputDecoration(
+                          labelText: 'Base URL',
+                          filled: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        selectedItemBuilder: (context) => [
+                          ..._availablePresets.map(
+                            (preset) => Text(
+                              preset.baseUrl,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Text('自定义地址'),
+                        ],
+                        items: [
+                          ..._availablePresets.map(
+                            (preset) => DropdownMenuItem(
+                              value: preset.id,
+                              child: _UrlOption(preset: preset),
+                            ),
+                          ),
+                          const DropdownMenuItem(
+                            value: _customPresetId,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.add_rounded, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('自定义地址'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: _selectPreset,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: '编辑地址',
+                      onPressed: _editBaseUrl,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  ],
+                ),
+                if (_editingBaseUrl) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _baseController,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: '输入或编辑 Base URL',
+                      prefixIcon: Icon(Icons.add_link_rounded),
+                      filled: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 7),
                 Text(
-                  '这里选择的是接口格式，不是限定供应商；请以服务商提供的 API 文档为准。',
+                  _protocol == ProviderProtocol.anthropic
+                      ? 'Kimi Code 和代理站的地址可能随 Key 来源不同，请用“＋ 自定义地址”。'
+                      : '选择平台会自动填入官方常用地址；也可以用右侧铅笔修改。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11.5,
@@ -478,21 +647,6 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                     labelText: '名称',
                     filled: true,
                     border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _baseController,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  decoration: InputDecoration(
-                    labelText: 'Base URL',
-                    hintText: _protocol == ProviderProtocol.anthropic
-                        ? 'https://api.anthropic.com/v1'
-                        : 'https://api.openai.com/v1',
-                    prefixIcon: const Icon(Icons.link_rounded),
-                    filled: true,
-                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -591,6 +745,133 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+const _customPresetId = 'custom';
+
+String _normalizeBaseUrl(String value) {
+  var normalized = value.trim();
+  while (normalized.endsWith('/')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+  return normalized;
+}
+
+List<_ProviderPreset> _presetsForProtocol(ProviderProtocol protocol) {
+  return protocol == ProviderProtocol.anthropic
+      ? _anthropicPresets
+      : _openAiPresets;
+}
+
+const _openAiPresets = <_ProviderPreset>[
+  _ProviderPreset(
+    id: 'openai',
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+  ),
+  _ProviderPreset(
+    id: 'deepseek-openai',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+  ),
+  _ProviderPreset(
+    id: 'openrouter',
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  ),
+  _ProviderPreset(
+    id: 'siliconflow',
+    name: '硅基流动',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+  ),
+  _ProviderPreset(
+    id: 'kimi-cn',
+    name: 'Kimi（国内）',
+    baseUrl: 'https://api.moonshot.cn/v1',
+  ),
+  _ProviderPreset(
+    id: 'qwen-cn',
+    name: '通义千问（阿里云百炼）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  ),
+  _ProviderPreset(
+    id: 'glm',
+    name: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  ),
+  _ProviderPreset(
+    id: 'gemini-openai',
+    name: 'Google Gemini（兼容接口）',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  ),
+  _ProviderPreset(
+    id: 'groq',
+    name: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+  ),
+  _ProviderPreset(
+    id: 'xai',
+    name: 'xAI',
+    baseUrl: 'https://api.x.ai/v1',
+  ),
+];
+
+const _anthropicPresets = <_ProviderPreset>[
+  _ProviderPreset(
+    id: 'anthropic',
+    name: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com/v1',
+  ),
+  _ProviderPreset(
+    id: 'deepseek-anthropic',
+    name: 'DeepSeek（Anthropic 格式）',
+    baseUrl: 'https://api.deepseek.com/anthropic',
+  ),
+];
+
+class _ProviderPreset {
+  const _ProviderPreset({
+    required this.id,
+    required this.name,
+    required this.baseUrl,
+  });
+
+  final String id;
+  final String name;
+  final String baseUrl;
+}
+
+class _UrlOption extends StatelessWidget {
+  const _UrlOption({required this.preset});
+
+  final _ProviderPreset preset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            preset.name,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            preset.baseUrl,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
