@@ -63,46 +63,34 @@ class MessageBubble extends StatelessWidget {
 
     if (isUser) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(44, 7, 0, 7),
+        padding: const EdgeInsets.fromLTRB(58, 7, 2, 7),
         child: Align(
           alignment: Alignment.centerRight,
-          child: GestureDetector(
-            onLongPress: () => _copy(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 11,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(20),
-                      topRight: Radius.circular(20),
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(6),
-                    ),
-                  ),
-                  child: SelectableText(
-                    message.isRetracted ? '撤回了一句话' : message.text,
-                    style: TextStyle(
-                      color: scheme.onPrimaryContainer,
-                      fontSize: 15.5,
-                      height: 1.45,
-                    ),
-                  ),
+          child: Material(
+            color: scheme.primaryContainer,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(22),
+              topRight: Radius.circular(22),
+              bottomLeft: Radius.circular(22),
+              bottomRight: Radius.circular(7),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onLongPress: () => _copy(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 11,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  time,
+                child: SelectableText(
+                  message.isRetracted ? '撤回了一句话' : message.text,
                   style: TextStyle(
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
-                    fontSize: 10.5,
+                    color: scheme.onPrimaryContainer,
+                    fontSize: 15.5,
+                    height: 1.45,
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -110,13 +98,21 @@ class MessageBubble extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 10, 18, 10),
+      padding: const EdgeInsets.fromLTRB(0, 11, 6, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: scheme.secondaryContainer,
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: scheme.secondaryContainer,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+            ),
             child: Text(
               characterName.isEmpty ? '林' : characterName.characters.first,
               style: TextStyle(
@@ -126,7 +122,7 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: GestureDetector(
               onLongPress: () => _copy(context),
@@ -135,34 +131,42 @@ class MessageBubble extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        characterName,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          characterName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         time,
                         style: TextStyle(
-                          color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.68),
                           fontSize: 10.5,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   if (message.reasoning.trim().isNotEmpty) ...[
-                    _ReasoningPanel(
-                      key: ValueKey(
-                        'reasoning-${message.activeVariant?.id ?? message.id}',
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      child: _ReasoningPanel(
+                        key: ValueKey(
+                          'reasoning-${message.activeVariant?.id ?? message.id}',
+                        ),
+                        reasoning: message.reasoning,
+                        initiallyExpanded: reasoningInitiallyExpanded,
                       ),
-                      reasoning: message.reasoning,
-                      initiallyExpanded: reasoningInitiallyExpanded,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 9),
                   ],
                   MarkdownBody(
                     data: message.text,
@@ -171,19 +175,22 @@ class MessageBubble extends StatelessWidget {
                       p: TextStyle(
                         color: scheme.onSurface,
                         fontSize: 15.5,
-                        height: 1.52,
+                        height: 1.56,
                       ),
                       code: TextStyle(
                         color: scheme.onSurface,
                         backgroundColor: scheme.surfaceContainerHighest,
                         fontSize: 13,
                       ),
+                      codeblockPadding: const EdgeInsets.all(12),
                       codeblockDecoration: BoxDecoration(
                         color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
+                      blockquotePadding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
                       blockquoteDecoration: BoxDecoration(
                         color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
                         border: Border(
                           left: BorderSide(color: scheme.primary, width: 3),
                         ),
@@ -191,92 +198,41 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                   if (message.usedTotalTokens > 0) ...[
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 2,
-                      children: [
-                        Text(
-                          '本次 ${message.usedTotalTokens} tokens',
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 10.5,
-                          ),
-                        ),
-                        Text(
-                          '输入 ${message.usedPromptTokens} / '
-                          '输出 ${message.usedCompletionTokens}'
-                          '${message.usedReasoningTokens > 0 ? ' / 思考 ${message.usedReasoningTokens}' : ''}',
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant.withValues(
-                              alpha: 0.78,
-                            ),
-                            fontSize: 10.5,
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(height: 8),
+                    _TokenUsage(message: message),
                   ],
                   if (showActions) ...[
-                    const SizedBox(height: 3),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    const SizedBox(height: 9),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        if (message.variantCount > 1) ...[
-                          IconButton(
-                            tooltip: '上一版',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: onPreviousVariant,
-                            icon: const Icon(
-                              Icons.chevron_left_rounded,
-                              size: 20,
-                            ),
+                        if (message.variantCount > 1)
+                          _VersionControl(
+                            current: message.variantNumber,
+                            total: message.variantCount,
+                            onPrevious: onPreviousVariant,
+                            onNext: onNextVariant,
                           ),
-                          Text(
-                            '${message.variantNumber}/${message.variantCount}',
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 11.5,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: '下一版',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: onNextVariant,
-                            icon: const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 20,
-                            ),
-                          ),
-                        ],
-                        IconButton(
+                        _BubbleAction(
                           tooltip: '复制',
-                          visualDensity: VisualDensity.compact,
+                          icon: Icons.copy_rounded,
                           onPressed: () => _copy(context),
-                          icon: const Icon(Icons.copy_rounded, size: 17),
                         ),
-                        IconButton(
+                        _BubbleAction(
                           tooltip: message.isLiked ? '取消喜欢' : '喜欢并收藏',
-                          visualDensity: VisualDensity.compact,
+                          icon: message.isLiked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          selected: message.isLiked,
                           onPressed: onLike,
-                          icon: Icon(
-                            message.isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            size: 18,
-                            color: message.isLiked
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant,
-                          ),
                         ),
-                        IconButton(
+                        _BubbleAction(
                           tooltip: '选择模型重新生成',
-                          visualDensity: VisualDensity.compact,
+                          icon: Icons.refresh_rounded,
+                          emphasized: true,
                           onPressed: onRetry,
-                          icon: const Icon(Icons.refresh_rounded, size: 20),
                         ),
                       ],
                     ),
@@ -291,6 +247,187 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
+class _TokenUsage extends StatelessWidget {
+  const _TokenUsage({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final details = <String>[
+      '输入 ${message.usedPromptTokens}',
+      '输出 ${message.usedCompletionTokens}',
+      if (message.usedReasoningTokens > 0)
+        '思考 ${message.usedReasoningTokens}',
+    ].join(' · ');
+    return Wrap(
+      spacing: 5,
+      runSpacing: 3,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Icon(
+          Icons.data_usage_rounded,
+          size: 12,
+          color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+        ),
+        Text(
+          '${message.usedTotalTokens} tokens',
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          '· $details',
+          style: TextStyle(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+            fontSize: 10.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BubbleAction extends StatelessWidget {
+  const _BubbleAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.selected = false,
+    this.emphasized = false,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool selected;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    final background = emphasized
+        ? scheme.primaryContainer.withValues(alpha: enabled ? 0.78 : 0.35)
+        : selected
+            ? scheme.secondaryContainer
+            : scheme.surfaceContainerLow;
+    final foreground = !enabled
+        ? scheme.onSurface.withValues(alpha: 0.3)
+        : emphasized
+            ? scheme.onPrimaryContainer
+            : selected
+                ? scheme.primary
+                : scheme.onSurfaceVariant;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(11),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox(
+            width: 36,
+            height: 34,
+            child: Icon(icon, size: emphasized ? 20 : 17, color: foreground),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VersionControl extends StatelessWidget {
+  const _VersionControl({
+    required this.current,
+    required this.total,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int current;
+  final int total;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CompactArrow(
+            tooltip: '上一版',
+            icon: Icons.chevron_left_rounded,
+            onPressed: onPrevious,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              '$current/$total',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          _CompactArrow(
+            tooltip: '下一版',
+            icon: Icons.chevron_right_rounded,
+            onPressed: onNext,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactArrow extends StatelessWidget {
+  const _CompactArrow({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 30,
+          height: 34,
+          child: Icon(
+            icon,
+            size: 19,
+            color: onPressed == null
+                ? scheme.onSurface.withValues(alpha: 0.25)
+                : scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ReasoningPanel extends StatelessWidget {
   const _ReasoningPanel({
@@ -306,7 +443,7 @@ class _ReasoningPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Material(
         color: scheme.surfaceContainerLow,
         child: ExpansionTile(
@@ -315,11 +452,11 @@ class _ReasoningPanel extends StatelessWidget {
           dense: true,
           visualDensity: VisualDensity.compact,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          childrenPadding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
           leading: Icon(
             Icons.psychology_outlined,
-            size: 18,
-            color: scheme.onSurfaceVariant,
+            size: 17,
+            color: scheme.primary,
           ),
           title: Text(
             '思考过程',
@@ -337,7 +474,7 @@ class _ReasoningPanel extends StatelessWidget {
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
                   fontSize: 12.5,
-                  height: 1.5,
+                  height: 1.55,
                 ),
               ),
             ),
