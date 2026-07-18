@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
+import '../models/world_book_entry.dart';
 
 class ChatStore {
   static const _legacyMessagesKey = 'chat_messages_v1';
@@ -13,6 +14,7 @@ class ChatStore {
   static const _memoriesKey = 'relationship_memories_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
   static const _characterMoodKey = 'character_mood_v1';
+  static const _worldBooksKey = 'world_books_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
   static const _profileKey = 'character_profile_v1';
   static const _reasoningExpandedKey = 'reasoning_expanded_v1';
@@ -107,6 +109,16 @@ class ChatStore {
     return preferences.getStringList(_memoriesKey) ?? const [];
   }
 
+  Future<void> saveMemories(List<String> memories) async {
+    final preferences = await SharedPreferences.getInstance();
+    final normalized = memories
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+    await preferences.setStringList(_memoriesKey, normalized);
+  }
+
   Future<void> addMemory(String memory) async {
     final preferences = await SharedPreferences.getInstance();
     final memories = preferences.getStringList(_memoriesKey) ?? <String>[];
@@ -139,6 +151,32 @@ class ChatStore {
     items.add(value);
     await preferences.setStringList(_stylePreferencesKey, items);
     return true;
+  }
+
+  Future<List<WorldBookEntry>> loadWorldBooks() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_worldBooksKey);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>)
+          .map(
+            (item) => WorldBookEntry.fromJson(
+              Map<String, Object?>.from(item as Map),
+            ),
+          )
+          .where((item) => item.content.trim().isNotEmpty)
+          .toList();
+    } on Object {
+      return const [];
+    }
+  }
+
+  Future<void> saveWorldBooks(List<WorldBookEntry> entries) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _worldBooksKey,
+      jsonEncode(entries.map((entry) => entry.toJson()).toList()),
+    );
   }
 
   Future<String> loadCharacterMood() async {
