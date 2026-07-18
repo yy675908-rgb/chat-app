@@ -8,7 +8,12 @@ class MemoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('我们记得的事')),
+      backgroundColor: const Color(0xFFEDEBE6),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFEDEBE6),
+        surfaceTintColor: Colors.transparent,
+        title: const Text('共同记忆'),
+      ),
       body: memories.isEmpty
           ? const Center(
               child: Text(
@@ -22,7 +27,7 @@ class MemoryScreen extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) => Card(
                 elevation: 0,
-                color: const Color(0xBFFFFFFF),
+                color: const Color(0xFFFAF9F5),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(memories[index]),

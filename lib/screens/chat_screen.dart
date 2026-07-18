@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
@@ -126,80 +127,179 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        titleSpacing: 18,
-        title: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Color(0xFFAAA0C8), Color(0xFF6D648E)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: const Color(0xFFF7F6F2),
+      ),
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              _ConversationHeader(
+                profile: _profile,
+                thinking: _thinking,
+                onMemories: _openMemories,
+              ),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEDEBE6),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(26),
+                    ),
+                  ),
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                          itemCount: _messages.length + (_thinking ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (_thinking && index == _messages.length) {
+                              return const Align(
+                                alignment: Alignment.centerLeft,
+                                child: _ThinkingBubble(),
+                              );
+                            }
+                            return MessageBubble(message: _messages[index]);
+                          },
+                        ),
                 ),
               ),
-              child: const Icon(Icons.person_outline, color: Colors.white),
-            ),
-            const SizedBox(width: 11),
-            Column(
+              _Composer(
+                controller: _controller,
+                enabled: !_thinking,
+                onSend: _send,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationHeader extends StatelessWidget {
+  const _ConversationHeader({
+    required this.profile,
+    required this.thinking,
+    required this.onMemories,
+  });
+
+  final CharacterProfile profile;
+  final bool thinking;
+  final VoidCallback onMemories;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF7F6F2),
+      padding: const EdgeInsets.fromLTRB(18, 10, 10, 16),
+      child: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const CircleAvatar(
+                radius: 25,
+                backgroundColor: Color(0xFFCDD4CF),
+                child: Text(
+                  '01',
+                  style: TextStyle(
+                    color: Color(0xFF2F4741),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -1,
+                bottom: 1,
+                child: Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF69877D),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFF7F6F2),
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_profile.name, style: const TextStyle(fontSize: 16)),
                 Text(
-                  _thinking ? '正在想…' : '${_profile.status} · 第 ${_profile.daysTogether} 天',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF1C2522),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w650,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  thinking
+                      ? '正在想…'
+                      : '${profile.status}  ·  相识第 ${profile.daysTogether} 天',
+                  style: const TextStyle(
+                    color: Color(0xFF727772),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
-          ],
-        ),
-        actions: [
+          ),
           IconButton(
             tooltip: '共同记忆',
-            onPressed: _openMemories,
-            icon: const Icon(Icons.auto_stories_outlined),
+            onPressed: onMemories,
+            style: IconButton.styleFrom(
+              foregroundColor: const Color(0xFF2F4741),
+              backgroundColor: const Color(0xFFE5E8E3),
+            ),
+            icon: const Icon(Icons.bookmark_border_rounded, size: 21),
           ),
-          const SizedBox(width: 6),
+          IconButton(
+            tooltip: '更多',
+            onPressed: () {},
+            icon: const Icon(Icons.more_horiz_rounded),
+          ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-                      itemCount: _messages.length + (_thinking ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_thinking && index == _messages.length) {
-                          return const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: Text('正在想…'),
-                            ),
-                          );
-                        }
-                        return MessageBubble(message: _messages[index]);
-                      },
-                    ),
-            ),
-            _Composer(
-              controller: _controller,
-              enabled: !_thinking,
-              onSend: _send,
-            ),
-          ],
+    );
+  }
+}
+
+class _ThinkingBubble extends StatelessWidget {
+  const _ThinkingBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+      decoration: const BoxDecoration(
+        color: Color(0xFFFAF9F5),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(17),
+          topRight: Radius.circular(17),
+          bottomRight: Radius.circular(17),
+          bottomLeft: Radius.circular(4),
         ),
+      ),
+      child: const Text(
+        '正在想…',
+        style: TextStyle(color: Color(0xFF747A76), fontSize: 13),
       ),
     );
   }
@@ -219,18 +319,17 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: const EdgeInsets.fromLTRB(10, 10, 12, 12),
       decoration: const BoxDecoration(
-        color: Color(0xFFF6F3F1),
-        border: Border(top: BorderSide(color: Color(0x14000000))),
+        color: Color(0xFFF7F6F2),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton(
-            tooltip: '语音（稍后开放）',
+            tooltip: '更多',
             onPressed: null,
-            icon: const Icon(Icons.mic_none_rounded),
+            icon: const Icon(Icons.add_rounded),
           ),
           Expanded(
             child: TextField(
@@ -242,13 +341,13 @@ class _Composer extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: '说点什么…',
                 filled: true,
-                fillColor: const Color(0xD1FFFFFF),
+                fillColor: const Color(0xFFEDEBE6),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 11,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius: BorderRadius.circular(20),
                   borderSide: BorderSide.none,
                 ),
               ),
@@ -258,6 +357,11 @@ class _Composer extends StatelessWidget {
           IconButton.filled(
             tooltip: '发送',
             onPressed: enabled ? onSend : null,
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF2F4741),
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: const Color(0xFFB8BFBB),
+            ),
             icon: const Icon(Icons.arrow_upward_rounded),
           ),
         ],

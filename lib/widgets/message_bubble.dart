@@ -26,37 +26,52 @@ class MessageBubble extends StatelessWidget {
     final isUser = message.author == MessageAuthor.user;
     final colors = Theme.of(context).colorScheme;
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 310),
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
-        decoration: BoxDecoration(
-          color: isUser ? colors.primary : const Color(0xD1FFFFFF),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 5),
-            bottomRight: Radius.circular(isUser ? 5 : 18),
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0D000000),
-              blurRadius: 14,
-              offset: Offset(0, 4),
+    final time = MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(message.sentAt),
+      alwaysUse24HourFormat: true,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: const BoxConstraints(maxWidth: 296),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+            decoration: BoxDecoration(
+              color: isUser ? const Color(0xFF2F4741) : const Color(0xFFFAF9F5),
+              border: isUser
+                  ? null
+                  : Border.all(color: const Color(0x12000000)),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(17),
+                topRight: const Radius.circular(17),
+                bottomLeft: Radius.circular(isUser ? 17 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 17),
+              ),
             ),
-          ],
-        ),
-        child: Text(
-          message.isRetracted ? '撤回了一句话' : message.text,
-          style: TextStyle(
-            color: isUser ? colors.onPrimary : colors.onSurface,
-            fontSize: 15.5,
-            height: 1.45,
-            fontStyle: message.isRetracted ? FontStyle.italic : null,
+            child: Text(
+              message.isRetracted ? '撤回了一句话' : message.text,
+              style: TextStyle(
+                color: isUser ? colors.onPrimary : const Color(0xFF202522),
+                fontSize: 15.5,
+                height: 1.45,
+                fontStyle: message.isRetracted ? FontStyle.italic : null,
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            time,
+            style: const TextStyle(
+              color: Color(0xFF8B8C87),
+              fontSize: 10.5,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }
