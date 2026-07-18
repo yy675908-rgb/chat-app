@@ -37,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> _messages = [];
   List<String> _memories = [];
   List<String> _stylePreferences = [];
+  String _characterMood = '';
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
@@ -55,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final profile = await _chatStore.loadProfile();
     final memories = await _chatStore.loadMemories();
     final stylePreferences = await _chatStore.loadStylePreferences();
+    final characterMood = await _chatStore.loadCharacterMood();
     final conversations = await _chatStore.loadConversations();
     final providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
@@ -70,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _profile = profile;
       _memories = memories;
       _stylePreferences = stylePreferences;
+      _characterMood = characterMood;
       _conversations = conversations;
       _currentConversation = current;
       _providers = providers;
@@ -424,18 +427,22 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted || _cancelled) return;
         if (!isRetry) {
           setState(() {
-            _messages[replyIndex] = newReply!.copyWith(text: fullReply);
+            _messages[replyIndex] = newReply!.copyWith(
+              text: _visibleReplyWhileStreaming(fullReply),
+            );
           });
           _scrollToBottom();
         }
       }
-      if (!_cancelled && fullReply.trim().isEmpty) {
+      final parsedReply = _splitMoodFromReply(fullReply);
+      final replyText = parsedReply.text;
+      if (!_cancelled && replyText.isEmpty) {
         throw const AiChatException('模型没有返回文字，请检查模型 ID 和接口类型');
       }
       if (!_cancelled && mounted) {
         final variant = ReplyVariant(
           id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
-          text: fullReply,
+          text: replyText,
           generatedAt: DateTime.now(),
           providerId: provider.id,
           modelId: provider.selectedModel,
@@ -445,12 +452,18 @@ class _ChatScreenState extends State<ChatScreen> {
             _messages[replyIndex] = originalReply!.addVariant(variant);
           } else {
             _messages[replyIndex] = newReply!.copyWith(
-              text: fullReply,
+              text: replyText,
               replyVariants: [variant],
               activeVariantIndex: 0,
             );
           }
+          if (parsedReply.mood.isNotEmpty) {
+            _characterMood = parsedReply.mood;
+          }
         });
+        if (parsedReply.mood.isNotEmpty) {
+          unawaited(_chatStore.saveCharacterMood(parsedReply.mood));
+        }
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
@@ -718,8 +731,29 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
             '${_stylePreferences.map((item) => '- $item').join('\n')}';
+    const moodInstruction = '\n\n回复正文结束后，必须另起一行输出“[[心绪:……]]”。'
+        '其中只写角色此刻不超过12个字的心理活动、短语或表情；不要在正文解释这行。';
     return '${_profile.systemPrompt}\n\n'
-        '$context$memoryText$preferenceText';
+        '$context$memoryText$preferenceText$moodInstruction';
+  }
+
+  String _visibleReplyWhileStreaming(String raw) {
+    final marker = RegExp(r'\n?\[\[心绪\s*[:：]').firstMatch(raw);
+    return (marker == null ? raw : raw.substring(0, marker.start)).trimRight();
+  }
+
+  _TaggedReply _splitMoodFromReply(String raw) {
+    final match = RegExp(
+      r'\[\[心绪\s*[:：]\s*(.*?)\s*\]\]',
+      dotAll: true,
+    ).firstMatch(raw);
+    if (match == null) return _TaggedReply(text: raw.trim(), mood: '');
+    final text = '${raw.substring(0, match.start)}${raw.substring(match.end)}'
+        .trim();
+    final mood = (match.group(1) ?? '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return _TaggedReply(text: text, mood: mood);
   }
 
   String _formatPromptTime(DateTime value) {
@@ -822,6 +856,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final overlay = isDark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
+    final characterStatus = _generating
+        ? '正在回复…'
+        : (_characterMood.isNotEmpty
+            ? _characterMood
+            : (_profile.status == '在这里' ? '' : _profile.status));
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
         statusBarColor: Colors.transparent,
@@ -858,14 +897,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              Text(
-                _generating ? '正在回复…' : _profile.status,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w400,
+              if (characterStatus.isNotEmpty)
+                Text(
+                  characterStatus,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
             ],
           ),
           actions: [
@@ -1224,6 +1266,13 @@ class _ThinkingRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TaggedReply {
+  const _TaggedReply({required this.text, required this.mood});
+
+  final String text;
+  final String mood;
 }
 
 class _ModelChoice {
