@@ -15,6 +15,8 @@ class ChatStore {
   static const _characterMoodKey = 'character_mood_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
   static const _profileKey = 'character_profile_v1';
+  static const _reasoningExpandedKey = 'reasoning_expanded_v1';
+  static const _contextTokenBudgetKey = 'context_token_budget_v1';
 
   Future<List<Conversation>> loadConversations() async {
     final preferences = await SharedPreferences.getInstance();
@@ -164,6 +166,26 @@ class ChatStore {
     final now = DateTime.now();
     await preferences.setString(_firstMetAtKey, now.toIso8601String());
     return now;
+  }
+
+  Future<bool> loadReasoningExpanded() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_reasoningExpandedKey) ?? true;
+  }
+
+  Future<void> saveReasoningExpanded(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_reasoningExpandedKey, value);
+  }
+
+  Future<int> loadContextTokenBudget() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getInt(_contextTokenBudgetKey) ?? 32000;
+  }
+
+  Future<void> saveContextTokenBudget(int value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt(_contextTokenBudgetKey, value);
   }
 
   Future<CharacterProfile> loadProfile() async {
