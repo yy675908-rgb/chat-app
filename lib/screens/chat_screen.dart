@@ -1024,19 +1024,34 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
           actions: [
-            TextButton.icon(
-              onPressed: _chooseModel,
-              icon: const Icon(Icons.expand_more_rounded, size: 17),
-              iconAlignment: IconAlignment.end,
-              label: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 112),
-                child: Text(
-                  _selectedProvider?.selectedModel.isNotEmpty == true
-                      ? _selectedProvider!.selectedModel
-                      : '选择模型',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: TextButton.icon(
+                onPressed: _chooseModel,
+                style: TextButton.styleFrom(
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceContainerLow,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onSurfaceVariant,
+                  minimumSize: const Size(0, 38),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+                  shape: const StadiumBorder(),
+                ),
+                icon: const Icon(Icons.expand_more_rounded, size: 17),
+                iconAlignment: IconAlignment.end,
+                label: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 106),
+                  child: Text(
+                    _selectedProvider?.selectedModel.isNotEmpty == true
+                        ? _selectedProvider!.selectedModel
+                        : '选择模型',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1048,7 +1063,18 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 4),
           ],
         ),
-        body: Column(
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Theme.of(context).colorScheme.surface,
+                Theme.of(context).colorScheme.surfaceContainerLowest,
+              ],
+            ),
+          ),
+          child: Column(
           children: [
             Expanded(
               child: _loading
@@ -1057,7 +1083,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       controller: _scrollController,
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                      padding: const EdgeInsets.fromLTRB(15, 12, 15, 24),
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
                         final message = _messages[index];
@@ -1106,6 +1132,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onStop: _stopGenerating,
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1255,34 +1282,113 @@ class _ConversationDrawer extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.favorite_border_rounded),
-              title: const Text('收藏'),
-              onTap: onFavorites,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DrawerShortcut(
+                          icon: Icons.favorite_border_rounded,
+                          label: '收藏',
+                          onTap: onFavorites,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _DrawerShortcut(
+                          icon: Icons.menu_book_outlined,
+                          label: '记忆与世界',
+                          onTap: onMemoryWorld,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DrawerShortcut(
+                          icon: Icons.manage_accounts_outlined,
+                          label: '角色设定',
+                          onTap: onEditCharacter,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _DrawerShortcut(
+                          icon: Icons.tune_rounded,
+                          label: '模型供应商',
+                          onTap: onSettings,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _DrawerShortcut(
+                    icon: Icons.settings_outlined,
+                    label: '设置与数据',
+                    onTap: onAppSettings,
+                    wide: true,
+                  ),
+                ],
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.menu_book_outlined),
-              title: const Text('记忆与世界'),
-              onTap: onMemoryWorld,
-            ),
-            ListTile(
-              leading: const Icon(Icons.manage_accounts_outlined),
-              title: const Text('角色设定'),
-              onTap: onEditCharacter,
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune_rounded),
-              title: const Text('模型供应商'),
-              onTap: onSettings,
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('设置'),
-              onTap: onAppSettings,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerShortcut extends StatelessWidget {
+  const _DrawerShortcut({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.wide = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(15),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 48,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: wide ? 14 : 10),
+            child: Row(
+              mainAxisAlignment:
+                  wide ? MainAxisAlignment.start : MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 19, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1310,12 +1416,28 @@ class _Composer extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: Material(
-          color: scheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(26),
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: generating
+                  ? scheme.primary.withValues(alpha: 0.3)
+                  : scheme.outlineVariant.withValues(alpha: 0.55),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.07),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(15, 3, 7, 3),
+            padding: const EdgeInsets.fromLTRB(15, 3, 6, 3),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -1328,22 +1450,40 @@ class _Composer extends StatelessWidget {
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: generating ? '可以继续说…' : '说点什么…',
+                      hintStyle: TextStyle(
+                        color: scheme.onSurfaceVariant.withValues(alpha: 0.68),
+                      ),
                       border: InputBorder.none,
                       filled: false,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 if (generating)
-                  IconButton(
-                    tooltip: '停止当前回复',
-                    onPressed: onStop,
-                    icon: const Icon(Icons.stop_rounded),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: IconButton(
+                      tooltip: '停止当前回复',
+                      style: IconButton.styleFrom(
+                        backgroundColor: scheme.surfaceContainerHighest,
+                        minimumSize: const Size(42, 42),
+                      ),
+                      onPressed: onStop,
+                      icon: const Icon(Icons.stop_rounded, size: 20),
+                    ),
                   ),
-                IconButton.filled(
-                  tooltip: '发送',
-                  onPressed: enabled ? onSend : null,
-                  icon: const Icon(Icons.arrow_upward_rounded),
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: IconButton.filled(
+                    tooltip: '发送',
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(42, 42),
+                    ),
+                    onPressed: enabled ? onSend : null,
+                    icon: const Icon(Icons.arrow_upward_rounded, size: 21),
+                  ),
                 ),
               ],
             ),
