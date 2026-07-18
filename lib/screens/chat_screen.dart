@@ -41,10 +41,12 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
+  String? _activeReplyId;
   bool _loading = true;
-  bool _submitting = false;
   bool _generating = false;
   bool _cancelled = false;
+  bool _replyQueued = false;
+  bool _drainingReplies = false;
 
   @override
   void initState() {
@@ -350,25 +352,35 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _generating || _submitting) return;
-    setState(() => _submitting = true);
+    if (text.isEmpty || _loading) return;
+    final userMessage = ChatMessage(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      author: MessageAuthor.user,
+      text: text,
+      sentAt: DateTime.now(),
+    );
+    setState(() {
+      _messages.add(userMessage);
+      _controller.clear();
+    });
+    _scrollToBottom();
+    await _updateConversationTitle(text);
+    await _persistMessages();
+    await _queueReply();
+  }
+
+  Future<void> _queueReply() async {
+    _replyQueued = true;
+    if (_drainingReplies) return;
+    _drainingReplies = true;
     try {
-      if (!await _ensureProviderConfigured()) return;
-      final userMessage = ChatMessage(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        author: MessageAuthor.user,
-        text: text,
-        sentAt: DateTime.now(),
-      );
-      setState(() {
-        _messages.add(userMessage);
-        _controller.clear();
-      });
-      await _updateConversationTitle(text);
-      await _persistMessages();
-      await _requestReply();
+      while (_replyQueued && mounted) {
+        _replyQueued = false;
+        if (!await _ensureProviderConfigured()) return;
+        await _requestReply();
+      }
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      _drainingReplies = false;
     }
   }
 
@@ -403,7 +415,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     setState(() {
-      if (newReply != null) _messages.add(newReply);
+      if (newReply != null) {
+        _messages.add(newReply);
+        _activeReplyId = newReply.id;
+      }
       _generating = true;
       _cancelled = false;
     });
@@ -487,7 +502,10 @@ class _ChatScreenState extends State<ChatScreen> {
       service.close();
       if (identical(_activeService, service)) _activeService = null;
       if (mounted) {
-        setState(() => _generating = false);
+        setState(() {
+          _generating = false;
+          _activeReplyId = null;
+        });
         await _persistMessages();
       }
     }
@@ -496,16 +514,18 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopGenerating() {
     _cancelled = true;
     _activeService?.close();
-    if (_messages.isNotEmpty &&
-        _messages.last.author == MessageAuthor.character &&
-        _messages.last.text.isEmpty) {
-      _messages.removeLast();
+    final activeReplyId = _activeReplyId;
+    if (activeReplyId != null) {
+      final index = _messages.indexWhere(
+        (message) => message.id == activeReplyId && message.text.isEmpty,
+      );
+      if (index >= 0) _messages.removeAt(index);
     }
     unawaited(_persistMessages());
   }
 
   Future<void> _retryReply(int replyIndex) async {
-    if (_generating || _submitting) return;
+    if (_generating) return;
     final choice = await _showModelPicker('选择这次使用的模型');
     if (choice == null || !mounted) return;
     final provider = choice.provider.copyWith(selectedModel: choice.model);
@@ -949,7 +969,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemBuilder: (context, index) {
                         final message = _messages[index];
                         if (_generating &&
-                            index == _messages.length - 1 &&
+                            message.id == _activeReplyId &&
                             message.author == MessageAuthor.character &&
                             message.text.isEmpty) {
                           return _ThinkingRow(name: _profile.name);
@@ -985,7 +1005,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             _Composer(
               controller: _controller,
-              enabled: !_loading && !_submitting,
+              enabled: !_loading,
               generating: _generating,
               onSend: _send,
               onStop: _stopGenerating,
@@ -1199,24 +1219,28 @@ class _Composer extends StatelessWidget {
                 Expanded(
                   child: TextField(
                     controller: controller,
-                    enabled: enabled && !generating,
+                    enabled: enabled,
                     minLines: 1,
                     maxLines: 6,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: generating ? '等林说完…' : '说点什么…',
+                      hintText: generating ? '可以继续说…' : '说点什么…',
                       border: InputBorder.none,
                       filled: false,
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                IconButton.filled(
-                  tooltip: generating ? '停止' : '发送',
-                  onPressed: generating ? onStop : (enabled ? onSend : null),
-                  icon: Icon(
-                    generating ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                if (generating)
+                  IconButton(
+                    tooltip: '停止当前回复',
+                    onPressed: onStop,
+                    icon: const Icon(Icons.stop_rounded),
                   ),
+                IconButton.filled(
+                  tooltip: '发送',
+                  onPressed: enabled ? onSend : null,
+                  icon: const Icon(Icons.arrow_upward_rounded),
                 ),
               ],
             ),
