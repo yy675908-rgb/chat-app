@@ -419,21 +419,57 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                SegmentedButton<ProviderProtocol>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ProviderProtocol.openAiCompatible,
-                      label: Text('OpenAI 兼容'),
+                DropdownButtonFormField<ProviderProtocol>(
+                  initialValue: _protocol,
+                  isExpanded: true,
+                  itemHeight: null,
+                  menuMaxHeight: 360,
+                  decoration: const InputDecoration(
+                    labelText: '接口格式',
+                    filled: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  selectedItemBuilder: (context) => const [
+                    _ProtocolSelectedLabel(
+                      icon: Icons.hub_outlined,
+                      text: 'OpenAI 兼容',
                     ),
-                    ButtonSegment(
-                      value: ProviderProtocol.anthropic,
-                      label: Text('Anthropic'),
+                    _ProtocolSelectedLabel(
+                      icon: Icons.auto_awesome_outlined,
+                      text: 'Anthropic',
                     ),
                   ],
-                  selected: {_protocol},
-                  onSelectionChanged: (value) {
-                    setState(() => _protocol = value.first);
+                  items: const [
+                    DropdownMenuItem(
+                      value: ProviderProtocol.openAiCompatible,
+                      child: _ProtocolOption(
+                        title: 'OpenAI 兼容',
+                        providers:
+                            '常见：OpenAI、DeepSeek、OpenRouter、硅基流动、Kimi、通义千问',
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: ProviderProtocol.anthropic,
+                      child: _ProtocolOption(
+                        title: 'Anthropic',
+                        providers:
+                            '常见：Anthropic Claude、DeepSeek Anthropic 接口及兼容代理',
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _protocol = value);
                   },
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  '这里选择的是接口格式，不是限定供应商；请以服务商提供的 API 文档为准。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11.5,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 TextField(
@@ -555,6 +591,65 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _ProtocolSelectedLabel extends StatelessWidget {
+  const _ProtocolSelectedLabel({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 10),
+        Text(text),
+      ],
+    );
+  }
+}
+
+class _ProtocolOption extends StatelessWidget {
+  const _ProtocolOption({
+    required this.title,
+    required this.providers,
+  });
+
+  final String title;
+  final String providers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            providers,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 11.5,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
