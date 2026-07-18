@@ -15,6 +15,19 @@ class ChatMessage {
   final DateTime sentAt;
   final bool isRetracted;
 
+  ChatMessage copyWith({
+    String? text,
+    bool? isRetracted,
+  }) {
+    return ChatMessage(
+      id: id,
+      author: author,
+      text: text ?? this.text,
+      sentAt: sentAt,
+      isRetracted: isRetracted ?? this.isRetracted,
+    );
+  }
+
   Map<String, Object?> toJson() => {
         'id': id,
         'author': author.name,

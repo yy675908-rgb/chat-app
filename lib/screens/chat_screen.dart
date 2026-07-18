@@ -3,14 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/api_profile.dart';
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
+import '../services/ai_chat_service.dart';
+import '../services/api_settings_store.dart';
 import '../services/chat_store.dart';
 import '../widgets/message_bubble.dart';
+import 'api_settings_screen.dart';
+import 'character_screen.dart';
 import 'memory_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  const ChatScreen({required this.profile, super.key});
+
+  final CharacterProfile profile;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -20,12 +27,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _store = ChatStore();
-  CharacterProfile _profile = CharacterProfile(
-    name: '未命名角色',
-    status: '在这里',
-    firstMetAt: DateTime.now(),
-  );
+  final _apiStore = ApiSettingsStore();
+  final _ai = AiChatService();
 
+  late CharacterProfile _profile;
+  ApiProfile? _apiProfile;
+  String _apiKey = '';
   List<ChatMessage> _messages = [];
   List<String> _memories = [];
   bool _loading = true;
@@ -34,94 +41,232 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _profile = widget.profile;
     unawaited(_restore());
   }
 
   Future<void> _restore() async {
     final messages = await _store.loadMessages();
     final memories = await _store.loadMemories();
-    final firstMetAt = await _store.loadFirstMetAt();
-    if (!mounted) return;
+    final profile = await _store.loadProfile();
+    final apiProfile = await _apiStore.loadProfile();
+    final apiKey = await _apiStore.loadApiKey();
 
-    setState(() {
-      _messages = messages.isEmpty
-          ? [
-              ChatMessage(
-                id: 'welcome',
-                author: MessageAuthor.system,
-                text: '你们的故事从今天开始',
-                sentAt: DateTime.now(),
-              ),
-            ]
-          : messages;
-      _memories = memories;
-      _profile = CharacterProfile(
-        name: _profile.name,
-        status: _profile.status,
-        firstMetAt: firstMetAt,
+    if (!messages.any((message) => message.author == MessageAuthor.character)) {
+      messages.add(
+        ChatMessage(
+          id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
+          author: MessageAuthor.character,
+          text: profile.greeting,
+          sentAt: DateTime.now(),
+        ),
       );
+      await _store.saveMessages(messages);
+    }
+    if (!mounted) return;
+    setState(() {
+      _messages = messages;
+      _memories = memories;
+      _profile = profile;
+      _apiProfile = apiProfile;
+      _apiKey = apiKey;
       _loading = false;
     });
-    _scrollToBottom();
+    _scrollToBottom(jump: true);
+  }
+
+  Future<bool> _ensureApiConfigured() async {
+    if ((_apiProfile?.isConfigured ?? false) && _apiKey.trim().isNotEmpty) {
+      return true;
+    }
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const ApiSettingsScreen()),
+    );
+    if (saved != true) return false;
+    final profile = await _apiStore.loadProfile();
+    final apiKey = await _apiStore.loadApiKey();
+    if (!mounted) return false;
+    setState(() {
+      _apiProfile = profile;
+      _apiKey = apiKey;
+    });
+    return profile.isConfigured && apiKey.trim().isNotEmpty;
   }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _thinking) return;
+    if (!await _ensureApiConfigured()) return;
+    final apiProfile = _apiProfile;
+    if (apiProfile == null) return;
 
-    final message = ChatMessage(
+    final userMessage = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       author: MessageAuthor.user,
       text: text,
       sentAt: DateTime.now(),
     );
+    final reply = ChatMessage(
+      id: 'reply-${DateTime.now().microsecondsSinceEpoch}',
+      author: MessageAuthor.character,
+      text: '',
+      sentAt: DateTime.now(),
+    );
 
     setState(() {
-      _messages.add(message);
+      _messages.add(userMessage);
+      _messages.add(reply);
       _thinking = true;
       _controller.clear();
     });
     await _store.saveMessages(_messages);
     _scrollToBottom();
 
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() => _thinking = false);
-    _showModelNotConnected();
+    final replyIndex = _messages.length - 1;
+    var fullReply = '';
+    try {
+      final contextMessages = _messages
+          .take(_messages.length - 1)
+          .where((message) => message.author != MessageAuthor.system)
+          .toList();
+      final recent = contextMessages.length > 24
+          ? contextMessages.sublist(contextMessages.length - 24)
+          : contextMessages;
+      await for (final chunk in _ai.streamReply(
+        profile: apiProfile,
+        apiKey: _apiKey,
+        systemPrompt: _assembledSystemPrompt(),
+        history: recent,
+      )) {
+        fullReply += chunk;
+        if (!mounted) return;
+        setState(() {
+          _messages[replyIndex] = reply.copyWith(text: fullReply);
+        });
+        _scrollToBottom();
+      }
+      if (fullReply.trim().isEmpty) {
+        throw const AiChatException('模型没有返回文字，请检查模型名称或接口兼容性');
+      }
+      await _store.saveMessages(_messages);
+    } on AiChatException catch (error) {
+      if (!mounted) return;
+      setState(() => _messages.removeAt(replyIndex));
+      await _store.saveMessages(_messages);
+      _showError(error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _messages.removeAt(replyIndex));
+      await _store.saveMessages(_messages);
+      _showError('回复失败：$error');
+    } finally {
+      if (mounted) setState(() => _thinking = false);
+    }
   }
 
-  void _showModelNotConnected() {
+  String _assembledSystemPrompt() {
+    if (_memories.isEmpty) return _profile.systemPrompt;
+    return '${_profile.systemPrompt}\n\n你们已经共同确认的记忆：\n'
+        '${_memories.map((memory) => '- $memory').join('\n')}';
+  }
+
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('消息已保存。下一阶段接入 AI 后，角色会在这里回应。'),
+      SnackBar(
+        content: Text(message),
         behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: '设置',
+          onPressed: () => Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(builder: (_) => const ApiSettingsScreen()),
+          ),
+        ),
       ),
     );
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool jump = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-      );
+      final position = _scrollController.position.maxScrollExtent;
+      if (jump) {
+        _scrollController.jumpTo(position);
+      } else {
+        _scrollController.animateTo(
+          position,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
   Future<void> _openMemories() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => MemoryScreen(memories: _memories),
+        builder: (_) => MemoryScreen(
+          memories: _memories,
+          onAdd: (memory) async {
+            await _store.addMemory(memory);
+            if (!mounted) return;
+            setState(() => _memories = [..._memories, memory]);
+          },
+        ),
       ),
     );
+  }
+
+  Future<void> _editCharacter() async {
+    final updated = await Navigator.of(context).push<CharacterProfile>(
+      MaterialPageRoute<CharacterProfile>(
+        builder: (_) => CharacterScreen(profile: _profile),
+      ),
+    );
+    if (updated == null) return;
+    await _store.saveProfile(updated);
+    if (!mounted) return;
+    setState(() => _profile = updated);
+  }
+
+  Future<void> _clearConversation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空这段对话？'),
+        content: const Text('聊天记录会从这台设备删除，共同记忆会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _store.clearMessages();
+    if (!mounted) return;
+    setState(() {
+      _messages = [
+        ChatMessage(
+          id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
+          author: MessageAuthor.character,
+          text: _profile.greeting,
+          sentAt: DateTime.now(),
+        ),
+      ];
+    });
+    await _store.saveMessages(_messages);
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _ai.close();
     super.dispose();
   }
 
@@ -130,7 +275,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark.copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: const Color(0xFFF7F6F2),
+        systemNavigationBarColor: const Color(0xFFFFFCF7),
       ),
       child: Scaffold(
         body: SafeArea(
@@ -139,37 +284,52 @@ class _ChatScreenState extends State<ChatScreen> {
               _ConversationHeader(
                 profile: _profile,
                 thinking: _thinking,
+                onBack: () => Navigator.of(context).pop(),
                 onMemories: _openMemories,
+                onSettings: () => Navigator.of(context).push<bool>(
+                  MaterialPageRoute<bool>(
+                    builder: (_) => const ApiSettingsScreen(),
+                  ),
+                ),
+                onEditCharacter: _editCharacter,
+                onClear: _clearConversation,
               ),
               Expanded(
                 child: DecoratedBox(
                   decoration: const BoxDecoration(
-                    color: Color(0xFFEDEBE6),
+                    color: Color(0xFFF1EFE9),
                     borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(26),
+                      top: Radius.circular(28),
                     ),
                   ),
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : ListView.builder(
                           controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                          itemCount: _messages.length + (_thinking ? 1 : 0),
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                          itemCount: _messages.length,
                           itemBuilder: (context, index) {
-                            if (_thinking && index == _messages.length) {
+                            final message = _messages[index];
+                            if (_thinking &&
+                                index == _messages.length - 1 &&
+                                message.author == MessageAuthor.character &&
+                                message.text.isEmpty) {
                               return const Align(
                                 alignment: Alignment.centerLeft,
                                 child: _ThinkingBubble(),
                               );
                             }
-                            return MessageBubble(message: _messages[index]);
+                            return MessageBubble(
+                              message: message,
+                              characterName: _profile.name,
+                            );
                           },
                         ),
                 ),
               ),
               _Composer(
                 controller: _controller,
-                enabled: !_thinking,
+                enabled: !_loading && !_thinking,
                 onSend: _send,
               ),
             ],
@@ -184,54 +344,41 @@ class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.profile,
     required this.thinking,
+    required this.onBack,
     required this.onMemories,
+    required this.onSettings,
+    required this.onEditCharacter,
+    required this.onClear,
   });
 
   final CharacterProfile profile;
   final bool thinking;
+  final VoidCallback onBack;
   final VoidCallback onMemories;
+  final VoidCallback onSettings;
+  final VoidCallback onEditCharacter;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF7F6F2),
-      padding: const EdgeInsets.fromLTRB(18, 10, 10, 16),
+      color: const Color(0xFFFFFCF7),
+      padding: const EdgeInsets.fromLTRB(4, 8, 8, 14),
       child: Row(
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const CircleAvatar(
-                radius: 25,
-                backgroundColor: Color(0xFFCDD4CF),
-                child: Text(
-                  '01',
-                  style: TextStyle(
-                    color: Color(0xFF2F4741),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
+          IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back)),
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: const Color(0xFFDCE6DF),
+            child: Text(
+              profile.name.isEmpty ? '林' : profile.name.characters.first,
+              style: const TextStyle(
+                color: Color(0xFF27483D),
+                fontWeight: FontWeight.w700,
               ),
-              Positioned(
-                right: -1,
-                bottom: 1,
-                child: Container(
-                  width: 11,
-                  height: 11,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF69877D),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFFF7F6F2),
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,19 +388,18 @@ class _ConversationHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF1C2522),
+                    color: Color(0xFF192A24),
                     fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   thinking
-                      ? '正在想…'
-                      : '${profile.status}  ·  相识第 ${profile.daysTogether} 天',
+                      ? '正在回复…'
+                      : '${profile.status} · 相识第 ${profile.daysTogether} 天',
                   style: const TextStyle(
-                    color: Color(0xFF727772),
+                    color: Color(0xFF777A74),
                     fontSize: 12,
                   ),
                 ),
@@ -263,16 +409,28 @@ class _ConversationHeader extends StatelessWidget {
           IconButton(
             tooltip: '共同记忆',
             onPressed: onMemories,
-            style: IconButton.styleFrom(
-              foregroundColor: const Color(0xFF2F4741),
-              backgroundColor: const Color(0xFFE5E8E3),
-            ),
-            icon: const Icon(Icons.bookmark_border_rounded, size: 21),
+            icon: const Icon(Icons.bookmark_border_rounded),
           ),
-          IconButton(
-            tooltip: '更多',
-            onPressed: () {},
-            icon: const Icon(Icons.more_horiz_rounded),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'settings':
+                  onSettings();
+                  break;
+                case 'character':
+                  onEditCharacter();
+                  break;
+                case 'clear':
+                  onClear();
+                  break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'settings', child: Text('模型设置')),
+              PopupMenuItem(value: 'character', child: Text('角色档案')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'clear', child: Text('清空对话')),
+            ],
           ),
         ],
       ),
@@ -287,19 +445,27 @@ class _ThinkingBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
-        color: Color(0xFFFAF9F5),
+        color: Color(0xFFFFFCF7),
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(17),
-          topRight: Radius.circular(17),
-          bottomRight: Radius.circular(17),
-          bottomLeft: Radius.circular(4),
+          topLeft: Radius.circular(19),
+          topRight: Radius.circular(19),
+          bottomRight: Radius.circular(19),
+          bottomLeft: Radius.circular(5),
         ),
       ),
-      child: const Text(
-        '正在想…',
-        style: TextStyle(color: Color(0xFF747A76), fontSize: 13),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(strokeWidth: 1.7),
+          ),
+          SizedBox(width: 9),
+          Text('正在想…', style: TextStyle(color: Color(0xFF747A76))),
+        ],
       ),
     );
   }
@@ -319,18 +485,11 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 10, 12, 12),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF7F6F2),
-      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      color: const Color(0xFFFFFCF7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          IconButton(
-            tooltip: '更多',
-            onPressed: null,
-            icon: const Icon(Icons.add_rounded),
-          ),
           Expanded(
             child: TextField(
               controller: controller,
@@ -338,27 +497,28 @@ class _Composer extends StatelessWidget {
               minLines: 1,
               maxLines: 5,
               textInputAction: TextInputAction.newline,
+              onSubmitted: (_) => onSend(),
               decoration: InputDecoration(
-                hintText: '说点什么…',
+                hintText: enabled ? '说点什么…' : '等林说完…',
                 filled: true,
-                fillColor: const Color(0xFFEDEBE6),
+                fillColor: const Color(0xFFF1EFE9),
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 11,
+                  horizontal: 17,
+                  vertical: 12,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22),
                   borderSide: BorderSide.none,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 9),
           IconButton.filled(
             tooltip: '发送',
             onPressed: enabled ? onSend : null,
             style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFF2F4741),
+              backgroundColor: const Color(0xFF27483D),
               foregroundColor: Colors.white,
               disabledBackgroundColor: const Color(0xFFB8BFBB),
             ),

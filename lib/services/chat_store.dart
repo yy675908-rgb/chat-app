@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
+import '../models/character_profile.dart';
 
 class ChatStore {
   static const _messagesKey = 'chat_messages_v1';
   static const _memoriesKey = 'relationship_memories_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
+  static const _profileKey = 'character_profile_v1';
 
   Future<List<ChatMessage>> loadMessages() async {
     final preferences = await SharedPreferences.getInstance();
@@ -57,5 +59,30 @@ class ChatStore {
     final now = DateTime.now();
     await preferences.setString(_firstMetAtKey, now.toIso8601String());
     return now;
+  }
+
+  Future<CharacterProfile> loadProfile() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_profileKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        return CharacterProfile.fromJson(
+          Map<String, Object?>.from(jsonDecode(raw) as Map),
+        );
+      } on FormatException {
+        // Fall through to the built-in character.
+      }
+    }
+    return CharacterProfile.lin(await loadFirstMetAt());
+  }
+
+  Future<void> saveProfile(CharacterProfile profile) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_profileKey, jsonEncode(profile.toJson()));
+  }
+
+  Future<void> clearMessages() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_messagesKey);
   }
 }

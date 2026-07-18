@@ -1,4 +1,5 @@
 import 'package:character_chat_app/models/chat_message.dart';
+import 'package:character_chat_app/models/api_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -16,5 +17,18 @@ void main() {
     expect(restored.author, original.author);
     expect(restored.text, original.text);
     expect(restored.sentAt, original.sentAt);
+  });
+
+  test('api profile builds a chat completions endpoint', () {
+    const profile = ApiProfile(
+      baseUrl: 'https://example.com/v1/',
+      model: 'demo-model',
+    );
+
+    expect(
+      profile.chatCompletionsUri.toString(),
+      'https://example.com/v1/chat/completions',
+    );
+    expect(profile.isConfigured, isTrue);
   });
 }

@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({required this.message, super.key});
+  const MessageBubble({
+    required this.message,
+    required this.characterName,
+    super.key,
+  });
 
   final ChatMessage message;
+  final String characterName;
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +42,25 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
+          if (!isUser) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 4),
+              child: Text(
+                characterName,
+                style: const TextStyle(
+                  color: Color(0xFF6E756F),
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
           Container(
-            constraints: const BoxConstraints(maxWidth: 296),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
             decoration: BoxDecoration(
-              color: isUser ? const Color(0xFF2F4741) : const Color(0xFFFAF9F5),
+              color: isUser ? const Color(0xFF31594B) : const Color(0xFFFFFCF7),
               border: isUser
                   ? null
                   : Border.all(color: const Color(0x12000000)),
