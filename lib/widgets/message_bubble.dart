@@ -11,6 +11,7 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.characterName,
     this.showActions = false,
+    this.reasoningInitiallyExpanded = true,
     this.onPreviousVariant,
     this.onNextVariant,
     this.onLike,
@@ -21,6 +22,7 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final String characterName;
   final bool showActions;
+  final bool reasoningInitiallyExpanded;
   final VoidCallback? onPreviousVariant;
   final VoidCallback? onNextVariant;
   final VoidCallback? onLike;
@@ -154,6 +156,16 @@ class MessageBubble extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 5),
+                  if (message.reasoning.trim().isNotEmpty) ...[
+                    _ReasoningPanel(
+                      key: ValueKey(
+                        'reasoning-${message.activeVariant?.id ?? message.id}',
+                      ),
+                      reasoning: message.reasoning,
+                      initiallyExpanded: reasoningInitiallyExpanded,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   MarkdownBody(
                     data: message.text,
                     selectable: true,
@@ -180,6 +192,33 @@ class MessageBubble extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (message.usedTotalTokens > 0) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      children: [
+                        Text(
+                          '本次 ${message.usedTotalTokens} tokens',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 10.5,
+                          ),
+                        ),
+                        Text(
+                          '输入 ${message.usedPromptTokens} / '
+                          '输出 ${message.usedCompletionTokens}'
+                          '${message.usedReasoningTokens > 0 ? ' / 思考 ${message.usedReasoningTokens}' : ''}',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant.withValues(
+                              alpha: 0.78,
+                            ),
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (showActions) ...[
                     const SizedBox(height: 3),
                     Row(
@@ -249,6 +288,63 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class _ReasoningPanel extends StatelessWidget {
+  const _ReasoningPanel({
+    required this.reasoning,
+    required this.initiallyExpanded,
+    super.key,
+  });
+
+  final String reasoning;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          maintainState: true,
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          leading: Icon(
+            Icons.psychology_outlined,
+            size: 18,
+            color: scheme.onSurfaceVariant,
+          ),
+          title: Text(
+            '思考过程',
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(
+                reasoning.trim(),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12.5,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
