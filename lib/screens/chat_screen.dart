@@ -15,6 +15,7 @@ import 'api_settings_screen.dart';
 import 'character_screen.dart';
 import 'favorites_screen.dart';
 import 'memory_screen.dart';
+import 'style_preferences_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -35,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Conversation? _currentConversation;
   List<ChatMessage> _messages = [];
   List<String> _memories = [];
+  List<String> _stylePreferences = [];
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
@@ -52,6 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _restore() async {
     final profile = await _chatStore.loadProfile();
     final memories = await _chatStore.loadMemories();
+    final stylePreferences = await _chatStore.loadStylePreferences();
     final conversations = await _chatStore.loadConversations();
     final providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
@@ -66,6 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _profile = profile;
       _memories = memories;
+      _stylePreferences = stylePreferences;
       _conversations = conversations;
       _currentConversation = current;
       _providers = providers;
@@ -513,11 +517,113 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _toggleLike(int messageIndex) async {
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
-    final updated = _messages[messageIndex].toggleLike();
+    final original = _messages[messageIndex];
+    final shouldExtract = !original.isLiked;
+    final updated = original.toggleLike();
     setState(() => _messages[messageIndex] = updated);
     await _persistMessages();
     if (!mounted) return;
-    _showError(updated.isLiked ? '已喜欢并加入收藏' : '已取消喜欢');
+    _showMessage(updated.isLiked ? '已喜欢并加入收藏' : '已取消喜欢');
+    if (shouldExtract) {
+      unawaited(_extractStylePreference(messageIndex, original));
+    }
+  }
+
+  Future<void> _extractStylePreference(
+    int messageIndex,
+    ChatMessage likedReply,
+  ) async {
+    var userContext = '';
+    for (var index = messageIndex - 1; index >= 0; index--) {
+      if (_messages[index].author == MessageAuthor.user) {
+        userContext = _messages[index].text;
+        break;
+      }
+    }
+    final variant = likedReply.activeVariant;
+    ProviderProfile? provider;
+    if (variant != null && variant.providerId.isNotEmpty) {
+      for (final item in _providers) {
+        if (item.id == variant.providerId) {
+          provider = item;
+          break;
+        }
+      }
+    }
+    provider ??= _selectedProvider;
+    if (provider == null) return;
+    if (variant != null && variant.modelId.isNotEmpty) {
+      provider = provider.copyWith(selectedModel: variant.modelId);
+    }
+    final apiKey = await _providerStore.loadApiKey(provider.id);
+    if (apiKey.trim().isEmpty) return;
+
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final request = ChatMessage(
+        id: 'preference-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text: '用户当时说：$userContext\n'
+            '用户喜欢的角色回复：${likedReply.text}',
+        sentAt: DateTime.now(),
+      );
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: '把用户喜欢的一次回复提炼为一条可复用的说话偏好。'
+            '只输出一行，格式必须为“当……时：……”。'
+            '写清适用情境和回应方式，不复述原话，不写分析，不超过45个汉字。',
+        history: [request],
+        temperature: 0.2,
+      )) {
+        raw += chunk;
+      }
+      final rule = _cleanPreference(raw);
+      if (rule.isEmpty) return;
+      final added = await _chatStore.addStylePreference(rule);
+      if (!added) return;
+      final latest = await _chatStore.loadStylePreferences();
+      if (!mounted) return;
+      setState(() => _stylePreferences = latest);
+      _showMessage('已提炼回应偏好，可在侧栏编辑');
+    } on Object {
+      if (mounted) {
+        _showMessage('回复已收藏；偏好提炼失败，可在侧栏手动添加');
+      }
+    } finally {
+      service.close();
+    }
+  }
+
+  String _cleanPreference(String raw) {
+    var value = raw
+        .trim()
+        .replaceAll(RegExp(r'^[\\-•*#\\s]+'), '')
+        .replaceAll(RegExp(r'\\s+'), ' ');
+    if (value.startsWith('“') && value.endsWith('”') && value.length > 2) {
+      value = value.substring(1, value.length - 1);
+    }
+    if (value.characters.length > 70) {
+      value = value.characters.take(70).join();
+    }
+    return value;
+  }
+
+  Future<void> _saveStylePreferences(List<String> items) async {
+    await _chatStore.saveStylePreferences(items);
+    if (mounted) setState(() => _stylePreferences = [...items]);
+  }
+
+  Future<void> _openStylePreferences() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => StylePreferencesScreen(
+          preferences: _stylePreferences,
+          onChanged: _saveStylePreferences,
+        ),
+      ),
+    );
   }
 
   Future<void> _openFavorites() async {
@@ -608,7 +714,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n你们共同确认的记忆：\n'
             '${_memories.map((memory) => '- $memory').join('\n')}';
-    return '${_profile.systemPrompt}\n\n$context$memoryText';
+    final preferenceText = _stylePreferences.isEmpty
+        ? ''
+        : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
+            '${_stylePreferences.map((item) => '- $item').join('\n')}';
+    return '${_profile.systemPrompt}\n\n'
+        '$context$memoryText$preferenceText';
   }
 
   String _formatPromptTime(DateTime value) {
@@ -631,6 +742,16 @@ class _ChatScreenState extends State<ChatScreen> {
           : '${duration.inHours}小时$minutes分钟';
     }
     return duration.inMinutes <= 0 ? '刚刚' : '${duration.inMinutes}分钟';
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -717,6 +838,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onDelete: _deleteConversation,
           onEditCharacter: _editCharacter,
           onFavorites: _openFavorites,
+          onPreferences: _openStylePreferences,
           onSettings: _openProviderSettings,
         ),
         appBar: AppBar(
@@ -843,6 +965,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onDelete,
     required this.onEditCharacter,
     required this.onFavorites,
+    required this.onPreferences,
     required this.onSettings,
   });
 
@@ -854,6 +977,7 @@ class _ConversationDrawer extends StatelessWidget {
   final ValueChanged<Conversation> onDelete;
   final VoidCallback onEditCharacter;
   final VoidCallback onFavorites;
+  final VoidCallback onPreferences;
   final VoidCallback onSettings;
 
   @override
@@ -976,6 +1100,11 @@ class _ConversationDrawer extends StatelessWidget {
               leading: const Icon(Icons.favorite_border_rounded),
               title: const Text('收藏'),
               onTap: onFavorites,
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune_outlined),
+              title: const Text('回应偏好'),
+              onTap: onPreferences,
             ),
             ListTile(
               leading: const Icon(Icons.manage_accounts_outlined),
