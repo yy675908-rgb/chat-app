@@ -275,15 +275,10 @@ class _MemoryScreenState extends State<MemoryScreen>
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['txt', 'md', 'markdown'],
-      withData: true,
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      _notice('没有读取到文档内容');
-      return;
-    }
+    final bytes = await file.readAsBytes();
     var text = utf8.decode(bytes, allowMalformed: true).trim();
     if (text.isEmpty) {
       _notice('文档是空的');
