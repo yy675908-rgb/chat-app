@@ -493,13 +493,48 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _assembledSystemPrompt() {
-    final relationship =
-        '你和用户相识第 ${_profile.daysTogether} 天。现在是 ${DateTime.now().toLocal()}。';
+    final now = DateTime.now().toLocal();
+    ChatMessage? lastReply;
+    for (var index = _messages.length - 1; index >= 0; index--) {
+      final message = _messages[index];
+      if (message.author == MessageAuthor.character &&
+          message.text.trim().isNotEmpty) {
+        lastReply = message;
+        break;
+      }
+    }
+    final elapsed = lastReply == null
+        ? ''
+        : '｜距上一轮：${_formatElapsed(now.difference(lastReply.sentAt))}';
+    final context =
+        '相识第 ${_profile.daysTogether} 天｜当前：${_formatPromptTime(now)}$elapsed';
     final memoryText = _memories.isEmpty
         ? ''
         : '\n\n你们共同确认的记忆：\n'
             '${_memories.map((memory) => '- $memory').join('\n')}';
-    return '${_profile.systemPrompt}\n\n$relationship$memoryText';
+    return '${_profile.systemPrompt}\n\n$context$memoryText';
+  }
+
+  String _formatPromptTime(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)} '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  String _formatElapsed(Duration duration) {
+    if (duration.isNegative) return '刚刚';
+    final days = duration.inDays;
+    final hours = duration.inHours.remainder(24);
+    final minutes = duration.inMinutes.remainder(60);
+    if (days > 0) {
+      return hours == 0 ? '$days天' : '$days天$hours小时';
+    }
+    if (duration.inHours > 0) {
+      return minutes == 0
+          ? '${duration.inHours}小时'
+          : '${duration.inHours}小时$minutes分钟';
+    }
+    return duration.inMinutes <= 0 ? '刚刚' : '${duration.inMinutes}分钟';
   }
 
   void _showError(String message) {
