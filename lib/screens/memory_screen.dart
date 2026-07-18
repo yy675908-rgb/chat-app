@@ -77,10 +77,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEDEBE6),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFEDEBE6),
-        surfaceTintColor: Colors.transparent,
         title: const Text('共同记忆'),
         actions: [
           IconButton(onPressed: _addMemory, icon: const Icon(Icons.add_rounded)),
@@ -99,7 +96,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) => Card(
                 elevation: 0,
-                color: const Color(0xFFFAF9F5),
+                color: Theme.of(context).colorScheme.surface,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(_memories[index]),

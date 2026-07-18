@@ -69,13 +69,13 @@ class _CharacterScreenState extends State<CharacterScreen> {
           Center(
             child: CircleAvatar(
               radius: 42,
-              backgroundColor: const Color(0xFFDCE6DF),
+              backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
               child: Text(
                 widget.profile.name.isEmpty
                     ? '林'
                     : widget.profile.name.characters.first,
-                style: const TextStyle(
-                  color: Color(0xFF27483D),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
                   fontSize: 30,
                   fontWeight: FontWeight.w700,
                 ),

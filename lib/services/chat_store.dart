@@ -2,38 +2,100 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/chat_message.dart';
 import '../models/character_profile.dart';
+import '../models/chat_message.dart';
+import '../models/conversation.dart';
 
 class ChatStore {
-  static const _messagesKey = 'chat_messages_v1';
+  static const _legacyMessagesKey = 'chat_messages_v1';
+  static const _conversationsKey = 'conversations_v2';
+  static const _messagesPrefix = 'conversation_messages_v2_';
   static const _memoriesKey = 'relationship_memories_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
   static const _profileKey = 'character_profile_v1';
 
-  Future<List<ChatMessage>> loadMessages() async {
+  Future<List<Conversation>> loadConversations() async {
     final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString(_messagesKey);
-    if (raw == null || raw.isEmpty) return const [];
+    final raw = preferences.getString(_conversationsKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final conversations = (jsonDecode(raw) as List<dynamic>)
+            .map(
+              (item) => Conversation.fromJson(
+                Map<String, Object?>.from(item as Map),
+              ),
+            )
+            .toList();
+        conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        return conversations;
+      } on Object {
+        // Create a fresh conversation below.
+      }
+    }
 
+    final now = DateTime.now();
+    final first = Conversation(
+      id: 'conversation-${now.microsecondsSinceEpoch}',
+      title: '第一次见面',
+      createdAt: now,
+      updatedAt: now,
+    );
+    final legacyMessages = _decodeMessages(
+      preferences.getString(_legacyMessagesKey),
+    );
+    await saveConversations([first]);
+    if (legacyMessages.isNotEmpty) {
+      await saveMessages(first.id, legacyMessages);
+    }
+    return [first];
+  }
+
+  Future<void> saveConversations(List<Conversation> conversations) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _conversationsKey,
+      jsonEncode(
+        conversations.map((conversation) => conversation.toJson()).toList(),
+      ),
+    );
+  }
+
+  Future<List<ChatMessage>> loadMessages(String conversationId) async {
+    final preferences = await SharedPreferences.getInstance();
+    return _decodeMessages(
+      preferences.getString('$_messagesPrefix$conversationId'),
+    );
+  }
+
+  Future<void> saveMessages(
+    String conversationId,
+    List<ChatMessage> messages,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      '$_messagesPrefix$conversationId',
+      jsonEncode(messages.map((message) => message.toJson()).toList()),
+    );
+  }
+
+  Future<void> deleteConversation(String conversationId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove('$_messagesPrefix$conversationId');
+  }
+
+  List<ChatMessage> _decodeMessages(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
     try {
-      final items = jsonDecode(raw) as List<dynamic>;
-      return items
+      return (jsonDecode(raw) as List<dynamic>)
           .map(
             (item) => ChatMessage.fromJson(
               Map<String, Object?>.from(item as Map),
             ),
           )
           .toList();
-    } on FormatException {
-      return const [];
+    } on Object {
+      return [];
     }
-  }
-
-  Future<void> saveMessages(List<ChatMessage> messages) async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = jsonEncode(messages.map((message) => message.toJson()).toList());
-    await preferences.setString(_messagesKey, raw);
   }
 
   Future<List<String>> loadMemories() async {
@@ -55,7 +117,6 @@ class ChatStore {
       final parsed = DateTime.tryParse(saved);
       if (parsed != null) return parsed;
     }
-
     final now = DateTime.now();
     await preferences.setString(_firstMetAtKey, now.toIso8601String());
     return now;
@@ -69,7 +130,7 @@ class ChatStore {
         return CharacterProfile.fromJson(
           Map<String, Object?>.from(jsonDecode(raw) as Map),
         );
-      } on FormatException {
+      } on Object {
         // Fall through to the built-in character.
       }
     }
@@ -79,10 +140,5 @@ class ChatStore {
   Future<void> saveProfile(CharacterProfile profile) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_profileKey, jsonEncode(profile.toJson()));
-  }
-
-  Future<void> clearMessages() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.remove(_messagesKey);
   }
 }

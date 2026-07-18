@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/api_profile.dart';
 import '../models/chat_message.dart';
+import '../models/provider_profile.dart';
 
 class AiChatException implements Exception {
   const AiChatException(this.message);
@@ -20,61 +20,58 @@ class AiChatService {
   final http.Client _client;
 
   Stream<String> streamReply({
-    required ApiProfile profile,
+    required ProviderProfile provider,
+    required String apiKey,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+  }) {
+    return provider.protocol == ProviderProtocol.anthropic
+        ? _streamAnthropic(
+            provider: provider,
+            apiKey: apiKey,
+            systemPrompt: systemPrompt,
+            history: history,
+          )
+        : _streamOpenAi(
+            provider: provider,
+            apiKey: apiKey,
+            systemPrompt: systemPrompt,
+            history: history,
+          );
+  }
+
+  Stream<String> _streamOpenAi({
+    required ProviderProfile provider,
     required String apiKey,
     required String systemPrompt,
     required List<ChatMessage> history,
   }) async* {
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': systemPrompt},
-      ...history
-          .where((message) => message.author != MessageAuthor.system)
-          .map(
-            (message) => {
-              'role': message.author == MessageAuthor.user
-                  ? 'user'
-                  : 'assistant',
-              'content': message.text,
-            },
-          ),
+      ..._historyPayload(history),
     ];
-
-    final request = http.Request('POST', profile.chatCompletionsUri)
-      ..headers.addAll({
+    final response = await _send(
+      uri: provider.messagesUri,
+      headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
         if (apiKey.trim().isNotEmpty)
           'Authorization': 'Bearer ${apiKey.trim()}',
-      })
-      ..body = jsonEncode({
-        'model': profile.model.trim(),
+      },
+      body: {
+        'model': provider.selectedModel.trim(),
         'messages': messages,
         'stream': true,
         'temperature': 0.85,
-      });
-
-    late http.StreamedResponse response;
-    try {
-      response = await _client.send(request);
-    } on Exception catch (error) {
-      throw AiChatException('无法连接模型服务：$error');
-    }
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      throw AiChatException(
-        '模型服务返回 ${response.statusCode}：${_readError(body)}',
-      );
-    }
+      },
+    );
 
     await for (final line in response.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
-      final data = trimmed.substring(5).trim();
+      final data = _sseData(line);
+      if (data == null) continue;
       if (data == '[DONE]') break;
-
       try {
         final payload = jsonDecode(data) as Map<String, dynamic>;
         final choices = payload['choices'] as List<dynamic>?;
@@ -83,10 +80,102 @@ class AiChatService {
         final delta = choice['delta'] as Map<String, dynamic>?;
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) yield content;
-      } on FormatException {
+      } on Object {
         continue;
       }
     }
+  }
+
+  Stream<String> _streamAnthropic({
+    required ProviderProfile provider,
+    required String apiKey,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+  }) async* {
+    final response = await _send(
+      uri: provider.messagesUri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        'x-api-key': apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+      },
+      body: {
+        'model': provider.selectedModel.trim(),
+        'system': systemPrompt,
+        'messages': _historyPayload(history),
+        'max_tokens': 2048,
+        'stream': true,
+        'temperature': 0.85,
+      },
+    );
+
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      final data = _sseData(line);
+      if (data == null) continue;
+      try {
+        final payload = jsonDecode(data) as Map<String, dynamic>;
+        if (payload['type'] == 'error') {
+          final error = payload['error'] as Map<String, dynamic>?;
+          throw AiChatException(
+            error?['message']?.toString() ?? 'Anthropic 返回了未知错误',
+          );
+        }
+        if (payload['type'] != 'content_block_delta') continue;
+        final delta = payload['delta'] as Map<String, dynamic>?;
+        if (delta?['type'] == 'text_delta') {
+          final text = delta?['text'];
+          if (text is String && text.isNotEmpty) yield text;
+        }
+      } on AiChatException {
+        rethrow;
+      } on Object {
+        continue;
+      }
+    }
+  }
+
+  List<Map<String, String>> _historyPayload(List<ChatMessage> history) {
+    return history
+        .where((message) => message.author != MessageAuthor.system)
+        .map(
+          (message) => {
+            'role': message.author == MessageAuthor.user ? 'user' : 'assistant',
+            'content': message.text,
+          },
+        )
+        .toList();
+  }
+
+  Future<http.StreamedResponse> _send({
+    required Uri uri,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) async {
+    final request = http.Request('POST', uri)
+      ..headers.addAll(headers)
+      ..body = jsonEncode(body);
+    late http.StreamedResponse response;
+    try {
+      response = await _client.send(request);
+    } on Exception catch (error) {
+      throw AiChatException('无法连接模型服务：$error');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      throw AiChatException(
+        '接口返回 ${response.statusCode}：${_readError(body)}',
+      );
+    }
+    return response;
+  }
+
+  String? _sseData(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || !trimmed.startsWith('data:')) return null;
+    return trimmed.substring(5).trim();
   }
 
   String _readError(String body) {
@@ -96,11 +185,12 @@ class AiChatService {
       if (error is Map<String, dynamic>) {
         return error['message']?.toString() ?? body;
       }
-    } on FormatException {
-      // Return the original response below.
+      if (error is String) return error;
+      return payload['message']?.toString() ?? body;
+    } on Object {
+      final compact = body.trim().replaceAll(RegExp(r'\s+'), ' ');
+      return compact.length > 180 ? '${compact.substring(0, 180)}…' : compact;
     }
-    final compact = body.trim().replaceAll(RegExp(r'\s+'), ' ');
-    return compact.length > 180 ? '${compact.substring(0, 180)}…' : compact;
   }
 
   void close() => _client.close();

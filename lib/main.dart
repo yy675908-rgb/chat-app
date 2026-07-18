@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/chat_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +12,7 @@ class CharacterChatApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFF27483D);
+    const ink = Color(0xFF315B4D);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -33,7 +33,24 @@ class CharacterChatApp extends StatelessWidget {
           centerTitle: false,
         ),
       ),
-      home: const HomeScreen(),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: ink,
+          brightness: Brightness.dark,
+          surface: const Color(0xFF171A18),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF111412),
+        useMaterial3: true,
+        fontFamilyFallback: const ['PingFang SC', 'Microsoft YaHei'],
+        splashFactory: InkRipple.splashFactory,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF111412),
+          surfaceTintColor: Colors.transparent,
+          centerTitle: false,
+        ),
+      ),
+      themeMode: ThemeMode.system,
+      home: const ChatScreen(),
     );
   }
 }

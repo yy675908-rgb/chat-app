@@ -1,7 +1,7 @@
 name: character_chat_app
 description: A relationship-continuous character chat app.
 publish_to: "none"
-version: 0.3.0+3
+version: 0.4.0+4
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_markdown: ^0.7.4+3
   flutter_secure_storage: ^9.2.2
   http: ^1.2.2
   shared_preferences: ^2.3.3
