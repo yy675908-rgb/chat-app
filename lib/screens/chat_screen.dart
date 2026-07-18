@@ -7,6 +7,7 @@ import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../models/provider_profile.dart';
+import '../models/world_book_entry.dart';
 import '../services/ai_chat_service.dart';
 import '../services/chat_store.dart';
 import '../services/provider_store.dart';
@@ -16,7 +17,6 @@ import 'app_settings_screen.dart';
 import 'character_screen.dart';
 import 'favorites_screen.dart';
 import 'memory_screen.dart';
-import 'style_preferences_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -38,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> _messages = [];
   List<String> _memories = [];
   List<String> _stylePreferences = [];
+  List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
   bool _reasoningExpanded = true;
   int _contextTokenBudget = 32000;
@@ -61,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final profile = await _chatStore.loadProfile();
     final memories = await _chatStore.loadMemories();
     final stylePreferences = await _chatStore.loadStylePreferences();
+    final worldBooks = await _chatStore.loadWorldBooks();
     final characterMood = await _chatStore.loadCharacterMood();
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
@@ -79,6 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _profile = profile;
       _memories = memories;
       _stylePreferences = stylePreferences;
+      _worldBooks = worldBooks;
       _characterMood = characterMood;
       _reasoningExpanded = reasoningExpanded;
       _contextTokenBudget = contextTokenBudget;
@@ -644,10 +647,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final latest = await _chatStore.loadStylePreferences();
       if (!mounted) return;
       setState(() => _stylePreferences = latest);
-      _showMessage('已提炼回应偏好，可在侧栏编辑');
+      _showMessage('已提炼回应偏好，可在“记忆与世界”中编辑');
     } on Object {
       if (mounted) {
-        _showMessage('回复已收藏；偏好提炼失败，可在侧栏手动添加');
+        _showMessage('回复已收藏；偏好提炼失败，可在“记忆与世界”中添加');
       }
     } finally {
       service.close();
@@ -666,22 +669,6 @@ class _ChatScreenState extends State<ChatScreen> {
       value = value.characters.take(70).join();
     }
     return value;
-  }
-
-  Future<void> _saveStylePreferences(List<String> items) async {
-    await _chatStore.saveStylePreferences(items);
-    if (mounted) setState(() => _stylePreferences = [...items]);
-  }
-
-  Future<void> _openStylePreferences() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => StylePreferencesScreen(
-          preferences: _stylePreferences,
-          onChanged: _saveStylePreferences,
-        ),
-      ),
-    );
   }
 
   Future<void> _openFavorites() async {
@@ -776,10 +763,39 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
             '${_stylePreferences.map((item) => '- $item').join('\n')}';
+    final worldBookText = _matchedWorldBookPrompt();
     const moodInstruction = '\n\n回复正文结束后，必须另起一行输出“[[心绪:……]]”。'
         '其中只写角色此刻不超过12个字的心理活动、短语或表情；不要在正文解释这行。';
     return '${_profile.systemPrompt}\n\n'
-        '$context$memoryText$preferenceText$moodInstruction';
+        '$context$memoryText$preferenceText$worldBookText$moodInstruction';
+  }
+
+  String _matchedWorldBookPrompt() {
+    if (_worldBooks.isEmpty || _messages.isEmpty) return '';
+    final start = _messages.length > 12 ? _messages.length - 12 : 0;
+    final recentText = _messages
+        .sublist(start)
+        .map((message) => message.text.toLowerCase())
+        .join('\n');
+    final matched = _worldBooks.where((entry) {
+      if (!entry.enabled || entry.keywords.isEmpty) return false;
+      return entry.keywords.any(
+        (keyword) => recentText.contains(keyword.trim().toLowerCase()),
+      );
+    });
+    final sections = <String>[];
+    var used = 0;
+    for (final entry in matched) {
+      final section = '【${entry.title}】\n${entry.content.trim()}';
+      final cost = _estimateTokens(section);
+      if (sections.isNotEmpty && used + cost > 6000) break;
+      sections.add(section);
+      used += cost;
+      if (used >= 6000) break;
+    }
+    return sections.isEmpty
+        ? ''
+        : '\n\n当前对话命中的世界书设定：\n${sections.join('\n\n')}';
   }
 
   String _visibleReplyWhileStreaming(String raw) {
@@ -895,17 +911,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _openMemories() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => MemoryScreen(
-          memories: _memories,
-          onAdd: (memory) async {
-            await _chatStore.addMemory(memory);
-            if (!mounted) return;
-            setState(() => _memories = [..._memories, memory]);
-          },
-        ),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const MemoryScreen()),
     );
+    final memories = await _chatStore.loadMemories();
+    final preferences = await _chatStore.loadStylePreferences();
+    final worldBooks = await _chatStore.loadWorldBooks();
+    if (!mounted) return;
+    setState(() {
+      _memories = memories;
+      _stylePreferences = preferences;
+      _worldBooks = worldBooks;
+    });
   }
 
   Future<void> _editCharacter() async {
@@ -972,7 +988,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onDelete: _deleteConversation,
           onEditCharacter: _editCharacter,
           onFavorites: _openFavorites,
-          onPreferences: _openStylePreferences,
+          onMemoryWorld: _openMemories,
           onSettings: _openProviderSettings,
           onAppSettings: _openAppSettings,
         ),
@@ -1024,7 +1040,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             IconButton(
-              tooltip: '共同记忆',
+              tooltip: '记忆与世界',
               onPressed: _openMemories,
               icon: const Icon(Icons.bookmark_border_rounded),
             ),
@@ -1105,7 +1121,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onDelete,
     required this.onEditCharacter,
     required this.onFavorites,
-    required this.onPreferences,
+    required this.onMemoryWorld,
     required this.onSettings,
     required this.onAppSettings,
   });
@@ -1118,7 +1134,7 @@ class _ConversationDrawer extends StatelessWidget {
   final ValueChanged<Conversation> onDelete;
   final VoidCallback onEditCharacter;
   final VoidCallback onFavorites;
-  final VoidCallback onPreferences;
+  final VoidCallback onMemoryWorld;
   final VoidCallback onSettings;
   final VoidCallback onAppSettings;
 
@@ -1244,9 +1260,9 @@ class _ConversationDrawer extends StatelessWidget {
               onTap: onFavorites,
             ),
             ListTile(
-              leading: const Icon(Icons.tune_outlined),
-              title: const Text('回应偏好'),
-              onTap: onPreferences,
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text('记忆与世界'),
+              onTap: onMemoryWorld,
             ),
             ListTile(
               leading: const Icon(Icons.manage_accounts_outlined),
