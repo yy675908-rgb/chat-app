@@ -84,7 +84,6 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['json'],
-      withData: true,
     );
     if (result == null || result.files.isEmpty || !mounted) return;
     final confirmed = await showDialog<bool>(
@@ -105,13 +104,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    final bytes = result.files.single.bytes;
-    if (bytes == null) {
-      _notice('没有读取到备份内容');
-      return;
-    }
     setState(() => _backupBusy = true);
     try {
+      final bytes = await result.files.single.readAsBytes();
       await _backupService.restoreBackup(utf8.decode(bytes));
       if (!mounted) return;
       _notice('恢复完成');
