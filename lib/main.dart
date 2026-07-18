@@ -67,11 +67,11 @@ class CharacterChatApp extends StatelessWidget {
               ),
               titleMedium: const TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w650,
+                fontWeight: FontWeight.w600,
               ),
               bodyLarge: const TextStyle(fontSize: 15.5, height: 1.5),
               bodyMedium: const TextStyle(fontSize: 14, height: 1.45),
-              labelLarge: const TextStyle(fontWeight: FontWeight.w650),
+              labelLarge: const TextStyle(fontWeight: FontWeight.w600),
             ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFFBFCFA),
