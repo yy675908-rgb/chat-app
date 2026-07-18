@@ -80,8 +80,11 @@ class ChatMessage {
   final int activeVariantIndex;
 
   int get _safeVariantIndex {
-    if (replyVariants.isEmpty) return 0;
-    return activeVariantIndex.clamp(0, replyVariants.length - 1);
+    if (replyVariants.isEmpty || activeVariantIndex < 0) return 0;
+    if (activeVariantIndex >= replyVariants.length) {
+      return replyVariants.length - 1;
+    }
+    return activeVariantIndex;
   }
 
   ReplyVariant? get activeVariant =>
@@ -112,9 +115,10 @@ class ChatMessage {
 
   ChatMessage selectVariant(int index) {
     if (replyVariants.isEmpty) return this;
-    return copyWith(
-      activeVariantIndex: index.clamp(0, replyVariants.length - 1),
-    );
+    final selected = index < 0
+        ? 0
+        : (index >= replyVariants.length ? replyVariants.length - 1 : index);
+    return copyWith(activeVariantIndex: selected);
   }
 
   ChatMessage addVariant(ReplyVariant variant) {
