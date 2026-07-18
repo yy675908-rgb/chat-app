@@ -519,7 +519,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 if (_models.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   DropdownButtonFormField<String>(
-                    value: _models.contains(_selectedModel)
+                    initialValue: _models.contains(_selectedModel)
                         ? _selectedModel
                         : _models.first,
                     isExpanded: true,
