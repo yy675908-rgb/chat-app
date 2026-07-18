@@ -272,7 +272,7 @@ class _MemoryScreenState extends State<MemoryScreen>
   }
 
   Future<void> _importWorldBook() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['txt', 'md', 'markdown'],
       withData: true,
