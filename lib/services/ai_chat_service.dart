@@ -14,12 +14,89 @@ class AiChatException implements Exception {
   String toString() => message;
 }
 
+enum AiStreamEventKind { content, reasoning, usage }
+
+class AiTokenUsage {
+  const AiTokenUsage({
+    this.promptTokens = 0,
+    this.completionTokens = 0,
+    this.reasoningTokens = 0,
+    this.cacheHitTokens = 0,
+    this.cacheMissTokens = 0,
+    this.reportedTotalTokens = 0,
+  });
+
+  final int promptTokens;
+  final int completionTokens;
+  final int reasoningTokens;
+  final int cacheHitTokens;
+  final int cacheMissTokens;
+  final int reportedTotalTokens;
+
+  int get totalTokens => reportedTotalTokens > 0
+      ? reportedTotalTokens
+      : promptTokens + completionTokens;
+
+  AiTokenUsage merge(AiTokenUsage other) {
+    return AiTokenUsage(
+      promptTokens:
+          other.promptTokens > 0 ? other.promptTokens : promptTokens,
+      completionTokens: other.completionTokens > 0
+          ? other.completionTokens
+          : completionTokens,
+      reasoningTokens: other.reasoningTokens > 0
+          ? other.reasoningTokens
+          : reasoningTokens,
+      cacheHitTokens:
+          other.cacheHitTokens > 0 ? other.cacheHitTokens : cacheHitTokens,
+      cacheMissTokens: other.cacheMissTokens > 0
+          ? other.cacheMissTokens
+          : cacheMissTokens,
+      reportedTotalTokens: other.reportedTotalTokens > 0
+          ? other.reportedTotalTokens
+          : reportedTotalTokens,
+    );
+  }
+}
+
+class AiStreamEvent {
+  const AiStreamEvent({
+    required this.kind,
+    this.text = '',
+    this.usage,
+  });
+
+  final AiStreamEventKind kind;
+  final String text;
+  final AiTokenUsage? usage;
+}
+
 class AiChatService {
   AiChatService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
 
   Stream<String> streamReply({
+    required ProviderProfile provider,
+    required String apiKey,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+    double temperature = 0.85,
+  }) async* {
+    await for (final event in streamEvents(
+      provider: provider,
+      apiKey: apiKey,
+      systemPrompt: systemPrompt,
+      history: history,
+      temperature: temperature,
+    )) {
+      if (event.kind == AiStreamEventKind.content && event.text.isNotEmpty) {
+        yield event.text;
+      }
+    }
+  }
+
+  Stream<AiStreamEvent> streamEvents({
     required ProviderProfile provider,
     required String apiKey,
     required String systemPrompt,
@@ -43,7 +120,7 @@ class AiChatService {
           );
   }
 
-  Stream<String> _streamOpenAi({
+  Stream<AiStreamEvent> _streamOpenAi({
     required ProviderProfile provider,
     required String apiKey,
     required String systemPrompt,
@@ -66,6 +143,7 @@ class AiChatService {
         'model': provider.selectedModel.trim(),
         'messages': messages,
         'stream': true,
+        'stream_options': {'include_usage': true},
         'temperature': temperature,
       },
     );
@@ -78,19 +156,49 @@ class AiChatService {
       if (data == '[DONE]') break;
       try {
         final payload = jsonDecode(data) as Map<String, dynamic>;
+        final usage = payload['usage'];
+        if (usage is Map<String, dynamic>) {
+          final details =
+              usage['completion_tokens_details'] as Map<String, dynamic>?;
+          yield AiStreamEvent(
+            kind: AiStreamEventKind.usage,
+            usage: AiTokenUsage(
+              promptTokens: usage['prompt_tokens'] as int? ?? 0,
+              completionTokens: usage['completion_tokens'] as int? ?? 0,
+              reasoningTokens: details?['reasoning_tokens'] as int? ?? 0,
+              cacheHitTokens:
+                  usage['prompt_cache_hit_tokens'] as int? ?? 0,
+              cacheMissTokens:
+                  usage['prompt_cache_miss_tokens'] as int? ?? 0,
+              reportedTotalTokens: usage['total_tokens'] as int? ?? 0,
+            ),
+          );
+        }
         final choices = payload['choices'] as List<dynamic>?;
         if (choices == null || choices.isEmpty) continue;
         final choice = choices.first as Map<String, dynamic>;
         final delta = choice['delta'] as Map<String, dynamic>?;
+        final reasoning = delta?['reasoning_content'];
+        if (reasoning is String && reasoning.isNotEmpty) {
+          yield AiStreamEvent(
+            kind: AiStreamEventKind.reasoning,
+            text: reasoning,
+          );
+        }
         final content = delta?['content'];
-        if (content is String && content.isNotEmpty) yield content;
+        if (content is String && content.isNotEmpty) {
+          yield AiStreamEvent(
+            kind: AiStreamEventKind.content,
+            text: content,
+          );
+        }
       } on Object {
         continue;
       }
     }
   }
 
-  Stream<String> _streamAnthropic({
+  Stream<AiStreamEvent> _streamAnthropic({
     required ProviderProfile provider,
     required String apiKey,
     required String systemPrompt,
@@ -128,11 +236,50 @@ class AiChatService {
             error?['message']?.toString() ?? 'Anthropic 返回了未知错误',
           );
         }
+        if (payload['type'] == 'message_start') {
+          final message = payload['message'] as Map<String, dynamic>?;
+          final usage = message?['usage'] as Map<String, dynamic>?;
+          if (usage != null) {
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.usage,
+              usage: AiTokenUsage(
+                promptTokens: usage['input_tokens'] as int? ?? 0,
+                completionTokens: usage['output_tokens'] as int? ?? 0,
+              ),
+            );
+          }
+          continue;
+        }
+        if (payload['type'] == 'message_delta') {
+          final usage = payload['usage'] as Map<String, dynamic>?;
+          if (usage != null) {
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.usage,
+              usage: AiTokenUsage(
+                completionTokens: usage['output_tokens'] as int? ?? 0,
+              ),
+            );
+          }
+          continue;
+        }
         if (payload['type'] != 'content_block_delta') continue;
         final delta = payload['delta'] as Map<String, dynamic>?;
-        if (delta?['type'] == 'text_delta') {
+        if (delta?['type'] == 'thinking_delta') {
+          final thinking = delta?['thinking'];
+          if (thinking is String && thinking.isNotEmpty) {
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.reasoning,
+              text: thinking,
+            );
+          }
+        } else if (delta?['type'] == 'text_delta') {
           final text = delta?['text'];
-          if (text is String && text.isNotEmpty) yield text;
+          if (text is String && text.isNotEmpty) {
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.content,
+              text: text,
+            );
+          }
         }
       } on AiChatException {
         rethrow;
