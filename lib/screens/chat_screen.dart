@@ -890,8 +890,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openAppSettings() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+    final restored = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => AppSettingsScreen(
           reasoningExpanded: _reasoningExpanded,
           contextTokenBudget: _contextTokenBudget,
@@ -907,6 +907,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+    if (restored == true) await _restore();
   }
 
   Future<void> _openMemories() async {
