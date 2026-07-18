@@ -8,6 +8,10 @@ class ReplyVariant {
     this.providerId = '',
     this.modelId = '',
     this.reasoning = '',
+    this.promptTokens = 0,
+    this.completionTokens = 0,
+    this.reasoningTokens = 0,
+    this.totalTokens = 0,
     this.isLiked = false,
   });
 
@@ -17,11 +21,19 @@ class ReplyVariant {
   final String providerId;
   final String modelId;
   final String reasoning;
+  final int promptTokens;
+  final int completionTokens;
+  final int reasoningTokens;
+  final int totalTokens;
   final bool isLiked;
 
   ReplyVariant copyWith({
     String? text,
     String? reasoning,
+    int? promptTokens,
+    int? completionTokens,
+    int? reasoningTokens,
+    int? totalTokens,
     bool? isLiked,
   }) {
     return ReplyVariant(
@@ -31,6 +43,10 @@ class ReplyVariant {
       providerId: providerId,
       modelId: modelId,
       reasoning: reasoning ?? this.reasoning,
+      promptTokens: promptTokens ?? this.promptTokens,
+      completionTokens: completionTokens ?? this.completionTokens,
+      reasoningTokens: reasoningTokens ?? this.reasoningTokens,
+      totalTokens: totalTokens ?? this.totalTokens,
       isLiked: isLiked ?? this.isLiked,
     );
   }
@@ -42,6 +58,10 @@ class ReplyVariant {
         'providerId': providerId,
         'modelId': modelId,
         'reasoning': reasoning,
+        'promptTokens': promptTokens,
+        'completionTokens': completionTokens,
+        'reasoningTokens': reasoningTokens,
+        'totalTokens': totalTokens,
         'isLiked': isLiked,
       };
 
@@ -55,6 +75,10 @@ class ReplyVariant {
       providerId: json['providerId'] as String? ?? '',
       modelId: json['modelId'] as String? ?? '',
       reasoning: json['reasoning'] as String? ?? '',
+      promptTokens: json['promptTokens'] as int? ?? 0,
+      completionTokens: json['completionTokens'] as int? ?? 0,
+      reasoningTokens: json['reasoningTokens'] as int? ?? 0,
+      totalTokens: json['totalTokens'] as int? ?? 0,
       isLiked: json['isLiked'] as bool? ?? false,
     );
   }
@@ -66,15 +90,26 @@ class ChatMessage {
     required this.author,
     required String text,
     required this.sentAt,
+    String reasoning = '',
+    this.promptTokens = 0,
+    this.completionTokens = 0,
+    this.reasoningTokens = 0,
+    this.totalTokens = 0,
     this.isRetracted = false,
     this.replyVariants = const [],
     this.activeVariantIndex = 0,
-  }) : _text = text;
+  })  : _text = text,
+        _reasoning = reasoning;
 
   final String id;
   final MessageAuthor author;
   final String _text;
+  final String _reasoning;
   final DateTime sentAt;
+  final int promptTokens;
+  final int completionTokens;
+  final int reasoningTokens;
+  final int totalTokens;
   final bool isRetracted;
   final List<ReplyVariant> replyVariants;
   final int activeVariantIndex;
@@ -91,13 +126,24 @@ class ChatMessage {
       replyVariants.isEmpty ? null : replyVariants[_safeVariantIndex];
 
   String get text => activeVariant?.text ?? _text;
-  String get reasoning => activeVariant?.reasoning ?? '';
+  String get reasoning => activeVariant?.reasoning ?? _reasoning;
+  int get usedPromptTokens => activeVariant?.promptTokens ?? promptTokens;
+  int get usedCompletionTokens =>
+      activeVariant?.completionTokens ?? completionTokens;
+  int get usedReasoningTokens =>
+      activeVariant?.reasoningTokens ?? reasoningTokens;
+  int get usedTotalTokens => activeVariant?.totalTokens ?? totalTokens;
   bool get isLiked => activeVariant?.isLiked ?? false;
   int get variantCount => replyVariants.isEmpty ? 1 : replyVariants.length;
   int get variantNumber => replyVariants.isEmpty ? 1 : _safeVariantIndex + 1;
 
   ChatMessage copyWith({
     String? text,
+    String? reasoning,
+    int? promptTokens,
+    int? completionTokens,
+    int? reasoningTokens,
+    int? totalTokens,
     bool? isRetracted,
     List<ReplyVariant>? replyVariants,
     int? activeVariantIndex,
@@ -107,6 +153,11 @@ class ChatMessage {
       author: author,
       text: text ?? _text,
       sentAt: sentAt,
+      reasoning: reasoning ?? _reasoning,
+      promptTokens: promptTokens ?? this.promptTokens,
+      completionTokens: completionTokens ?? this.completionTokens,
+      reasoningTokens: reasoningTokens ?? this.reasoningTokens,
+      totalTokens: totalTokens ?? this.totalTokens,
       isRetracted: isRetracted ?? this.isRetracted,
       replyVariants: replyVariants ?? this.replyVariants,
       activeVariantIndex: activeVariantIndex ?? this.activeVariantIndex,
@@ -128,6 +179,11 @@ class ChatMessage {
               id: 'original-$id',
               text: _text,
               generatedAt: sentAt,
+              reasoning: _reasoning,
+              promptTokens: promptTokens,
+              completionTokens: completionTokens,
+              reasoningTokens: reasoningTokens,
+              totalTokens: totalTokens,
             ),
             variant,
           ]
@@ -145,6 +201,11 @@ class ChatMessage {
               id: 'legacy-$id',
               text: _text,
               generatedAt: sentAt,
+              reasoning: _reasoning,
+              promptTokens: promptTokens,
+              completionTokens: completionTokens,
+              reasoningTokens: reasoningTokens,
+              totalTokens: totalTokens,
               isLiked: true,
             ),
           ]
@@ -165,6 +226,11 @@ class ChatMessage {
         'id': id,
         'author': author.name,
         'text': text,
+        'reasoning': reasoning,
+        'promptTokens': usedPromptTokens,
+        'completionTokens': usedCompletionTokens,
+        'reasoningTokens': usedReasoningTokens,
+        'totalTokens': usedTotalTokens,
         'sentAt': sentAt.toIso8601String(),
         'isRetracted': isRetracted,
         'replyVariants':
@@ -188,6 +254,11 @@ class ChatMessage {
       ),
       text: json['text'] as String? ?? '',
       sentAt: DateTime.parse(json['sentAt']! as String),
+      reasoning: json['reasoning'] as String? ?? '',
+      promptTokens: json['promptTokens'] as int? ?? 0,
+      completionTokens: json['completionTokens'] as int? ?? 0,
+      reasoningTokens: json['reasoningTokens'] as int? ?? 0,
+      totalTokens: json['totalTokens'] as int? ?? 0,
       isRetracted: json['isRetracted'] as bool? ?? false,
       replyVariants: variants,
       activeVariantIndex: json['activeVariantIndex'] as int? ?? 0,
