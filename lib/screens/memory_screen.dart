@@ -22,7 +22,7 @@ class MemoryScreen extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) => Card(
                 elevation: 0,
-                color: Colors.white.withOpacity(0.75),
+                color: const Color(0xBFFFFFFF),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(memories[index]),
