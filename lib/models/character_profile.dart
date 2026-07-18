@@ -5,6 +5,7 @@ class CharacterProfile {
     required this.firstMetAt,
     required this.greeting,
     required this.systemPrompt,
+    this.reasoningExpanded = true,
   });
 
   final String name;
@@ -12,6 +13,7 @@ class CharacterProfile {
   final DateTime firstMetAt;
   final String greeting;
   final String systemPrompt;
+  final bool reasoningExpanded;
 
   factory CharacterProfile.lin(DateTime firstMetAt) {
     return CharacterProfile(
@@ -31,6 +33,7 @@ class CharacterProfile {
     String? status,
     String? greeting,
     String? systemPrompt,
+    bool? reasoningExpanded,
   }) {
     return CharacterProfile(
       name: name ?? this.name,
@@ -38,6 +41,7 @@ class CharacterProfile {
       firstMetAt: firstMetAt,
       greeting: greeting ?? this.greeting,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      reasoningExpanded: reasoningExpanded ?? this.reasoningExpanded,
     );
   }
 
@@ -47,6 +51,7 @@ class CharacterProfile {
         'firstMetAt': firstMetAt.toIso8601String(),
         'greeting': greeting,
         'systemPrompt': systemPrompt,
+        'reasoningExpanded': reasoningExpanded,
       };
 
   factory CharacterProfile.fromJson(Map<String, Object?> json) {
@@ -59,6 +64,7 @@ class CharacterProfile {
       firstMetAt: firstMetAt,
       greeting: json['greeting'] as String? ?? fallback.greeting,
       systemPrompt: json['systemPrompt'] as String? ?? fallback.systemPrompt,
+      reasoningExpanded: json['reasoningExpanded'] as bool? ?? true,
     );
   }
 
