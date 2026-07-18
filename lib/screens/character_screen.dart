@@ -13,7 +13,7 @@ class CharacterScreen extends StatefulWidget {
 
 class _CharacterScreenState extends State<CharacterScreen> {
   late final TextEditingController _nameController;
-  late final TextEditingController _statusController;
+  late bool _reasoningExpanded;
   late final TextEditingController _greetingController;
   late final TextEditingController _promptController;
 
@@ -21,7 +21,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.profile.name);
-    _statusController = TextEditingController(text: widget.profile.status);
+    _reasoningExpanded = widget.profile.reasoningExpanded;
     _greetingController = TextEditingController(text: widget.profile.greeting);
     _promptController = TextEditingController(text: widget.profile.systemPrompt);
   }
@@ -37,7 +37,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     Navigator.of(context).pop(
       widget.profile.copyWith(
         name: name,
-        status: _statusController.text.trim(),
+        reasoningExpanded: _reasoningExpanded,
         greeting: _greetingController.text.trim(),
         systemPrompt: _promptController.text.trim(),
       ),
@@ -47,7 +47,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _statusController.dispose();
     _greetingController.dispose();
     _promptController.dispose();
     super.dispose();
@@ -93,15 +92,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
           ),
           const SizedBox(height: 14),
           TextField(
-            controller: _statusController,
-            decoration: const InputDecoration(
-              labelText: '状态',
-              filled: true,
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
             controller: _greetingController,
             minLines: 2,
             maxLines: 3,
@@ -127,6 +117,16 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const Text(
             '角色设定会作为系统提示词发送给模型。',
             style: TextStyle(color: Color(0xFF687176), fontSize: 12),
+          ),
+          const SizedBox(height: 18),
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            title: const Text('思考过程默认展开'),
+            subtitle: const Text('只有模型实际返回思考内容时才会显示'),
+            value: _reasoningExpanded,
+            onChanged: (value) {
+              setState(() => _reasoningExpanded = value);
+            },
           ),
         ],
       ),
