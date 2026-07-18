@@ -9,6 +9,9 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.characterName,
     this.showActions = false,
+    this.onPreviousVariant,
+    this.onNextVariant,
+    this.onLike,
     this.onRetry,
     super.key,
   });
@@ -16,6 +19,9 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final String characterName;
   final bool showActions;
+  final VoidCallback? onPreviousVariant;
+  final VoidCallback? onNextVariant;
+  final VoidCallback? onLike;
   final VoidCallback? onRetry;
 
   Future<void> _copy(BuildContext context) async {
@@ -175,20 +181,64 @@ class MessageBubble extends StatelessWidget {
                   if (showActions) ...[
                     const SizedBox(height: 3),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (message.variantCount > 1) ...[
+                          IconButton(
+                            tooltip: '上一版',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: onPreviousVariant,
+                            icon: const Icon(
+                              Icons.chevron_left_rounded,
+                              size: 20,
+                            ),
+                          ),
+                          Text(
+                            '${message.variantNumber}/${message.variantCount}',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11.5,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '下一版',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: onNextVariant,
+                            icon: const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                            ),
+                          ),
+                        ],
                         IconButton(
                           tooltip: '复制',
                           visualDensity: VisualDensity.compact,
                           onPressed: () => _copy(context),
                           icon: const Icon(Icons.copy_rounded, size: 17),
                         ),
-                        if (onRetry != null)
-                          IconButton(
-                            tooltip: '重新生成',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: onRetry,
-                            icon: const Icon(Icons.refresh_rounded, size: 19),
+                        IconButton(
+                          tooltip: message.isLiked ? '取消喜欢' : '喜欢并收藏',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: onLike,
+                          icon: Icon(
+                            message.isLiked
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 18,
+                            color: message.isLiked
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant,
                           ),
+                        ),
+                        IconButton(
+                          tooltip: '选择模型重新生成',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: onRetry,
+                          icon: const Icon(Icons.refresh_rounded, size: 20),
+                        ),
                       ],
                     ),
                   ],
