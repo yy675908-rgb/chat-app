@@ -66,11 +66,14 @@ void main() {
       expect(request.headers['authorization'], 'Bearer secret');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['stream'], isTrue);
-      return http.Response(
-        'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'
-        'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'
-        'data: [DONE]\n\n',
+      return http.Response.bytes(
+        utf8.encode(
+          'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'
+          'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'
+          'data: [DONE]\n\n',
+        ),
         200,
+        headers: {'content-type': 'text/event-stream; charset=utf-8'},
       );
     });
     final service = AiChatService(client: client);
@@ -109,12 +112,15 @@ void main() {
       expect(request.headers['anthropic-version'], '2023-06-01');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['system'], '你是林。');
-      return http.Response(
-        'event: content_block_delta\n'
-        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"我"}}\n\n'
-        'event: content_block_delta\n'
-        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"在"}}\n\n',
+      return http.Response.bytes(
+        utf8.encode(
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"我"}}\n\n'
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"在"}}\n\n',
+        ),
         200,
+        headers: {'content-type': 'text/event-stream; charset=utf-8'},
       );
     });
     final service = AiChatService(client: client);
