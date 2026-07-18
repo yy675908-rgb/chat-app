@@ -181,14 +181,6 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('模型供应商'),
-        actions: [
-          IconButton(
-            tooltip: '添加供应商',
-            onPressed: _addProvider,
-            icon: const Icon(Icons.add_rounded),
-          ),
-          const SizedBox(width: 6),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
