@@ -12,9 +12,7 @@ class ProviderStore {
   static const _legacyModelKey = 'api_model_v1';
   static const _legacyApiKeyKey = 'api_secret_v1';
 
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   Future<List<ProviderProfile>> loadProviders() async {
     final preferences = await SharedPreferences.getInstance();
