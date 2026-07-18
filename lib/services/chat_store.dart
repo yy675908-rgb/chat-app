@@ -12,6 +12,7 @@ class ChatStore {
   static const _messagesPrefix = 'conversation_messages_v2_';
   static const _memoriesKey = 'relationship_memories_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
+  static const _characterMoodKey = 'character_mood_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
   static const _profileKey = 'character_profile_v1';
 
@@ -136,6 +137,21 @@ class ChatStore {
     items.add(value);
     await preferences.setStringList(_stylePreferencesKey, items);
     return true;
+  }
+
+  Future<String> loadCharacterMood() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_characterMoodKey)?.trim() ?? '';
+  }
+
+  Future<void> saveCharacterMood(String mood) async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = mood.trim();
+    if (value.isEmpty) {
+      await preferences.remove(_characterMoodKey);
+    } else {
+      await preferences.setString(_characterMoodKey, value);
+    }
   }
 
   Future<DateTime> loadFirstMetAt() async {
