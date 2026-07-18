@@ -122,7 +122,16 @@ class ChatMessage {
   }
 
   ChatMessage addVariant(ReplyVariant variant) {
-    final variants = [...replyVariants, variant];
+    final variants = replyVariants.isEmpty
+        ? [
+            ReplyVariant(
+              id: 'original-$id',
+              text: _text,
+              generatedAt: sentAt,
+            ),
+            variant,
+          ]
+        : [...replyVariants, variant];
     return copyWith(
       replyVariants: variants,
       activeVariantIndex: variants.length - 1,
