@@ -599,8 +599,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String _cleanPreference(String raw) {
     var value = raw
         .trim()
-        .replaceAll(RegExp(r'^[\\-•*#\\s]+'), '')
-        .replaceAll(RegExp(r'\\s+'), ' ');
+        .replaceAll(RegExp(r'^[-•*#\s]+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ');
     if (value.startsWith('“') && value.endsWith('”') && value.length > 2) {
       value = value.substring(1, value.length - 1);
     }
