@@ -13,6 +13,7 @@ import '../services/provider_store.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
 import 'character_screen.dart';
+import 'favorites_screen.dart';
 import 'memory_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -222,12 +223,12 @@ class _ChatScreenState extends State<ChatScreen> {
     return updated?.isConfigured == true && updatedKey.trim().isNotEmpty;
   }
 
-  Future<void> _chooseModel() async {
+  Future<_ModelChoice?> _showModelPicker(String title) async {
     if (_providers.isEmpty) {
       await _openProviderSettings();
-      return;
+      return null;
     }
-    final choice = await showModalBottomSheet<_ModelChoice>(
+    return showModalBottomSheet<_ModelChoice>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -244,10 +245,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '选择模型',
-                        style: TextStyle(
+                        title,
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
@@ -317,6 +318,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _chooseModel() async {
+    final choice = await _showModelPicker('选择模型');
     if (choice == null) return;
     final updatedProvider = choice.provider.copyWith(
       selectedModel: choice.model,
@@ -360,23 +365,43 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _requestReply() async {
-    final provider = _selectedProvider;
+  Future<void> _requestReply({
+    ProviderProfile? providerOverride,
+    int? targetReplyIndex,
+  }) async {
+    final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
     final apiKey = await _providerStore.loadApiKey(provider.id);
-    final reply = ChatMessage(
-      id: 'reply-${DateTime.now().microsecondsSinceEpoch}',
-      author: MessageAuthor.character,
-      text: '',
-      sentAt: DateTime.now(),
-    );
+    if (apiKey.trim().isEmpty) {
+      _showError('这个供应商还没有 API Key');
+      return;
+    }
+
+    final isRetry = targetReplyIndex != null;
+    late final int replyIndex;
+    ChatMessage? originalReply;
+    ChatMessage? newReply;
+    if (isRetry) {
+      if (targetReplyIndex < 0 || targetReplyIndex >= _messages.length) return;
+      replyIndex = targetReplyIndex;
+      originalReply = _messages[replyIndex];
+    } else {
+      newReply = ChatMessage(
+        id: 'reply-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.character,
+        text: '',
+        sentAt: DateTime.now(),
+      );
+      replyIndex = _messages.length;
+    }
+
     setState(() {
-      _messages.add(reply);
+      if (newReply != null) _messages.add(newReply);
       _generating = true;
       _cancelled = false;
     });
     _scrollToBottom();
-    final replyIndex = _messages.length - 1;
+
     final contextMessages = _messages.take(replyIndex).toList();
     final recent = contextMessages.length > 30
         ? contextMessages.sublist(contextMessages.length - 30)
@@ -393,24 +418,50 @@ class _ChatScreenState extends State<ChatScreen> {
       )) {
         fullReply += chunk;
         if (!mounted || _cancelled) return;
-        setState(() {
-          _messages[replyIndex] = reply.copyWith(text: fullReply);
-        });
-        _scrollToBottom();
+        if (!isRetry) {
+          setState(() {
+            _messages[replyIndex] = newReply!.copyWith(text: fullReply);
+          });
+          _scrollToBottom();
+        }
       }
       if (!_cancelled && fullReply.trim().isEmpty) {
         throw const AiChatException('模型没有返回文字，请检查模型 ID 和接口类型');
       }
+      if (!_cancelled && mounted) {
+        final variant = ReplyVariant(
+          id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
+          text: fullReply,
+          generatedAt: DateTime.now(),
+          providerId: provider.id,
+          modelId: provider.selectedModel,
+        );
+        setState(() {
+          if (isRetry) {
+            _messages[replyIndex] = originalReply!.addVariant(variant);
+          } else {
+            _messages[replyIndex] = newReply!.copyWith(
+              text: fullReply,
+              replyVariants: [variant],
+              activeVariantIndex: 0,
+            );
+          }
+        });
+      }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
-        if (_messages.length > replyIndex && fullReply.isEmpty) {
+        if (!isRetry &&
+            _messages.length > replyIndex &&
+            fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError(error.message);
       }
     } on Object catch (error) {
       if (!_cancelled && mounted) {
-        if (_messages.length > replyIndex && fullReply.isEmpty) {
+        if (!isRetry &&
+            _messages.length > replyIndex &&
+            fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError('回复失败：$error');
@@ -436,21 +487,66 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_persistMessages());
   }
 
-  Future<void> _retryLastReply() async {
-    if (_generating || !await _ensureProviderConfigured()) return;
-    var lastUserIndex = -1;
-    for (var index = _messages.length - 1; index >= 0; index--) {
-      if (_messages[index].author == MessageAuthor.user) {
-        lastUserIndex = index;
-        break;
-      }
+  Future<void> _retryReply(int replyIndex) async {
+    if (_generating || _submitting) return;
+    final choice = await _showModelPicker('选择这次使用的模型');
+    if (choice == null || !mounted) return;
+    final provider = choice.provider.copyWith(selectedModel: choice.model);
+    await _requestReply(
+      providerOverride: provider,
+      targetReplyIndex: replyIndex,
+    );
+  }
+
+  Future<void> _moveVariant(int messageIndex, int delta) async {
+    if (_generating || messageIndex < 0 || messageIndex >= _messages.length) {
+      return;
     }
-    if (lastUserIndex == -1) return;
+    final message = _messages[messageIndex];
+    final target = message.activeVariantIndex + delta;
+    if (target < 0 || target >= message.replyVariants.length) return;
     setState(() {
-      _messages = _messages.sublist(0, lastUserIndex + 1);
+      _messages[messageIndex] = message.selectVariant(target);
     });
     await _persistMessages();
-    await _requestReply();
+  }
+
+  Future<void> _toggleLike(int messageIndex) async {
+    if (messageIndex < 0 || messageIndex >= _messages.length) return;
+    final updated = _messages[messageIndex].toggleLike();
+    setState(() => _messages[messageIndex] = updated);
+    await _persistMessages();
+    if (!mounted) return;
+    _showError(updated.isLiked ? '已喜欢并加入收藏' : '已取消喜欢');
+  }
+
+  Future<void> _openFavorites() async {
+    final entries = <FavoriteReplyEntry>[];
+    for (final conversation in _conversations) {
+      final messages = await _chatStore.loadMessages(conversation.id);
+      for (final message in messages) {
+        if (message.author != MessageAuthor.character) continue;
+        for (final variant in message.replyVariants) {
+          if (!variant.isLiked) continue;
+          entries.add(
+            FavoriteReplyEntry(
+              conversationTitle: conversation.title,
+              characterName: _profile.name,
+              text: variant.text,
+              generatedAt: variant.generatedAt,
+              modelId: variant.modelId,
+            ),
+          );
+        }
+      }
+    }
+    entries.sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => FavoritesScreen(entries: entries),
+      ),
+    );
   }
 
   Future<void> _updateConversationTitle(String text) async {
@@ -620,6 +716,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
           onEditCharacter: _editCharacter,
+          onFavorites: _openFavorites,
           onSettings: _openProviderSettings,
         ),
         appBar: AppBar(
@@ -693,17 +790,31 @@ class _ChatScreenState extends State<ChatScreen> {
                             message.text.isEmpty) {
                           return _ThinkingRow(name: _profile.name);
                         }
-                        final isLastCharacter =
+                        final canUseActions =
                             message.author == MessageAuthor.character &&
-                                index == _messages.lastIndexWhere(
-                                  (item) =>
-                                      item.author == MessageAuthor.character,
-                                );
+                            message.text.isNotEmpty &&
+                            !_generating;
                         return MessageBubble(
                           message: message,
                           characterName: _profile.name,
-                          showActions: isLastCharacter && !_generating,
-                          onRetry: isLastCharacter ? _retryLastReply : null,
+                          showActions:
+                              message.author == MessageAuthor.character &&
+                              message.text.isNotEmpty,
+                          onPreviousVariant: canUseActions &&
+                                  message.activeVariantIndex > 0
+                              ? () => _moveVariant(index, -1)
+                              : null,
+                          onNextVariant: canUseActions &&
+                                  message.activeVariantIndex <
+                                      message.replyVariants.length - 1
+                              ? () => _moveVariant(index, 1)
+                              : null,
+                          onLike: canUseActions
+                              ? () => _toggleLike(index)
+                              : null,
+                          onRetry: canUseActions
+                              ? () => _retryReply(index)
+                              : null,
                         );
                       },
                     ),
@@ -731,6 +842,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onSelect,
     required this.onDelete,
     required this.onEditCharacter,
+    required this.onFavorites,
     required this.onSettings,
   });
 
@@ -741,6 +853,7 @@ class _ConversationDrawer extends StatelessWidget {
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
   final VoidCallback onEditCharacter;
+  final VoidCallback onFavorites;
   final VoidCallback onSettings;
 
   @override
@@ -785,7 +898,7 @@ class _ConversationDrawer extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '相识第 ${profile.daysTogether} 天',
+                              '点击进入角色设定',
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 11.5,
@@ -859,6 +972,16 @@ class _ConversationDrawer extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.favorite_border_rounded),
+              title: const Text('收藏'),
+              onTap: onFavorites,
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_edit_outlined),
+              title: const Text('角色设定'),
+              onTap: onEditCharacter,
+            ),
             ListTile(
               leading: const Icon(Icons.tune_rounded),
               title: const Text('模型供应商'),
