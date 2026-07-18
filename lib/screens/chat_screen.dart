@@ -978,7 +978,7 @@ class _ConversationDrawer extends StatelessWidget {
               onTap: onFavorites,
             ),
             ListTile(
-              leading: const Icon(Icons.person_edit_outlined),
+              leading: const Icon(Icons.manage_accounts_outlined),
               title: const Text('角色设定'),
               onTap: onEditCharacter,
             ),
