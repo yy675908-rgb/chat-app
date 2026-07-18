@@ -126,7 +126,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const SizedBox(height: 10),
           const Text(
             '角色设定会作为系统提示词发送给模型。',
-            style: TextStyle(color: Color(0xFF777A74), fontSize: 12),
+            style: TextStyle(color: Color(0xFF687176), fontSize: 12),
           ),
         ],
       ),
