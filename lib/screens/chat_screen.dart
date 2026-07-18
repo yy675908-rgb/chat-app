@@ -431,19 +431,28 @@ class _ChatScreenState extends State<ChatScreen> {
     final service = AiChatService();
     _activeService = service;
     var fullReply = '';
+    var fullReasoning = '';
+    var usage = const AiTokenUsage();
     try {
-      await for (final chunk in service.streamReply(
+      await for (final event in service.streamEvents(
         provider: provider,
         apiKey: apiKey,
         systemPrompt: _assembledSystemPrompt(),
         history: recent,
       )) {
-        fullReply += chunk;
+        if (event.kind == AiStreamEventKind.content) {
+          fullReply += event.text;
+        } else if (event.kind == AiStreamEventKind.reasoning) {
+          fullReasoning += event.text;
+        } else if (event.usage != null) {
+          usage = usage.merge(event.usage!);
+        }
         if (!mounted || _cancelled) return;
-        if (!isRetry) {
+        if (!isRetry && event.kind != AiStreamEventKind.usage) {
           setState(() {
             _messages[replyIndex] = newReply!.copyWith(
               text: _visibleReplyWhileStreaming(fullReply),
+              reasoning: fullReasoning,
             );
           });
           _scrollToBottom();
@@ -461,6 +470,11 @@ class _ChatScreenState extends State<ChatScreen> {
           generatedAt: DateTime.now(),
           providerId: provider.id,
           modelId: provider.selectedModel,
+          reasoning: fullReasoning.trim(),
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          reasoningTokens: usage.reasoningTokens,
+          totalTokens: usage.totalTokens,
         );
         setState(() {
           if (isRetry) {
@@ -468,6 +482,11 @@ class _ChatScreenState extends State<ChatScreen> {
           } else {
             _messages[replyIndex] = newReply!.copyWith(
               text: replyText,
+              reasoning: fullReasoning.trim(),
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              reasoningTokens: usage.reasoningTokens,
+              totalTokens: usage.totalTokens,
               replyVariants: [variant],
               activeVariantIndex: 0,
             );
@@ -971,7 +990,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (_generating &&
                             message.id == _activeReplyId &&
                             message.author == MessageAuthor.character &&
-                            message.text.isEmpty) {
+                            message.text.isEmpty &&
+                            message.reasoning.isEmpty) {
                           return _ThinkingRow(name: _profile.name);
                         }
                         final canUseActions =
@@ -981,6 +1001,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         return MessageBubble(
                           message: message,
                           characterName: _profile.name,
+                          reasoningInitiallyExpanded:
+                              _profile.reasoningExpanded,
                           showActions:
                               message.author == MessageAuthor.character &&
                               message.text.isNotEmpty,
