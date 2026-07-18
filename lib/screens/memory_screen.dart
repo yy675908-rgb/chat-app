@@ -334,13 +334,14 @@ class _MemoryScreenState extends State<MemoryScreen>
     required bool memory,
   }) {
     if (items.isEmpty) {
-      return Center(
-        child: Text(
-          memory
-              ? '还没有共同记忆。\n重要的事可以慢慢留在这里。'
-              : '还没有回应偏好。\n喜欢回复后，应用也会自动提炼。',
-          textAlign: TextAlign.center,
-        ),
+      return _MemoryEmptyState(
+        icon: memory
+            ? Icons.auto_awesome_outlined
+            : Icons.favorite_border_rounded,
+        title: memory ? '还没有共同记忆' : '还没有回应偏好',
+        description: memory
+            ? '把重要的人、事和约定慢慢留在这里'
+            : '喜欢一条回复后，应用也会自动提炼',
       );
     }
     return ListView.separated(
@@ -350,6 +351,23 @@ class _MemoryScreenState extends State<MemoryScreen>
       itemBuilder: (context, index) => Card(
         elevation: 0,
         child: ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          leading: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              memory
+                  ? Icons.auto_awesome_outlined
+                  : Icons.favorite_border_rounded,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSecondaryContainer,
+            ),
+          ),
           title: Text(items[index]),
           onTap: () => memory
               ? _addOrEditMemory(index)
@@ -357,7 +375,7 @@ class _MemoryScreenState extends State<MemoryScreen>
           trailing: IconButton(
             tooltip: '删除',
             onPressed: () => _deleteSimple(memory: memory, index: index),
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const Icon(Icons.delete_outline_rounded, size: 20),
           ),
         ),
       ),
@@ -366,11 +384,10 @@ class _MemoryScreenState extends State<MemoryScreen>
 
   Widget _worldBookList() {
     if (_worldBooks.isEmpty) {
-      return const Center(
-        child: Text(
-          '还没有世界书。\n可以粘贴文字，或导入 TXT / Markdown 文档。',
-          textAlign: TextAlign.center,
-        ),
+      return const _MemoryEmptyState(
+        icon: Icons.public_rounded,
+        title: '还没有世界书',
+        description: '可以粘贴文字，或导入 TXT / Markdown 文档',
       );
     }
     return ListView.separated(
@@ -467,11 +484,7 @@ class _MemoryScreenState extends State<MemoryScreen>
               onPressed: _importWorldBook,
               icon: const Icon(Icons.upload_file_outlined),
             ),
-          IconButton(
-            tooltip: labels[_tabs.index],
-            onPressed: _addForCurrentTab,
-            icon: const Icon(Icons.add_rounded),
-          ),
+          const SizedBox(width: 6),
         ],
         bottom: TabBar(
           controller: _tabs,
@@ -500,3 +513,59 @@ class _MemoryScreenState extends State<MemoryScreen>
     );
   }
 }
+
+class _MemoryEmptyState extends StatelessWidget {
+  const _MemoryEmptyState({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Icon(icon, size: 27, color: scheme.onSecondaryContainer),
+            ),
+            const SizedBox(height: 17),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 12.5,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
