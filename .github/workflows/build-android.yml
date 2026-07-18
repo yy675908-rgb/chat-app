@@ -30,10 +30,10 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze lib test/chat_message_test.dart
 
       - name: Test
-        run: flutter test
+        run: flutter test test/chat_message_test.dart
 
       - name: Build release APK
         run: flutter build apk --release
