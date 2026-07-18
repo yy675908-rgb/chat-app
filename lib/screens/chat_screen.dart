@@ -38,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
   bool _loading = true;
+  bool _submitting = false;
   bool _generating = false;
   bool _cancelled = false;
 
@@ -337,22 +338,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _generating || !await _ensureProviderConfigured()) {
-      return;
+    if (text.isEmpty || _generating || _submitting) return;
+    setState(() => _submitting = true);
+    try {
+      if (!await _ensureProviderConfigured()) return;
+      final userMessage = ChatMessage(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        author: MessageAuthor.user,
+        text: text,
+        sentAt: DateTime.now(),
+      );
+      setState(() {
+        _messages.add(userMessage);
+        _controller.clear();
+      });
+      await _updateConversationTitle(text);
+      await _persistMessages();
+      await _requestReply();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
-    final userMessage = ChatMessage(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      author: MessageAuthor.user,
-      text: text,
-      sentAt: DateTime.now(),
-    );
-    setState(() {
-      _messages.add(userMessage);
-      _controller.clear();
-    });
-    await _updateConversationTitle(text);
-    await _persistMessages();
-    await _requestReply();
   }
 
   Future<void> _requestReply() async {
@@ -670,7 +675,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             _Composer(
               controller: _controller,
-              enabled: !_loading,
+              enabled: !_loading && !_submitting,
               generating: _generating,
               onSend: _send,
               onStop: _stopGenerating,
