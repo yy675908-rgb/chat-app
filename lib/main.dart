@@ -228,9 +228,6 @@ class CharacterChatApp extends StatelessWidget {
             backgroundColor: WidgetStatePropertyAll(
               scheme.surfaceContainerLowest,
             ),
-            textStyle: const WidgetStatePropertyAll(
-              TextStyle(color: ink),
-            ),
           ),
         ),
         dropdownMenuTheme: const DropdownMenuThemeData(
