@@ -4,6 +4,18 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../models/chat_message.dart';
 
+class RetryModelOption {
+  const RetryModelOption({
+    required this.providerId,
+    required this.providerName,
+    required this.modelId,
+  });
+
+  final String providerId;
+  final String providerName;
+  final String modelId;
+}
+
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     required this.message,
@@ -13,7 +25,8 @@ class MessageBubble extends StatelessWidget {
     this.onPreviousVariant,
     this.onNextVariant,
     this.onLike,
-    this.onRetry,
+    this.retryModels = const [],
+    this.onRetryWithModel,
     super.key,
   });
 
@@ -24,7 +37,8 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onPreviousVariant;
   final VoidCallback? onNextVariant;
   final VoidCallback? onLike;
-  final VoidCallback? onRetry;
+  final List<RetryModelOption> retryModels;
+  final ValueChanged<RetryModelOption>? onRetryWithModel;
 
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: message.text));
@@ -228,11 +242,9 @@ class MessageBubble extends StatelessWidget {
                           selected: message.isLiked,
                           onPressed: onLike,
                         ),
-                        _BubbleAction(
-                          tooltip: '选择模型重新生成',
-                          icon: Icons.refresh_rounded,
-                          emphasized: true,
-                          onPressed: onRetry,
+                        _RetryPicker(
+                          options: retryModels,
+                          onSelected: onRetryWithModel,
                         ),
                       ],
                     ),
@@ -335,6 +347,87 @@ class _BubbleAction extends StatelessWidget {
             width: 36,
             height: 34,
             child: Icon(icon, size: emphasized ? 20 : 17, color: foreground),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RetryPicker extends StatelessWidget {
+  const _RetryPicker({required this.options, required this.onSelected});
+
+  final List<RetryModelOption> options;
+  final ValueChanged<RetryModelOption>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onSelected != null && options.isNotEmpty;
+    return PopupMenuButton<RetryModelOption>(
+      tooltip: '选择模型重新生成',
+      enabled: enabled,
+      position: PopupMenuPosition.over,
+      offset: const Offset(0, 38),
+      constraints: const BoxConstraints(minWidth: 190, maxWidth: 260),
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        for (final option in options)
+          PopupMenuItem<RetryModelOption>(
+            value: option,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  option.modelId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  option.providerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Material(
+        color: enabled
+            ? scheme.primaryContainer.withValues(alpha: 0.78)
+            : scheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(11),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: 40,
+          height: 34,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.refresh_rounded,
+                size: 19,
+                color: enabled
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurface.withValues(alpha: 0.3),
+              ),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 13,
+                color: enabled
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurface.withValues(alpha: 0.3),
+              ),
+            ],
           ),
         ),
       ),

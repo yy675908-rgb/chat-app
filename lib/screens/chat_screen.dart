@@ -33,6 +33,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _providerStore = ProviderStore();
 
   CharacterProfile _profile = CharacterProfile.lin(DateTime.now());
+  List<CharacterProfile> _characters = const [];
   List<Conversation> _conversations = const [];
   Conversation? _currentConversation;
   List<ChatMessage> _messages = [];
@@ -51,6 +52,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _cancelled = false;
   bool _replyQueued = false;
   bool _drainingReplies = false;
+  int? _activeRetryIndex;
+  ChatMessage? _activeRetryOriginal;
 
   @override
   void initState() {
@@ -59,14 +62,22 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _restore() async {
-    final profile = await _chatStore.loadProfile();
+    final characters = await _chatStore.loadCharacters();
+    final selectedCharacterId = await _chatStore.loadSelectedCharacterId();
+    final profile = characters.firstWhere(
+      (item) => item.id == selectedCharacterId,
+      orElse: () => characters.first,
+    );
+    await _chatStore.saveSelectedCharacterId(profile.id);
     final memories = await _chatStore.loadMemories();
     final stylePreferences = await _chatStore.loadStylePreferences();
     final worldBooks = await _chatStore.loadWorldBooks();
-    final characterMood = await _chatStore.loadCharacterMood();
+    final characterMood = await _chatStore.loadCharacterMood(profile.id);
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
-    final conversations = await _chatStore.loadConversations();
+    final conversations = await _chatStore.loadConversations(
+      characterId: profile.id,
+    );
     final providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
     final selected = providers.firstWhere(
@@ -79,6 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _profile = profile;
+      _characters = characters;
       _memories = memories;
       _stylePreferences = stylePreferences;
       _worldBooks = worldBooks;
@@ -122,12 +134,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final now = DateTime.now();
     final conversation = Conversation(
       id: 'conversation-${now.microsecondsSinceEpoch}',
+      characterId: _profile.id,
       title: '新对话',
       createdAt: now,
       updatedAt: now,
     );
     final conversations = [conversation, ..._conversations];
-    await _chatStore.saveConversations(conversations);
+    await _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
     final messages = await _messagesWithGreeting(conversation.id, _profile);
     if (!mounted) return;
     Navigator.of(context).maybePop();
@@ -191,7 +207,10 @@ class _ChatScreenState extends State<ChatScreen> {
       await _newConversation();
       return;
     }
-    await _chatStore.saveConversations(remaining);
+    await _chatStore.saveConversations(
+      remaining,
+      characterId: _profile.id,
+    );
     if (_currentConversation?.id == conversation.id) {
       final next = remaining.first;
       final messages = await _messagesWithGreeting(next.id, _profile);
@@ -410,10 +429,18 @@ class _ChatScreenState extends State<ChatScreen> {
     late final int replyIndex;
     ChatMessage? originalReply;
     ChatMessage? newReply;
+    ReplyVariant? streamingVariant;
     if (isRetry) {
       if (targetReplyIndex < 0 || targetReplyIndex >= _messages.length) return;
       replyIndex = targetReplyIndex;
       originalReply = _messages[replyIndex];
+      streamingVariant = ReplyVariant(
+        id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
+        text: '',
+        generatedAt: DateTime.now(),
+        providerId: provider.id,
+        modelId: provider.selectedModel,
+      );
     } else {
       newReply = ChatMessage(
         id: 'reply-${DateTime.now().microsecondsSinceEpoch}',
@@ -425,7 +452,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     setState(() {
-      if (newReply != null) {
+      if (isRetry) {
+        _messages[replyIndex] = originalReply!.addVariant(streamingVariant!);
+        _activeReplyId = originalReply.id;
+        _activeRetryIndex = replyIndex;
+        _activeRetryOriginal = originalReply;
+      } else if (newReply != null) {
         _messages.add(newReply);
         _activeReplyId = newReply.id;
       }
@@ -457,12 +489,24 @@ class _ChatScreenState extends State<ChatScreen> {
           usage = usage.merge(event.usage!);
         }
         if (!mounted || _cancelled) return;
-        if (!isRetry && event.kind != AiStreamEventKind.usage) {
+        if (event.kind != AiStreamEventKind.usage) {
           setState(() {
-            _messages[replyIndex] = newReply!.copyWith(
-              text: _visibleReplyWhileStreaming(fullReply),
-              reasoning: fullReasoning,
-            );
+            if (isRetry) {
+              final current = _messages[replyIndex];
+              final variants = [...current.replyVariants];
+              variants[current.activeVariantIndex] = streamingVariant!.copyWith(
+                text: _visibleReplyWhileStreaming(fullReply),
+                reasoning: fullReasoning,
+              );
+              _messages[replyIndex] = current.copyWith(
+                replyVariants: variants,
+              );
+            } else {
+              _messages[replyIndex] = newReply!.copyWith(
+                text: _visibleReplyWhileStreaming(fullReply),
+                reasoning: fullReasoning,
+              );
+            }
           });
           _scrollToBottom();
         }
@@ -474,7 +518,8 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (!_cancelled && mounted) {
         final variant = ReplyVariant(
-          id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
+          id: streamingVariant?.id ??
+              'variant-${DateTime.now().microsecondsSinceEpoch}',
           text: replyText,
           generatedAt: DateTime.now(),
           providerId: provider.id,
@@ -487,7 +532,10 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         setState(() {
           if (isRetry) {
-            _messages[replyIndex] = originalReply!.addVariant(variant);
+            final current = _messages[replyIndex];
+            final variants = [...current.replyVariants];
+            variants[current.activeVariantIndex] = variant;
+            _messages[replyIndex] = current.copyWith(replyVariants: variants);
           } else {
             _messages[replyIndex] = newReply!.copyWith(
               text: replyText,
@@ -505,12 +553,16 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         });
         if (parsedReply.mood.isNotEmpty) {
-          unawaited(_chatStore.saveCharacterMood(parsedReply.mood));
+          unawaited(
+            _chatStore.saveCharacterMood(parsedReply.mood, _profile.id),
+          );
         }
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
-        if (!isRetry &&
+        if (isRetry) {
+          setState(() => _messages[replyIndex] = originalReply!);
+        } else if (
             _messages.length > replyIndex &&
             fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
@@ -519,7 +571,9 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } on Object catch (error) {
       if (!_cancelled && mounted) {
-        if (!isRetry &&
+        if (isRetry) {
+          setState(() => _messages[replyIndex] = originalReply!);
+        } else if (
             _messages.length > replyIndex &&
             fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
@@ -533,6 +587,8 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _generating = false;
           _activeReplyId = null;
+          _activeRetryIndex = null;
+          _activeRetryOriginal = null;
         });
         await _persistMessages();
       }
@@ -542,21 +598,36 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopGenerating() {
     _cancelled = true;
     _activeService?.close();
-    final activeReplyId = _activeReplyId;
-    if (activeReplyId != null) {
-      final index = _messages.indexWhere(
-        (message) => message.id == activeReplyId && message.text.isEmpty,
-      );
-      if (index >= 0) _messages.removeAt(index);
-    }
+    setState(() {
+      final retryIndex = _activeRetryIndex;
+      final retryOriginal = _activeRetryOriginal;
+      if (retryIndex != null &&
+          retryOriginal != null &&
+          retryIndex < _messages.length) {
+        _messages[retryIndex] = retryOriginal;
+      } else {
+        final activeReplyId = _activeReplyId;
+        if (activeReplyId != null) {
+          final index = _messages.indexWhere(
+            (message) => message.id == activeReplyId && message.text.isEmpty,
+          );
+          if (index >= 0) _messages.removeAt(index);
+        }
+      }
+    });
     unawaited(_persistMessages());
   }
 
-  Future<void> _retryReply(int replyIndex) async {
+  Future<void> _retryReply(
+    int replyIndex,
+    RetryModelOption option,
+  ) async {
     if (_generating) return;
-    final choice = await _showModelPicker('选择这次使用的模型');
-    if (choice == null || !mounted) return;
-    final provider = choice.provider.copyWith(selectedModel: choice.model);
+    final source = _providers.firstWhere(
+      (item) => item.id == option.providerId,
+      orElse: () => _providers.first,
+    );
+    final provider = source.copyWith(selectedModel: option.modelId);
     await _requestReply(
       providerOverride: provider,
       targetReplyIndex: replyIndex,
@@ -714,7 +785,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final conversations = _conversations
         .map((item) => item.id == updated.id ? updated : item)
         .toList();
-    await _chatStore.saveConversations(conversations);
+    await _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
     if (!mounted) return;
     setState(() {
       _currentConversation = updated;
@@ -731,7 +805,10 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((item) => item.id == updated.id ? updated : item)
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    await _chatStore.saveConversations(conversations);
+    await _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
     if (!mounted) return;
     setState(() {
       _currentConversation = updated;
@@ -925,6 +1002,123 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _showCharacterPicker() async {
+    _scaffoldKey.currentState?.closeDrawer();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    final selectedId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(10, 0, 10, 8),
+                  child: Text(
+                    '选择角色',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final character in _characters)
+                        ListTile(
+                          leading: CircleAvatar(
+                            child: Text(
+                              character.name.isEmpty
+                                  ? '角'
+                                  : character.name.characters.first,
+                            ),
+                          ),
+                          title: Text(character.name),
+                          subtitle: Text(
+                            character.id == _profile.id
+                                ? '当前角色'
+                                : '切换到这个角色',
+                          ),
+                          trailing: character.id == _profile.id
+                              ? const Icon(Icons.check_circle_rounded)
+                              : null,
+                          onTap: () => Navigator.pop(context, character.id),
+                        ),
+                      const Divider(height: 14),
+                      ListTile(
+                        leading: const Icon(Icons.person_add_alt_1_rounded),
+                        title: const Text('添加新角色'),
+                        subtitle: const Text('创建独立的角色设定与对话'),
+                        onTap: () => Navigator.pop(context, '__add__'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (selectedId == '__add__') {
+      await _createCharacter();
+      return;
+    }
+    if (selectedId == null || selectedId == _profile.id) return;
+    final selected = _characters.firstWhere((item) => item.id == selectedId);
+    await _switchCharacter(selected);
+  }
+
+  Future<void> _createCharacter() async {
+    final draft = CharacterProfile.newCharacter(DateTime.now());
+    final created = await Navigator.of(context).push<CharacterProfile>(
+      MaterialPageRoute<CharacterProfile>(
+        builder: (_) => CharacterScreen(profile: draft),
+      ),
+    );
+    if (created == null) return;
+    final characters = [..._characters, created];
+    await _chatStore.saveCharacters(characters);
+    if (!mounted) return;
+    setState(() => _characters = characters);
+    await _switchCharacter(created);
+  }
+
+  Future<void> _switchCharacter(CharacterProfile profile) async {
+    if (_generating) {
+      _stopGenerating();
+      while (_generating && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    }
+    await _chatStore.saveSelectedCharacterId(profile.id);
+    final conversations = await _chatStore.loadConversations(
+      characterId: profile.id,
+    );
+    final current = conversations.first;
+    final messages = await _messagesWithGreeting(current.id, profile);
+    final mood = await _chatStore.loadCharacterMood(profile.id);
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _conversations = conversations;
+      _currentConversation = current;
+      _messages = messages;
+      _characterMood = mood;
+    });
+    _scrollToBottom(jump: true);
+  }
+
   Future<void> _editCharacter() async {
     final updated = await Navigator.of(context).push<CharacterProfile>(
       MaterialPageRoute<CharacterProfile>(
@@ -934,7 +1128,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (updated == null) return;
     await _chatStore.saveProfile(updated);
     if (!mounted) return;
-    setState(() => _profile = updated);
+    setState(() {
+      _profile = updated;
+      _characters = _characters
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList();
+    });
   }
 
   void _scrollToBottom({bool jump = false}) {
@@ -987,6 +1186,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onNew: _newConversation,
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
+          onCharacterPicker: _showCharacterPicker,
           onEditCharacter: _editCharacter,
           onFavorites: _openFavorites,
           onMemoryWorld: _openMemories,
@@ -1033,14 +1233,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       Theme.of(context).colorScheme.surfaceContainerLow,
                   foregroundColor:
                       Theme.of(context).colorScheme.onSurfaceVariant,
-                  minimumSize: const Size(0, 38),
+                  minimumSize: const Size(0, 42),
                   padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
                   shape: const StadiumBorder(),
                 ),
                 icon: const Icon(Icons.expand_more_rounded, size: 17),
                 iconAlignment: IconAlignment.end,
                 label: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 106),
+                  constraints: const BoxConstraints(maxWidth: 132),
                   child: Text(
                     _selectedProvider?.selectedModel.isNotEmpty == true
                         ? _selectedProvider!.selectedModel
@@ -1055,12 +1255,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
-            IconButton(
-              tooltip: '记忆与世界',
-              onPressed: _openMemories,
-              icon: const Icon(Icons.bookmark_border_rounded),
-            ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 10),
           ],
         ),
         body: DecoratedBox(
@@ -1088,6 +1283,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       itemBuilder: (context, index) {
                         final message = _messages[index];
                         if (_generating &&
+                            _activeRetryIndex == null &&
                             message.id == _activeReplyId &&
                             message.author == MessageAuthor.character &&
                             message.text.isEmpty &&
@@ -1117,8 +1313,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           onLike: canUseActions
                               ? () => _toggleLike(index)
                               : null,
-                          onRetry: canUseActions
-                              ? () => _retryReply(index)
+                          retryModels: [
+                            for (final provider in _providers)
+                              for (final model in provider.models)
+                                RetryModelOption(
+                                  providerId: provider.id,
+                                  providerName: provider.name,
+                                  modelId: model,
+                                ),
+                          ],
+                          onRetryWithModel: canUseActions
+                              ? (option) => _retryReply(index, option)
                               : null,
                         );
                       },
@@ -1147,6 +1352,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onNew,
     required this.onSelect,
     required this.onDelete,
+    required this.onCharacterPicker,
     required this.onEditCharacter,
     required this.onFavorites,
     required this.onMemoryWorld,
@@ -1160,6 +1366,7 @@ class _ConversationDrawer extends StatelessWidget {
   final VoidCallback onNew;
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
+  final VoidCallback onCharacterPicker;
   final VoidCallback onEditCharacter;
   final VoidCallback onFavorites;
   final VoidCallback onMemoryWorld;
@@ -1193,7 +1400,7 @@ class _ConversationDrawer extends StatelessWidget {
                   const SizedBox(width: 11),
                   Expanded(
                     child: InkWell(
-                      onTap: onEditCharacter,
+                      onTap: onCharacterPicker,
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1208,7 +1415,7 @@ class _ConversationDrawer extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '点击进入角色设定',
+                              '点击切换或添加角色',
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 11.5,
@@ -1218,6 +1425,11 @@ class _ConversationDrawer extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ),
+                  IconButton(
+                    tooltip: '切换角色',
+                    onPressed: onCharacterPicker,
+                    icon: const Icon(Icons.unfold_more_rounded, size: 20),
                   ),
                 ],
               ),

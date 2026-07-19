@@ -20,6 +20,7 @@ class BackupService {
 
   Future<String> createBackup() async {
     final profile = await _chatStore.loadProfile();
+    final characters = await _chatStore.loadCharacters();
     final conversations = await _chatStore.loadConversations();
     final messages = <String, Object?>{};
     for (final conversation in conversations) {
@@ -28,11 +29,18 @@ class BackupService {
           items.map((message) => message.toJson()).toList();
     }
     final providers = await _providerStore.loadProviders();
+    final characterMoods = <String, String>{};
+    for (final character in characters) {
+      final mood = await _chatStore.loadCharacterMood(character.id);
+      if (mood.isNotEmpty) characterMoods[character.id] = mood;
+    }
     return const JsonEncoder.withIndent('  ').convert({
       'format': 'character-chat-backup',
       'version': 1,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profile.toJson(),
+      'characters': characters.map((item) => item.toJson()).toList(),
+      'selectedCharacterId': await _chatStore.loadSelectedCharacterId(),
       'conversations':
           conversations.map((conversation) => conversation.toJson()).toList(),
       'messages': messages,
@@ -42,6 +50,7 @@ class BackupService {
           .map((entry) => entry.toJson())
           .toList(),
       'characterMood': await _chatStore.loadCharacterMood(),
+      'characterMoods': characterMoods,
       'reasoningExpanded': await _chatStore.loadReasoningExpanded(),
       'contextTokenBudget': await _chatStore.loadContextTokenBudget(),
       'providers': providers.map((provider) => provider.toJson()).toList(),
@@ -58,8 +67,23 @@ class BackupService {
       throw const FormatException('不是受支持的聊天备份文件');
     }
 
-    final profileRaw = data['profile'];
-    if (profileRaw is Map) {
+    final characters = (data['characters'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => CharacterProfile.fromJson(
+            Map<String, Object?>.from(item),
+          ),
+        )
+        .toList();
+    if (characters.isNotEmpty) {
+      await _chatStore.saveCharacters(characters);
+      final selectedId = data['selectedCharacterId'] as String?;
+      await _chatStore.saveSelectedCharacterId(
+        characters.any((item) => item.id == selectedId)
+            ? selectedId!
+            : characters.first.id,
+      );
+    } else if (data['profile'] case final Map profileRaw) {
       await _chatStore.saveProfile(
         CharacterProfile.fromJson(Map<String, Object?>.from(profileRaw)),
       );
@@ -113,6 +137,15 @@ class BackupService {
           )
           .toList(),
     );
+    final moodsRaw = data['characterMoods'];
+    if (moodsRaw is Map) {
+      for (final entry in moodsRaw.entries) {
+        await _chatStore.saveCharacterMood(
+          entry.value?.toString() ?? '',
+          entry.key.toString(),
+        );
+      }
+    }
     await _chatStore.saveCharacterMood(
       data['characterMood']?.toString() ?? '',
     );

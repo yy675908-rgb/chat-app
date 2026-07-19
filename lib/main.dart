@@ -52,27 +52,35 @@ class CharacterChatApp extends StatelessWidget {
       splashFactory: InkRipple.splashFactory,
     );
 
+    final readableTextTheme = base.textTheme
+        .apply(bodyColor: ink, displayColor: ink)
+        .copyWith(
+          titleLarge: const TextStyle(
+            color: ink,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+          titleMedium: const TextStyle(
+            color: ink,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: const TextStyle(color: ink, fontSize: 15.5, height: 1.5),
+          bodyMedium: const TextStyle(color: ink, fontSize: 14, height: 1.45),
+          labelLarge: const TextStyle(
+            color: ink,
+            fontWeight: FontWeight.w600,
+          ),
+        );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '林间',
       themeMode: ThemeMode.light,
       theme: base.copyWith(
-        textTheme: base.textTheme
-            .apply(bodyColor: ink, displayColor: ink)
-            .copyWith(
-              titleLarge: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-              ),
-              titleMedium: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-              bodyLarge: const TextStyle(fontSize: 15.5, height: 1.5),
-              bodyMedium: const TextStyle(fontSize: 14, height: 1.45),
-              labelLarge: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+        textTheme: readableTextTheme,
+        primaryTextTheme: readableTextTheme,
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFFBFCFA),
           foregroundColor: ink,
@@ -80,7 +88,7 @@ class CharacterChatApp extends StatelessWidget {
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
-          toolbarHeight: 62,
+          toolbarHeight: 72,
           titleSpacing: 8,
         ),
         drawerTheme: const DrawerThemeData(
@@ -103,6 +111,7 @@ class CharacterChatApp extends StatelessWidget {
         ),
         listTileTheme: ListTileThemeData(
           iconColor: scheme.onSurfaceVariant,
+          textColor: ink,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 2,
@@ -126,6 +135,10 @@ class CharacterChatApp extends StatelessWidget {
           floatingLabelStyle: const TextStyle(
             color: teal,
             fontWeight: FontWeight.w600,
+          ),
+          labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+          hintStyle: TextStyle(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(17),
@@ -201,6 +214,29 @@ class CharacterChatApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
+        ),
+        popupMenuTheme: PopupMenuThemeData(
+          color: scheme.surfaceContainerLowest,
+          surfaceTintColor: Colors.transparent,
+          textStyle: const TextStyle(color: ink, fontSize: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        menuTheme: MenuThemeData(
+          style: MenuStyle(
+            backgroundColor: WidgetStatePropertyAll(
+              scheme.surfaceContainerLowest,
+            ),
+            foregroundColor: const WidgetStatePropertyAll(ink),
+          ),
+        ),
+        dropdownMenuTheme: const DropdownMenuThemeData(
+          textStyle: TextStyle(color: ink, fontSize: 14),
+        ),
+        textSelectionTheme: const TextSelectionThemeData(
+          cursorColor: teal,
+          selectionHandleColor: teal,
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,

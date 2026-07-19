@@ -1,5 +1,6 @@
 class CharacterProfile {
   const CharacterProfile({
+    required this.id,
     required this.name,
     required this.status,
     required this.firstMetAt,
@@ -7,6 +8,7 @@ class CharacterProfile {
     required this.systemPrompt,
   });
 
+  final String id;
   final String name;
   final String status;
   final DateTime firstMetAt;
@@ -15,6 +17,7 @@ class CharacterProfile {
 
   factory CharacterProfile.lin(DateTime firstMetAt) {
     return CharacterProfile(
+      id: 'character-lin',
       name: '林',
       status: '在这里',
       firstMetAt: firstMetAt,
@@ -26,6 +29,17 @@ class CharacterProfile {
     );
   }
 
+  factory CharacterProfile.newCharacter(DateTime createdAt) {
+    return CharacterProfile(
+      id: 'character-${createdAt.microsecondsSinceEpoch}',
+      name: '新角色',
+      status: '',
+      firstMetAt: createdAt,
+      greeting: '你好。',
+      systemPrompt: '你是一个有独立性格的真实聊天对象。请用自然、简洁的方式与用户交流。',
+    );
+  }
+
   CharacterProfile copyWith({
     String? name,
     String? status,
@@ -33,6 +47,7 @@ class CharacterProfile {
     String? systemPrompt,
   }) {
     return CharacterProfile(
+      id: id,
       name: name ?? this.name,
       status: status ?? this.status,
       firstMetAt: firstMetAt,
@@ -42,6 +57,7 @@ class CharacterProfile {
   }
 
   Map<String, Object?> toJson() => {
+        'id': id,
         'name': name,
         'status': status,
         'firstMetAt': firstMetAt.toIso8601String(),
@@ -54,6 +70,7 @@ class CharacterProfile {
         DateTime.now();
     final fallback = CharacterProfile.lin(firstMetAt);
     return CharacterProfile(
+      id: json['id'] as String? ?? fallback.id,
       name: json['name'] as String? ?? fallback.name,
       status: json['status'] as String? ?? fallback.status,
       firstMetAt: firstMetAt,
