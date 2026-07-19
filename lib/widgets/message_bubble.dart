@@ -306,31 +306,25 @@ class _BubbleAction extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.selected = false,
-    this.emphasized = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
   final bool selected;
-  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
-    final background = emphasized
-        ? scheme.primaryContainer.withValues(alpha: enabled ? 0.78 : 0.35)
-        : selected
-            ? scheme.secondaryContainer
-            : scheme.surfaceContainerLow;
+    final background = selected
+        ? scheme.secondaryContainer
+        : scheme.surfaceContainerLow;
     final foreground = !enabled
         ? scheme.onSurface.withValues(alpha: 0.3)
-        : emphasized
-            ? scheme.onPrimaryContainer
-            : selected
-                ? scheme.primary
-                : scheme.onSurfaceVariant;
+        : selected
+            ? scheme.primary
+            : scheme.onSurfaceVariant;
 
     return Tooltip(
       message: tooltip,
@@ -343,7 +337,7 @@ class _BubbleAction extends StatelessWidget {
           child: SizedBox(
             width: 36,
             height: 34,
-            child: Icon(icon, size: emphasized ? 20 : 17, color: foreground),
+            child: Icon(icon, size: 17, color: foreground),
           ),
         ),
       ),

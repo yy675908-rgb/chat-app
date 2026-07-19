@@ -628,7 +628,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final reasoningDurationMs = reasoningStartedAt == null
               ? 0
               : (answerStartedAt ?? DateTime.now())
-                  .difference(reasoningStartedAt!)
+                  .difference(reasoningStartedAt)
                   .inMilliseconds;
           setState(() {
             if (isRetry) {
@@ -665,7 +665,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final reasoningDurationMs = reasoningStartedAt == null
             ? 0
             : (answerStartedAt ?? DateTime.now())
-                .difference(reasoningStartedAt!)
+                .difference(reasoningStartedAt)
                 .inMilliseconds;
         final variant = ReplyVariant(
           id: streamingVariant?.id ??
