@@ -169,16 +169,13 @@ class MessageBubble extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   if (message.reasoning.trim().isNotEmpty) ...[
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      child: _ReasoningPanel(
-                        key: ValueKey(
-                          'reasoning-${message.activeVariant?.id ?? message.id}',
-                        ),
-                        reasoning: message.reasoning,
-                        initiallyExpanded: reasoningInitiallyExpanded,
+                    _ReasoningPanel(
+                      key: ValueKey(
+                        'reasoning-${message.activeVariant?.id ?? message.id}',
                       ),
+                      reasoning: message.reasoning,
+                      reasoningDurationMs: message.usedReasoningDurationMs,
+                      initiallyExpanded: reasoningInitiallyExpanded,
                     ),
                     const SizedBox(height: 9),
                   ],
@@ -525,11 +522,13 @@ class _CompactArrow extends StatelessWidget {
 class _ReasoningPanel extends StatelessWidget {
   const _ReasoningPanel({
     required this.reasoning,
+    required this.reasoningDurationMs,
     required this.initiallyExpanded,
     super.key,
   });
 
   final String reasoning;
+  final int reasoningDurationMs;
   final bool initiallyExpanded;
 
   @override
@@ -552,7 +551,9 @@ class _ReasoningPanel extends StatelessWidget {
             color: scheme.primary,
           ),
           title: Text(
-            '思考过程',
+            reasoningDurationMs > 0
+                ? '思考过程 · ${_formatDuration(reasoningDurationMs)}'
+                : '思考过程',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               fontSize: 12.5,
@@ -560,14 +561,20 @@ class _ReasoningPanel extends StatelessWidget {
             ),
           ),
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(
-                reasoning.trim(),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 12.5,
-                  height: 1.55,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: SingleChildScrollView(
+                primary: false,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SelectableText(
+                    reasoning.trim(),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12.5,
+                      height: 1.55,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -575,5 +582,12 @@ class _ReasoningPanel extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatDuration(int milliseconds) {
+    final seconds = milliseconds / 1000;
+    return seconds < 10
+        ? '${seconds.toStringAsFixed(1)} 秒'
+        : '${seconds.round()} 秒';
   }
 }

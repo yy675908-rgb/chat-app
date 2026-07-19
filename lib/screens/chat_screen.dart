@@ -53,7 +53,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _replyQueued = false;
   bool _drainingReplies = false;
   int? _activeRetryIndex;
-  ChatMessage? _activeRetryOriginal;
+  List<ChatMessage>? _activeRetrySnapshot;
+  bool _compressionPromptActive = false;
+  int _compressionPromptedAtCount = 0;
 
   @override
   void initState() {
@@ -79,13 +81,13 @@ class _ChatScreenState extends State<ChatScreen> {
       characterId: profile.id,
     );
     final providers = await _providerStore.loadProviders();
+    final current = conversations.first;
     final selectedId = await _providerStore.loadSelectedProviderId();
     final selected = providers.firstWhere(
       (provider) => provider.id == selectedId,
       orElse: () => providers.first,
     );
     await _providerStore.saveSelectedProviderId(selected.id);
-    final current = conversations.first;
     final messages = await _messagesWithGreeting(current.id, profile);
     if (!mounted) return;
     setState(() {
@@ -225,6 +227,53 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _renameConversation(Conversation conversation) async {
+    final controller = TextEditingController(text: conversation.title);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('修改对话名称'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          decoration: const InputDecoration(labelText: '名称'),
+          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || title.isEmpty || title == conversation.title) return;
+    final updated = conversation.copyWith(
+      title: title,
+      updatedAt: DateTime.now(),
+    );
+    final conversations = _conversations
+        .map((item) => item.id == updated.id ? updated : item)
+        .toList();
+    await _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _conversations = conversations;
+      if (_currentConversation?.id == updated.id) {
+        _currentConversation = updated;
+      }
+    });
+  }
+
   Future<void> _reloadProviders() async {
     final providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
@@ -261,106 +310,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return updated?.isConfigured == true && updatedKey.trim().isNotEmpty;
   }
 
-  Future<_ModelChoice?> _showModelPicker(String title) async {
-    if (_providers.isEmpty) {
-      await _openProviderSettings();
-      return null;
-    }
-    return showModalBottomSheet<_ModelChoice>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.72,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '管理供应商',
-                      onPressed: () {
-                        Navigator.pop(context);
-                        unawaited(_openProviderSettings());
-                      },
-                      icon: const Icon(Icons.tune_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-                  children: [
-                    for (final provider in _providers) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                        child: Text(
-                          provider.name,
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      if (provider.models.isEmpty)
-                        ListTile(
-                          title: const Text('尚未添加模型'),
-                          subtitle: const Text('到供应商设置中手动填写或读取列表'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            unawaited(_openProviderSettings());
-                          },
-                        )
-                      else
-                        ...provider.models.map(
-                          (model) => ListTile(
-                            leading: Icon(
-                              _selectedProvider?.id == provider.id &&
-                                      _selectedProvider?.selectedModel == model
-                                  ? Icons.check_circle_rounded
-                                  : Icons.circle_outlined,
-                            ),
-                            title: Text(model),
-                            onTap: () => Navigator.pop(
-                              context,
-                              _ModelChoice(provider: provider, model: model),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _chooseModel() async {
-    final choice = await _showModelPicker('选择模型');
-    if (choice == null) return;
+  Future<void> _applyModelChoice(_ModelChoice choice) async {
     final updatedProvider = choice.provider.copyWith(
       selectedModel: choice.model,
     );
@@ -379,6 +329,125 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _showChatModelPicker() async {
+    final available = _providers
+        .where((provider) => provider.models.isNotEmpty)
+        .toList();
+    if (available.isEmpty) {
+      await _openProviderSettings();
+      return;
+    }
+    var providerId = available.any(
+      (provider) => provider.id == _selectedProvider?.id,
+    )
+        ? _selectedProvider!.id
+        : available.first.id;
+    final choice = await showModalBottomSheet<_ModelChoice>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final provider = available.firstWhere(
+            (item) => item.id == providerId,
+          );
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 10, 8),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '选择模型',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '管理供应商',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            unawaited(_openProviderSettings());
+                          },
+                          icon: const Icon(Icons.tune_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: providerId,
+                      decoration: const InputDecoration(
+                        labelText: '供应商',
+                        filled: true,
+                      ),
+                      items: [
+                        for (final item in available)
+                          DropdownMenuItem<String>(
+                            value: item.id,
+                            child: Text(item.name),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setSheetState(() => providerId = value);
+                        }
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Text(
+                      '只显示已添加且已有模型的供应商',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 18),
+                      children: [
+                        for (final model in provider.models)
+                          ListTile(
+                            leading: Icon(
+                              _selectedProvider?.id == provider.id &&
+                                      _selectedProvider?.selectedModel == model
+                                  ? Icons.check_circle_rounded
+                                  : Icons.circle_outlined,
+                            ),
+                            title: Text(model),
+                            onTap: () => Navigator.pop(
+                              context,
+                              _ModelChoice(provider: provider, model: model),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (choice != null) await _applyModelChoice(choice);
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
@@ -387,6 +456,7 @@ class _ChatScreenState extends State<ChatScreen> {
       author: MessageAuthor.user,
       text: text,
       sentAt: DateTime.now(),
+      branchBindings: _activeBranchBindings(),
     );
     setState(() {
       _messages.add(userMessage);
@@ -397,6 +467,41 @@ class _ChatScreenState extends State<ChatScreen> {
     await _persistMessages();
     await _queueReply();
   }
+
+  Map<String, String> _activeBranchBindings() {
+    final bindings = <String, String>{};
+    for (final message in _messages) {
+      if (!_isMessageVisible(message)) continue;
+      final variant = message.activeVariant;
+      if (message.author == MessageAuthor.character &&
+          message.replyVariants.length > 1 &&
+          variant != null) {
+        bindings[message.id] = variant.id;
+      }
+    }
+    return bindings;
+  }
+
+  bool _isMessageVisible(ChatMessage message) {
+    for (final binding in message.branchBindings.entries) {
+      ChatMessage? ancestor;
+      for (final candidate in _messages) {
+        if (candidate.id == binding.key) {
+          ancestor = candidate;
+          break;
+        }
+      }
+      if (ancestor == null || ancestor.activeVariant?.id != binding.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<int> get _visibleMessageIndices => [
+        for (var index = 0; index < _messages.length; index++)
+          if (_isMessageVisible(_messages[index])) index,
+      ];
 
   Future<void> _queueReply() async {
     _replyQueued = true;
@@ -430,10 +535,14 @@ class _ChatScreenState extends State<ChatScreen> {
     ChatMessage? originalReply;
     ChatMessage? newReply;
     ReplyVariant? streamingVariant;
+    List<ChatMessage>? retrySnapshot;
+    DateTime? reasoningStartedAt;
+    DateTime? answerStartedAt;
     if (isRetry) {
       if (targetReplyIndex < 0 || targetReplyIndex >= _messages.length) return;
       replyIndex = targetReplyIndex;
       originalReply = _messages[replyIndex];
+      retrySnapshot = List<ChatMessage>.from(_messages);
       streamingVariant = ReplyVariant(
         id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
         text: '',
@@ -447,16 +556,35 @@ class _ChatScreenState extends State<ChatScreen> {
         author: MessageAuthor.character,
         text: '',
         sentAt: DateTime.now(),
+        branchBindings: _activeBranchBindings(),
       );
       replyIndex = _messages.length;
     }
 
     setState(() {
       if (isRetry) {
-        _messages[replyIndex] = originalReply!.addVariant(streamingVariant!);
+        final previousVariantId = originalReply!.activeVariant?.id ??
+            'original-${originalReply.id}';
+        final visibleDescendants = <int>[
+          for (var index = replyIndex + 1; index < _messages.length; index++)
+            if (_isMessageVisible(_messages[index])) index,
+        ];
+        for (final index in visibleDescendants) {
+          final descendant = _messages[index];
+          if (descendant.branchBindings.containsKey(originalReply.id)) {
+            continue;
+          }
+          _messages[index] = descendant.copyWith(
+            branchBindings: {
+              ...descendant.branchBindings,
+              originalReply.id: previousVariantId,
+            },
+          );
+        }
+        _messages[replyIndex] = originalReply.addVariant(streamingVariant!);
         _activeReplyId = originalReply.id;
         _activeRetryIndex = replyIndex;
-        _activeRetryOriginal = originalReply;
+        _activeRetrySnapshot = retrySnapshot;
       } else if (newReply != null) {
         _messages.add(newReply);
         _activeReplyId = newReply.id;
@@ -466,8 +594,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
-    final contextMessages = _messages.take(replyIndex).toList();
-    final systemPrompt = _assembledSystemPrompt();
+    final contextMessages = _messages
+        .take(replyIndex)
+        .where(_isMessageVisible)
+        .toList();
+    final systemPrompt = _assembledSystemPrompt(
+      contextMessages: contextMessages,
+    );
     final recent = _messagesWithinBudget(contextMessages, systemPrompt);
     final service = AiChatService();
     _activeService = service;
@@ -482,14 +615,21 @@ class _ChatScreenState extends State<ChatScreen> {
         history: recent,
       )) {
         if (event.kind == AiStreamEventKind.content) {
+          answerStartedAt ??= DateTime.now();
           fullReply += event.text;
         } else if (event.kind == AiStreamEventKind.reasoning) {
+          reasoningStartedAt ??= DateTime.now();
           fullReasoning += event.text;
         } else if (event.usage != null) {
           usage = usage.merge(event.usage!);
         }
         if (!mounted || _cancelled) return;
         if (event.kind != AiStreamEventKind.usage) {
+          final reasoningDurationMs = reasoningStartedAt == null
+              ? 0
+              : (answerStartedAt ?? DateTime.now())
+                  .difference(reasoningStartedAt!)
+                  .inMilliseconds;
           setState(() {
             if (isRetry) {
               final current = _messages[replyIndex];
@@ -497,6 +637,7 @@ class _ChatScreenState extends State<ChatScreen> {
               variants[current.activeVariantIndex] = streamingVariant!.copyWith(
                 text: _visibleReplyWhileStreaming(fullReply),
                 reasoning: fullReasoning,
+                reasoningDurationMs: reasoningDurationMs,
               );
               _messages[replyIndex] = current.copyWith(
                 replyVariants: variants,
@@ -505,10 +646,14 @@ class _ChatScreenState extends State<ChatScreen> {
               _messages[replyIndex] = newReply!.copyWith(
                 text: _visibleReplyWhileStreaming(fullReply),
                 reasoning: fullReasoning,
+                reasoningDurationMs: reasoningDurationMs,
               );
             }
           });
-          _scrollToBottom();
+          if (event.kind == AiStreamEventKind.content ||
+              reasoningDurationMs < 500) {
+            _scrollToBottom();
+          }
         }
       }
       final parsedReply = _splitMoodFromReply(fullReply);
@@ -517,6 +662,11 @@ class _ChatScreenState extends State<ChatScreen> {
         throw const AiChatException('模型没有返回文字，请检查模型 ID 和接口类型');
       }
       if (!_cancelled && mounted) {
+        final reasoningDurationMs = reasoningStartedAt == null
+            ? 0
+            : (answerStartedAt ?? DateTime.now())
+                .difference(reasoningStartedAt!)
+                .inMilliseconds;
         final variant = ReplyVariant(
           id: streamingVariant?.id ??
               'variant-${DateTime.now().microsecondsSinceEpoch}',
@@ -525,6 +675,7 @@ class _ChatScreenState extends State<ChatScreen> {
           providerId: provider.id,
           modelId: provider.selectedModel,
           reasoning: fullReasoning.trim(),
+          reasoningDurationMs: reasoningDurationMs,
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
           reasoningTokens: usage.reasoningTokens,
@@ -540,6 +691,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _messages[replyIndex] = newReply!.copyWith(
               text: replyText,
               reasoning: fullReasoning.trim(),
+              reasoningDurationMs: reasoningDurationMs,
               promptTokens: usage.promptTokens,
               completionTokens: usage.completionTokens,
               reasoningTokens: usage.reasoningTokens,
@@ -561,7 +713,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
         if (isRetry) {
-          setState(() => _messages[replyIndex] = originalReply!);
+          setState(() => _messages = retrySnapshot!);
         } else if (
             _messages.length > replyIndex &&
             fullReply.isEmpty) {
@@ -572,7 +724,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } on Object catch (error) {
       if (!_cancelled && mounted) {
         if (isRetry) {
-          setState(() => _messages[replyIndex] = originalReply!);
+          setState(() => _messages = retrySnapshot!);
         } else if (
             _messages.length > replyIndex &&
             fullReply.isEmpty) {
@@ -588,9 +740,12 @@ class _ChatScreenState extends State<ChatScreen> {
           _generating = false;
           _activeReplyId = null;
           _activeRetryIndex = null;
-          _activeRetryOriginal = null;
+          _activeRetrySnapshot = null;
         });
         await _persistMessages();
+        if (!_cancelled && !_replyQueued) {
+          unawaited(_maybeOfferCompression());
+        }
       }
     }
   }
@@ -600,11 +755,11 @@ class _ChatScreenState extends State<ChatScreen> {
     _activeService?.close();
     setState(() {
       final retryIndex = _activeRetryIndex;
-      final retryOriginal = _activeRetryOriginal;
+      final retrySnapshot = _activeRetrySnapshot;
       if (retryIndex != null &&
-          retryOriginal != null &&
+          retrySnapshot != null &&
           retryIndex < _messages.length) {
-        _messages[retryIndex] = retryOriginal;
+        _messages = retrySnapshot;
       } else {
         final activeReplyId = _activeReplyId;
         if (activeReplyId != null) {
@@ -688,7 +843,7 @@ class _ChatScreenState extends State<ChatScreen> {
       provider = provider.copyWith(selectedModel: variant.modelId);
     }
     final apiKey = await _providerStore.loadApiKey(provider.id);
-    if (apiKey.trim().isEmpty) return;
+    if (apiKey.trim().isEmpty || !mounted) return;
 
     final service = AiChatService();
     var raw = '';
@@ -816,22 +971,29 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  String _assembledSystemPrompt() {
+  String _currentBranchKey() {
+    final entries = _activeBranchBindings().entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    if (entries.isEmpty) return 'root';
+    return entries.map((entry) => '${entry.key}=${entry.value}').join('|');
+  }
+
+  String _assembledSystemPrompt({List<ChatMessage>? contextMessages}) {
     final now = DateTime.now().toLocal();
     ChatMessage? lastReply;
     for (var index = _messages.length - 1; index >= 0; index--) {
       final message = _messages[index];
+      if (!_isMessageVisible(message)) continue;
       if (message.author == MessageAuthor.character &&
           message.text.trim().isNotEmpty) {
         lastReply = message;
         break;
       }
     }
-    final elapsed = lastReply == null
+    final interval = lastReply == null
         ? ''
-        : '｜距上一轮：${_formatElapsed(now.difference(lastReply.sentAt))}';
-    final context =
-        '相识第 ${_profile.daysTogether} 天｜当前：${_formatPromptTime(now)}$elapsed';
+        : '｜间隔：${_formatElapsed(now.difference(lastReply.sentAt))}';
+    final context = '当前时间：${_formatPromptTime(now)}$interval';
     final memoryText = _memories.isEmpty
         ? ''
         : '\n\n你们共同确认的记忆：\n'
@@ -841,16 +1003,51 @@ class _ChatScreenState extends State<ChatScreen> {
         : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
             '${_stylePreferences.map((item) => '- $item').join('\n')}';
     final worldBookText = _matchedWorldBookPrompt();
+    final current = _currentConversation;
+    final branchKey = _currentBranchKey();
+    var currentSummary = current?.branchSummaries[branchKey] ?? '';
+    final summarizedThrough =
+        current?.summarizedThroughMessageIds[branchKey] ?? '';
+    if (currentSummary.isNotEmpty &&
+        summarizedThrough.isNotEmpty &&
+        contextMessages != null &&
+        !contextMessages.any((message) => message.id == summarizedThrough)) {
+      currentSummary = '';
+    }
+    final summaryText = currentSummary.isEmpty
+        ? ''
+        : '\n\n当前对话较早内容的摘要：\n$currentSummary';
+    final previousSummaries = _conversations
+        .where(
+          (conversation) =>
+              conversation.id != current?.id &&
+              conversation.branchSummaries.isNotEmpty,
+        )
+        .take(3)
+        .map((conversation) {
+          final summary = conversation.branchSummaries.values.last;
+          final compact = summary.characters.length > 320
+              ? '${summary.characters.take(320).join()}…'
+              : summary;
+          return '- ${conversation.title}：$compact';
+        })
+        .toList();
+    final previousSummaryText = previousSummaries.isEmpty
+        ? ''
+        : '\n\n其他近期对话的简短摘要（仅在相关时参考）：\n'
+            '${previousSummaries.join('\n')}';
     const moodInstruction = '\n\n回复正文结束后，必须另起一行输出“[[心绪:……]]”。'
-        '其中只写角色此刻不超过12个字的心理活动、短语或表情；不要在正文解释这行。';
+        '由角色自行选择只用一个小表情、简短文字，或两者组合；不超过12个字，不要在正文解释这行。';
     return '${_profile.systemPrompt}\n\n'
-        '$context$memoryText$preferenceText$worldBookText$moodInstruction';
+        '$context$memoryText$preferenceText$worldBookText'
+        '$summaryText$previousSummaryText$moodInstruction';
   }
 
   String _matchedWorldBookPrompt() {
     if (_worldBooks.isEmpty || _messages.isEmpty) return '';
-    final start = _messages.length > 12 ? _messages.length - 12 : 0;
-    final recentText = _messages
+    final visible = _messages.where(_isMessageVisible).toList();
+    final start = visible.length > 12 ? visible.length - 12 : 0;
+    final recentText = visible
         .sublist(start)
         .map((message) => message.text.toLowerCase())
         .join('\n');
@@ -898,11 +1095,23 @@ class _ChatScreenState extends State<ChatScreen> {
     List<ChatMessage> messages,
     String systemPrompt,
   ) {
+    var candidates = messages;
+    final current = _currentConversation;
+    final summarizedThrough = current
+        ?.summarizedThroughMessageIds[_currentBranchKey()];
+    if (summarizedThrough != null && summarizedThrough.isNotEmpty) {
+      final marker = candidates.indexWhere(
+        (message) => message.id == summarizedThrough,
+      );
+      if (marker >= 0) {
+        candidates = candidates.sublist(marker + 1);
+      }
+    }
     var remaining = _contextTokenBudget - _estimateTokens(systemPrompt);
     if (remaining < 2048) remaining = 2048;
     final selected = <ChatMessage>[];
-    for (var index = messages.length - 1; index >= 0; index--) {
-      final message = messages[index];
+    for (var index = candidates.length - 1; index >= 0; index--) {
+      final message = candidates[index];
       final cost = _estimateTokens(message.text) + 12;
       if (selected.isNotEmpty && cost > remaining) break;
       selected.add(message);
@@ -924,6 +1133,175 @@ class _ChatScreenState extends State<ChatScreen> {
     return estimate.ceil();
   }
 
+  Future<void> _maybeOfferCompression() async {
+    if (!mounted ||
+        _loading ||
+        _generating ||
+        _compressionPromptActive) {
+      return;
+    }
+    final visible = _messages.where(_isMessageVisible).toList();
+    if (visible.length < 20 ||
+        visible.length < _compressionPromptedAtCount + 10) {
+      return;
+    }
+    final current = _currentConversation;
+    if (current == null) return;
+    final markerId =
+        current.summarizedThroughMessageIds[_currentBranchKey()] ?? '';
+    var start = 0;
+    if (markerId.isNotEmpty) {
+      final marker = visible.indexWhere((message) => message.id == markerId);
+      if (marker >= 0) start = marker + 1;
+    }
+    final unsummarized = visible.sublist(start);
+    final estimated = unsummarized.fold<int>(
+      0,
+      (total, message) => total + _estimateTokens(message.text) + 12,
+    );
+    if (estimated < (_contextTokenBudget * 0.82).round()) return;
+
+    _compressionPromptActive = true;
+    _compressionPromptedAtCount = visible.length;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('这段对话有点长了'),
+          content: const Text(
+            '可以把当前分支较早的内容整理成一份短摘要，后续聊天会更省 token。原始消息和其他分支仍会完整保留。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('暂不'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.compress_rounded),
+              label: const Text('压缩历史'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) await _compressCurrentBranch();
+    } finally {
+      _compressionPromptActive = false;
+    }
+  }
+
+  Future<void> _compressCurrentBranch() async {
+    if (!await _ensureProviderConfigured()) return;
+    final provider = _selectedProvider;
+    final current = _currentConversation;
+    if (provider == null || current == null || !mounted) return;
+    final apiKey = await _providerStore.loadApiKey(provider.id);
+    if (apiKey.trim().isEmpty || !mounted) return;
+
+    final visible = _messages.where(_isMessageVisible).toList();
+    if (visible.length <= 14) return;
+    final branchKey = _currentBranchKey();
+    final markerId = current.summarizedThroughMessageIds[branchKey] ?? '';
+    var start = 0;
+    if (markerId.isNotEmpty) {
+      final marker = visible.indexWhere((message) => message.id == markerId);
+      if (marker >= 0) start = marker + 1;
+    }
+    final end = visible.length - 12;
+    if (end <= start) {
+      _showMessage('目前没有需要继续压缩的旧内容');
+      return;
+    }
+    final segment = visible.sublist(start, end);
+    final transcript = segment.map((message) {
+      final speaker = message.author == MessageAuthor.user
+          ? '用户'
+          : message.author == MessageAuthor.character
+              ? _profile.name
+              : '系统';
+      return '$speaker：${message.text}';
+    }).join('\n\n');
+    final previousSummary = current.branchSummaries[branchKey] ?? '';
+
+    BuildContext? progressContext;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          progressContext = context;
+          return const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 18),
+                Expanded(child: Text('正在整理这段关系里的重要内容…')),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final request = ChatMessage(
+        id: 'summary-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text: '${previousSummary.isEmpty ? '' : '已有摘要：\n$previousSummary\n\n'}'
+            '新增对话：\n$transcript',
+        sentAt: DateTime.now(),
+      );
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: '把对话整理成可供角色继续交流的紧凑事实摘要。'
+            '保留关系变化、约定、重要事件、用户偏好、未完成事项和必要语境；'
+            '删除寒暄、重复和措辞细节。只输出摘要，不超过600个汉字。',
+        history: [request],
+        temperature: 0.2,
+      )) {
+        raw += chunk;
+      }
+      final summary = _splitMoodFromReply(raw).text.trim();
+      if (summary.isEmpty) throw const AiChatException('模型没有返回摘要');
+      final updated = current.copyWith(
+        branchSummaries: {
+          ...current.branchSummaries,
+          branchKey: summary,
+        },
+        summarizedThroughMessageIds: {
+          ...current.summarizedThroughMessageIds,
+          branchKey: segment.last.id,
+        },
+        updatedAt: DateTime.now(),
+      );
+      final conversations = _conversations
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList();
+      await _chatStore.saveConversations(
+        conversations,
+        characterId: _profile.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _currentConversation = updated;
+        _conversations = conversations;
+      });
+      _showMessage('历史已压缩，原始消息仍完整保留');
+    } on Object catch (error) {
+      if (mounted) _showError('压缩失败：$error');
+    } finally {
+      service.close();
+      final dialogContext = progressContext;
+      if (dialogContext != null && dialogContext.mounted) {
+        Navigator.of(dialogContext).pop();
+      }
+    }
+  }
+
   String _formatPromptTime(DateTime value) {
     String two(int number) => number.toString().padLeft(2, '0');
     return '${value.year}-${two(value.month)}-${two(value.day)} '
@@ -931,19 +1309,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _formatElapsed(Duration duration) {
-    if (duration.isNegative) return '刚刚';
+    if (duration.isNegative || duration.inMinutes <= 0) return '刚刚';
     final days = duration.inDays;
     final hours = duration.inHours.remainder(24);
     final minutes = duration.inMinutes.remainder(60);
-    if (days > 0) {
-      return hours == 0 ? '$days天' : '$days天$hours小时';
-    }
+    if (days > 0) return hours == 0 ? '$days天' : '$days天$hours小时';
     if (duration.inHours > 0) {
       return minutes == 0
           ? '${duration.inHours}小时'
           : '${duration.inHours}小时$minutes分钟';
     }
-    return duration.inMinutes <= 0 ? '刚刚' : '${duration.inMinutes}分钟';
+    return '${duration.inMinutes}分钟';
   }
 
   void _showMessage(String message) {
@@ -1172,6 +1548,7 @@ class _ChatScreenState extends State<ChatScreen> {
         : (_characterMood.isNotEmpty
             ? _characterMood
             : (_profile.status == '在这里' ? '' : _profile.status));
+    final visibleMessageIndices = _visibleMessageIndices;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
         statusBarColor: Colors.transparent,
@@ -1186,6 +1563,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onNew: _newConversation,
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
+          onRename: _renameConversation,
           onCharacterPicker: _showCharacterPicker,
           onEditCharacter: _editCharacter,
           onFavorites: _openFavorites,
@@ -1200,62 +1578,109 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.menu_rounded),
           ),
           titleSpacing: 2,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _profile.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (characterStatus.isNotEmpty)
-                Text(
-                  characterStatus,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w400,
+          title: InkWell(
+            onTap: _showCharacterPicker,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _profile.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (characterStatus.isNotEmpty)
+                          Text(
+                            characterStatus,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.swap_horiz_rounded,
+                    size: 17,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
-              child: TextButton.icon(
-                onPressed: _chooseModel,
-                style: TextButton.styleFrom(
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerLow,
-                  foregroundColor:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
-                  minimumSize: const Size(0, 42),
-                  padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
-                  shape: const StadiumBorder(),
-                ),
-                icon: const Icon(Icons.expand_more_rounded, size: 17),
-                iconAlignment: IconAlignment.end,
-                label: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 132),
-                  child: Text(
-                    _selectedProvider?.selectedModel.isNotEmpty == true
-                        ? _selectedProvider!.selectedModel
-                        : '选择模型',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                    ),
+              child: InkWell(
+                onTap: _showChatModelPicker,
+                borderRadius: BorderRadius.circular(22),
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 42,
+                    maxWidth: 146,
+                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 7, 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedProvider?.name ?? '选择供应商',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              _selectedProvider?.selectedModel ?? '选择模型',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      const Icon(Icons.expand_more_rounded, size: 17),
+                    ],
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
           ],
         ),
         body: DecoratedBox(
@@ -1279,8 +1704,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       keyboardDismissBehavior:
                           ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: const EdgeInsets.fromLTRB(15, 12, 15, 24),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
+                      itemCount: visibleMessageIndices.length,
+                      itemBuilder: (context, visibleIndex) {
+                        final index = visibleMessageIndices[visibleIndex];
                         final message = _messages[index];
                         if (_generating &&
                             _activeRetryIndex == null &&
@@ -1352,6 +1778,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onNew,
     required this.onSelect,
     required this.onDelete,
+    required this.onRename,
     required this.onCharacterPicker,
     required this.onEditCharacter,
     required this.onFavorites,
@@ -1366,6 +1793,7 @@ class _ConversationDrawer extends StatelessWidget {
   final VoidCallback onNew;
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
+  final ValueChanged<Conversation> onRename;
   final VoidCallback onCharacterPicker;
   final VoidCallback onEditCharacter;
   final VoidCallback onFavorites;
@@ -1482,9 +1910,11 @@ class _ConversationDrawer extends StatelessWidget {
                     trailing: PopupMenuButton<String>(
                       tooltip: '对话操作',
                       onSelected: (value) {
+                        if (value == 'rename') onRename(conversation);
                         if (value == 'delete') onDelete(conversation);
                       },
                       itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'rename', child: Text('修改名称')),
                         PopupMenuItem(value: 'delete', child: Text('删除对话')),
                       ],
                     ),

@@ -189,7 +189,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            '不再固定只记 30 条。应用会从最新消息向前保留，直到接近所选 token 预算；共同记忆和命中的世界书另外加入。',
+            '应用会从最新消息向前保留，直到接近所选 token 预算；共同记忆和命中的世界书另外加入。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,

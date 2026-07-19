@@ -8,6 +8,7 @@ class ReplyVariant {
     this.providerId = '',
     this.modelId = '',
     this.reasoning = '',
+    this.reasoningDurationMs = 0,
     this.promptTokens = 0,
     this.completionTokens = 0,
     this.reasoningTokens = 0,
@@ -21,6 +22,7 @@ class ReplyVariant {
   final String providerId;
   final String modelId;
   final String reasoning;
+  final int reasoningDurationMs;
   final int promptTokens;
   final int completionTokens;
   final int reasoningTokens;
@@ -30,6 +32,7 @@ class ReplyVariant {
   ReplyVariant copyWith({
     String? text,
     String? reasoning,
+    int? reasoningDurationMs,
     int? promptTokens,
     int? completionTokens,
     int? reasoningTokens,
@@ -43,6 +46,7 @@ class ReplyVariant {
       providerId: providerId,
       modelId: modelId,
       reasoning: reasoning ?? this.reasoning,
+      reasoningDurationMs: reasoningDurationMs ?? this.reasoningDurationMs,
       promptTokens: promptTokens ?? this.promptTokens,
       completionTokens: completionTokens ?? this.completionTokens,
       reasoningTokens: reasoningTokens ?? this.reasoningTokens,
@@ -58,6 +62,7 @@ class ReplyVariant {
         'providerId': providerId,
         'modelId': modelId,
         'reasoning': reasoning,
+        'reasoningDurationMs': reasoningDurationMs,
         'promptTokens': promptTokens,
         'completionTokens': completionTokens,
         'reasoningTokens': reasoningTokens,
@@ -75,6 +80,7 @@ class ReplyVariant {
       providerId: json['providerId'] as String? ?? '',
       modelId: json['modelId'] as String? ?? '',
       reasoning: json['reasoning'] as String? ?? '',
+      reasoningDurationMs: json['reasoningDurationMs'] as int? ?? 0,
       promptTokens: json['promptTokens'] as int? ?? 0,
       completionTokens: json['completionTokens'] as int? ?? 0,
       reasoningTokens: json['reasoningTokens'] as int? ?? 0,
@@ -91,6 +97,7 @@ class ChatMessage {
     required String text,
     required this.sentAt,
     String reasoning = '',
+    this.reasoningDurationMs = 0,
     this.promptTokens = 0,
     this.completionTokens = 0,
     this.reasoningTokens = 0,
@@ -98,6 +105,7 @@ class ChatMessage {
     this.isRetracted = false,
     this.replyVariants = const [],
     this.activeVariantIndex = 0,
+    this.branchBindings = const {},
   })  : _text = text,
         _reasoning = reasoning;
 
@@ -105,6 +113,7 @@ class ChatMessage {
   final MessageAuthor author;
   final String _text;
   final String _reasoning;
+  final int reasoningDurationMs;
   final DateTime sentAt;
   final int promptTokens;
   final int completionTokens;
@@ -113,6 +122,7 @@ class ChatMessage {
   final bool isRetracted;
   final List<ReplyVariant> replyVariants;
   final int activeVariantIndex;
+  final Map<String, String> branchBindings;
 
   int get _safeVariantIndex {
     if (replyVariants.isEmpty || activeVariantIndex < 0) return 0;
@@ -132,6 +142,8 @@ class ChatMessage {
       activeVariant?.completionTokens ?? completionTokens;
   int get usedReasoningTokens =>
       activeVariant?.reasoningTokens ?? reasoningTokens;
+  int get usedReasoningDurationMs =>
+      activeVariant?.reasoningDurationMs ?? reasoningDurationMs;
   int get usedTotalTokens => activeVariant?.totalTokens ?? totalTokens;
   bool get isLiked => activeVariant?.isLiked ?? false;
   int get variantCount => replyVariants.isEmpty ? 1 : replyVariants.length;
@@ -140,6 +152,7 @@ class ChatMessage {
   ChatMessage copyWith({
     String? text,
     String? reasoning,
+    int? reasoningDurationMs,
     int? promptTokens,
     int? completionTokens,
     int? reasoningTokens,
@@ -147,6 +160,7 @@ class ChatMessage {
     bool? isRetracted,
     List<ReplyVariant>? replyVariants,
     int? activeVariantIndex,
+    Map<String, String>? branchBindings,
   }) {
     return ChatMessage(
       id: id,
@@ -154,6 +168,7 @@ class ChatMessage {
       text: text ?? _text,
       sentAt: sentAt,
       reasoning: reasoning ?? _reasoning,
+      reasoningDurationMs: reasoningDurationMs ?? this.reasoningDurationMs,
       promptTokens: promptTokens ?? this.promptTokens,
       completionTokens: completionTokens ?? this.completionTokens,
       reasoningTokens: reasoningTokens ?? this.reasoningTokens,
@@ -161,6 +176,7 @@ class ChatMessage {
       isRetracted: isRetracted ?? this.isRetracted,
       replyVariants: replyVariants ?? this.replyVariants,
       activeVariantIndex: activeVariantIndex ?? this.activeVariantIndex,
+      branchBindings: branchBindings ?? this.branchBindings,
     );
   }
 
@@ -180,6 +196,7 @@ class ChatMessage {
               text: _text,
               generatedAt: sentAt,
               reasoning: _reasoning,
+              reasoningDurationMs: reasoningDurationMs,
               promptTokens: promptTokens,
               completionTokens: completionTokens,
               reasoningTokens: reasoningTokens,
@@ -202,6 +219,7 @@ class ChatMessage {
               text: _text,
               generatedAt: sentAt,
               reasoning: _reasoning,
+              reasoningDurationMs: reasoningDurationMs,
               promptTokens: promptTokens,
               completionTokens: completionTokens,
               reasoningTokens: reasoningTokens,
@@ -227,6 +245,7 @@ class ChatMessage {
         'author': author.name,
         'text': text,
         'reasoning': reasoning,
+        'reasoningDurationMs': usedReasoningDurationMs,
         'promptTokens': usedPromptTokens,
         'completionTokens': usedCompletionTokens,
         'reasoningTokens': usedReasoningTokens,
@@ -236,6 +255,7 @@ class ChatMessage {
         'replyVariants':
             replyVariants.map((variant) => variant.toJson()).toList(),
         'activeVariantIndex': activeVariantIndex,
+        'branchBindings': branchBindings,
       };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) {
@@ -255,6 +275,7 @@ class ChatMessage {
       text: json['text'] as String? ?? '',
       sentAt: DateTime.parse(json['sentAt']! as String),
       reasoning: json['reasoning'] as String? ?? '',
+      reasoningDurationMs: json['reasoningDurationMs'] as int? ?? 0,
       promptTokens: json['promptTokens'] as int? ?? 0,
       completionTokens: json['completionTokens'] as int? ?? 0,
       reasoningTokens: json['reasoningTokens'] as int? ?? 0,
@@ -262,6 +283,10 @@ class ChatMessage {
       isRetracted: json['isRetracted'] as bool? ?? false,
       replyVariants: variants,
       activeVariantIndex: json['activeVariantIndex'] as int? ?? 0,
+      branchBindings: (json['branchBindings'] as Map?)?.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ) ??
+          const {},
     );
   }
 }

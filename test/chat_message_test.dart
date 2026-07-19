@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:character_chat_app/models/chat_message.dart';
+import 'package:character_chat_app/models/conversation.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +23,39 @@ void main() {
     expect(restored.author, original.author);
     expect(restored.text, original.text);
     expect(restored.sentAt, original.sentAt);
+  });
+
+  test('reply timing and branch bindings survive JSON round trip', () {
+    final original = ChatMessage(
+      id: 'branch-user',
+      author: MessageAuthor.user,
+      text: '走另一条路。',
+      sentAt: DateTime.utc(2026, 7, 19),
+      branchBindings: const {'reply-1': 'variant-2'},
+      reasoningDurationMs: 2300,
+    );
+
+    final restored = ChatMessage.fromJson(original.toJson());
+
+    expect(restored.branchBindings, const {'reply-1': 'variant-2'});
+    expect(restored.usedReasoningDurationMs, 2300);
+  });
+
+  test('conversation branch summaries survive JSON round trip', () {
+    final original = Conversation(
+      id: 'conversation-1',
+      characterId: 'character-lin',
+      title: '雨夜',
+      createdAt: DateTime.utc(2026, 7, 19),
+      updatedAt: DateTime.utc(2026, 7, 19, 1),
+      branchSummaries: const {'root': '他们约好雨停后出门。'},
+      summarizedThroughMessageIds: const {'root': 'message-20'},
+    );
+
+    final restored = Conversation.fromJson(original.toJson());
+
+    expect(restored.branchSummaries['root'], '他们约好雨停后出门。');
+    expect(restored.summarizedThroughMessageIds['root'], 'message-20');
   });
 
   test('provider profile builds a chat completions endpoint', () {

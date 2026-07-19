@@ -94,7 +94,7 @@ class CharacterChatApp extends StatelessWidget {
         drawerTheme: const DrawerThemeData(
           backgroundColor: Color(0xFFFBFCFA),
           surfaceTintColor: Colors.transparent,
-          width: 350,
+          width: 304,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
           ),
