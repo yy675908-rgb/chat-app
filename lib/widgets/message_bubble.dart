@@ -25,6 +25,7 @@ class MessageBubble extends StatelessWidget {
     this.onPreviousVariant,
     this.onNextVariant,
     this.onLike,
+    this.onEdit,
     this.retryModels = const [],
     this.onRetryWithModel,
     super.key,
@@ -37,6 +38,7 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onPreviousVariant;
   final VoidCallback? onNextVariant;
   final VoidCallback? onLike;
+  final VoidCallback? onEdit;
   final List<RetryModelOption> retryModels;
   final ValueChanged<RetryModelOption>? onRetryWithModel;
 
@@ -80,32 +82,56 @@ class MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(58, 7, 2, 7),
         child: Align(
           alignment: Alignment.centerRight,
-          child: Material(
-            color: scheme.primaryContainer,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(22),
-              topRight: Radius.circular(22),
-              bottomLeft: Radius.circular(22),
-              bottomRight: Radius.circular(7),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onLongPress: () => _copy(context),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 11,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Material(
+                color: scheme.primaryContainer,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(22),
+                  topRight: Radius.circular(22),
+                  bottomLeft: Radius.circular(22),
+                  bottomRight: Radius.circular(7),
                 ),
-                child: SelectableText(
-                  message.isRetracted ? '撤回了一句话' : message.text,
-                  style: TextStyle(
-                    color: scheme.onPrimaryContainer,
-                    fontSize: 15.5,
-                    height: 1.45,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onLongPress: () => _copy(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                    child: SelectableText(
+                      message.isRetracted ? '撤回了一句话' : message.text,
+                      style: TextStyle(
+                        color: scheme.onPrimaryContainer,
+                        fontSize: 15.5,
+                        height: 1.45,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+              if (showActions) ...[
+                const SizedBox(height: 5),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BubbleAction(
+                      tooltip: '编辑',
+                      icon: Icons.edit_outlined,
+                      onPressed: onEdit,
+                    ),
+                    const SizedBox(width: 6),
+                    _BubbleAction(
+                      tooltip: '复制',
+                      icon: Icons.copy_rounded,
+                      onPressed: () => _copy(context),
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -230,6 +256,11 @@ class MessageBubble extends StatelessWidget {
                           tooltip: '复制',
                           icon: Icons.copy_rounded,
                           onPressed: () => _copy(context),
+                        ),
+                        _BubbleAction(
+                          tooltip: '编辑',
+                          icon: Icons.edit_outlined,
+                          onPressed: onEdit,
                         ),
                         _BubbleAction(
                           tooltip: message.isLiked ? '取消喜欢' : '喜欢并收藏',

@@ -106,6 +106,7 @@ class ChatMessage {
     this.replyVariants = const [],
     this.activeVariantIndex = 0,
     this.branchBindings = const {},
+    this.speakerCharacterId = '',
   })  : _text = text,
         _reasoning = reasoning;
 
@@ -123,6 +124,7 @@ class ChatMessage {
   final List<ReplyVariant> replyVariants;
   final int activeVariantIndex;
   final Map<String, String> branchBindings;
+  final String speakerCharacterId;
 
   int get _safeVariantIndex {
     if (replyVariants.isEmpty || activeVariantIndex < 0) return 0;
@@ -161,6 +163,7 @@ class ChatMessage {
     List<ReplyVariant>? replyVariants,
     int? activeVariantIndex,
     Map<String, String>? branchBindings,
+    String? speakerCharacterId,
   }) {
     return ChatMessage(
       id: id,
@@ -177,7 +180,16 @@ class ChatMessage {
       replyVariants: replyVariants ?? this.replyVariants,
       activeVariantIndex: activeVariantIndex ?? this.activeVariantIndex,
       branchBindings: branchBindings ?? this.branchBindings,
+      speakerCharacterId: speakerCharacterId ?? this.speakerCharacterId,
     );
+  }
+
+  ChatMessage editText(String value) {
+    if (replyVariants.isEmpty) return copyWith(text: value);
+    final variants = [...replyVariants];
+    final index = _safeVariantIndex;
+    variants[index] = variants[index].copyWith(text: value);
+    return copyWith(replyVariants: variants);
   }
 
   ChatMessage selectVariant(int index) {
@@ -256,6 +268,7 @@ class ChatMessage {
             replyVariants.map((variant) => variant.toJson()).toList(),
         'activeVariantIndex': activeVariantIndex,
         'branchBindings': branchBindings,
+        'speakerCharacterId': speakerCharacterId,
       };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) {
@@ -287,6 +300,7 @@ class ChatMessage {
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           const {},
+      speakerCharacterId: json['speakerCharacterId'] as String? ?? '',
     );
   }
 }

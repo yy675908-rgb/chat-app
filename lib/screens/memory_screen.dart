@@ -105,14 +105,25 @@ class _MemoryScreenState extends State<MemoryScreen>
       initialValue: index == null ? '' : _memories[index],
     );
     if (value == null || value.isEmpty) return;
-    setState(() {
-      if (index == null) {
-        if (!_memories.contains(value)) _memories.add(value);
-      } else {
-        _memories[index] = value;
-      }
-    });
-    await _store.saveMemories(_memories);
+    final next = [..._memories];
+    if (index == null) {
+      if (!next.contains(value)) next.add(value);
+    } else {
+      next[index] = value;
+    }
+    await _saveAndReloadMemories(next);
+  }
+
+  Future<void> _saveAndReloadMemories(List<String> next) async {
+    try {
+      final saved = await _store.saveMemories(next);
+      if (!saved) throw StateError('本地存储未确认写入');
+      final latest = await _store.loadMemories();
+      if (!mounted) return;
+      setState(() => _memories = latest);
+    } on Object catch (error) {
+      _notice('记忆保存失败：$error');
+    }
   }
 
   Future<void> _addOrEditPreference([int? index]) async {
@@ -136,16 +147,11 @@ class _MemoryScreenState extends State<MemoryScreen>
     required bool memory,
     required int index,
   }) async {
-    setState(() {
-      if (memory) {
-        _memories.removeAt(index);
-      } else {
-        _preferences.removeAt(index);
-      }
-    });
     if (memory) {
-      await _store.saveMemories(_memories);
+      final next = [..._memories]..removeAt(index);
+      await _saveAndReloadMemories(next);
     } else {
+      setState(() => _preferences.removeAt(index));
       await _store.saveStylePreferences(_preferences);
     }
   }
@@ -563,4 +569,3 @@ class _MemoryEmptyState extends StatelessWidget {
     );
   }
 }
-

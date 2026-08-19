@@ -21,6 +21,7 @@ class ChatStore {
   static const _selectedCharacterKey = 'selected_character_v2';
   static const _reasoningExpandedKey = 'reasoning_expanded_v1';
   static const _contextTokenBudgetKey = 'context_token_budget_v1';
+  static const _globalSystemPromptKey = 'global_system_prompt_v1';
 
   Future<List<Conversation>> loadConversations({String? characterId}) async {
     final preferences = await SharedPreferences.getInstance();
@@ -37,7 +38,11 @@ class ChatStore {
         conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         if (characterId == null) return conversations;
         final matching = conversations
-            .where((item) => item.characterId == characterId)
+            .where(
+              (item) =>
+                  item.characterId == characterId ||
+                  item.participantIds.contains(characterId),
+            )
             .toList();
         if (matching.isNotEmpty) return matching;
       } on Object {
@@ -87,7 +92,11 @@ class ChatStore {
         }
       }
       items = [
-        ...existing.where((item) => item.characterId != characterId),
+        ...existing.where(
+          (item) =>
+              item.characterId != characterId &&
+              !item.participantIds.contains(characterId),
+        ),
         ...conversations,
       ];
     }
@@ -142,21 +151,38 @@ class ChatStore {
     return preferences.getStringList(_memoriesKey) ?? const [];
   }
 
-  Future<void> saveMemories(List<String> memories) async {
+  Future<bool> saveMemories(List<String> memories) async {
     final preferences = await SharedPreferences.getInstance();
     final normalized = memories
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toSet()
         .toList();
-    await preferences.setStringList(_memoriesKey, normalized);
+    return preferences.setStringList(_memoriesKey, normalized);
   }
 
   Future<void> addMemory(String memory) async {
     final preferences = await SharedPreferences.getInstance();
     final memories = preferences.getStringList(_memoriesKey) ?? <String>[];
-    if (!memories.contains(memory)) memories.add(memory);
+    final value = memory.trim();
+    if (value.isEmpty) return;
+    if (!memories.contains(value)) memories.add(value);
     await preferences.setStringList(_memoriesKey, memories);
+  }
+
+  Future<String> loadGlobalSystemPrompt() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_globalSystemPromptKey)?.trim() ?? '';
+  }
+
+  Future<void> saveGlobalSystemPrompt(String prompt) async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = prompt.trim();
+    if (value.isEmpty) {
+      await preferences.remove(_globalSystemPromptKey);
+    } else {
+      await preferences.setString(_globalSystemPromptKey, value);
+    }
   }
 
   Future<List<String>> loadStylePreferences() async {

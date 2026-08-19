@@ -10,14 +10,19 @@ class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({
     required this.reasoningExpanded,
     required this.contextTokenBudget,
+    required this.globalSystemPrompt,
     required this.onSave,
     super.key,
   });
 
   final bool reasoningExpanded;
   final int contextTokenBudget;
-  final Future<void> Function(bool reasoningExpanded, int contextTokenBudget)
-      onSave;
+  final String globalSystemPrompt;
+  final Future<void> Function(
+    bool reasoningExpanded,
+    int contextTokenBudget,
+    String globalSystemPrompt,
+  ) onSave;
 
   @override
   State<AppSettingsScreen> createState() => _AppSettingsScreenState();
@@ -29,6 +34,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool _saving = false;
   bool _backupBusy = false;
   final _backupService = BackupService();
+  late final TextEditingController _globalPromptController;
 
   static const _budgets = <int, String>{
     16000: '轻量 · 约 16K',
@@ -44,12 +50,19 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _contextTokenBudget = _budgets.containsKey(widget.contextTokenBudget)
         ? widget.contextTokenBudget
         : 32000;
+    _globalPromptController = TextEditingController(
+      text: widget.globalSystemPrompt,
+    );
   }
 
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
-    await widget.onSave(_reasoningExpanded, _contextTokenBudget);
+    await widget.onSave(
+      _reasoningExpanded,
+      _contextTokenBudget,
+      _globalPromptController.text.trim(),
+    );
     if (!mounted) return;
     Navigator.pop(context);
   }
@@ -58,7 +71,11 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     if (_backupBusy) return;
     setState(() => _backupBusy = true);
     try {
-      await widget.onSave(_reasoningExpanded, _contextTokenBudget);
+      await widget.onSave(
+        _reasoningExpanded,
+        _contextTokenBudget,
+        _globalPromptController.text.trim(),
+      );
       final data = await _backupService.createBackup();
       final now = DateTime.now();
       String two(int value) => value.toString().padLeft(2, '0');
@@ -129,6 +146,12 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   }
 
   @override
+  void dispose() {
+    _globalPromptController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -194,6 +217,25 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            '全局系统提示词',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _globalPromptController,
+            minLines: 6,
+            maxLines: 14,
+            decoration: const InputDecoration(
+              labelText: '隐藏规则与禁忌',
+              hintText: '例如：日常回复控制在1—3句话；不要使用某些表达……',
+              helperText: '会在每个角色设定之前发送给模型，不显示在聊天中',
+              alignLabelWithHint: true,
+              filled: true,
+              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 24),

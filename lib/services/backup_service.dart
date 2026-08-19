@@ -53,6 +53,7 @@ class BackupService {
       'characterMoods': characterMoods,
       'reasoningExpanded': await _chatStore.loadReasoningExpanded(),
       'contextTokenBudget': await _chatStore.loadContextTokenBudget(),
+      'globalSystemPrompt': await _chatStore.loadGlobalSystemPrompt(),
       'providers': providers.map((provider) => provider.toJson()).toList(),
       'selectedProviderId': await _providerStore.loadSelectedProviderId(),
       'apiKeysIncluded': false,
@@ -154,6 +155,9 @@ class BackupService {
     );
     await _chatStore.saveContextTokenBudget(
       data['contextTokenBudget'] as int? ?? 32000,
+    );
+    await _chatStore.saveGlobalSystemPrompt(
+      data['globalSystemPrompt']?.toString() ?? '',
     );
 
     final providers = (data['providers'] as List<dynamic>? ?? const [])

@@ -41,6 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _stylePreferences = [];
   List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
+  String _globalSystemPrompt = '';
   bool _reasoningExpanded = true;
   int _contextTokenBudget = 32000;
   List<ProviderProfile> _providers = const [];
@@ -56,6 +57,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage>? _activeRetrySnapshot;
   bool _compressionPromptActive = false;
   int _compressionPromptedAtCount = 0;
+  bool _pointerHoldingMessages = false;
+  bool _followStreamingOutput = true;
 
   @override
   void initState() {
@@ -77,6 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final characterMood = await _chatStore.loadCharacterMood(profile.id);
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
+    final globalSystemPrompt = await _chatStore.loadGlobalSystemPrompt();
     final conversations = await _chatStore.loadConversations(
       characterId: profile.id,
     );
@@ -88,7 +92,11 @@ class _ChatScreenState extends State<ChatScreen> {
       orElse: () => providers.first,
     );
     await _providerStore.saveSelectedProviderId(selected.id);
-    final messages = await _messagesWithGreeting(current.id, profile);
+    final messages = await _messagesWithGreeting(
+      current.id,
+      profile,
+      isGroup: current.isGroup,
+    );
     if (!mounted) return;
     setState(() {
       _profile = profile;
@@ -99,6 +107,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _characterMood = characterMood;
       _reasoningExpanded = reasoningExpanded;
       _contextTokenBudget = contextTokenBudget;
+      _globalSystemPrompt = globalSystemPrompt;
       _conversations = conversations;
       _currentConversation = current;
       _providers = providers;
@@ -112,15 +121,17 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<List<ChatMessage>> _messagesWithGreeting(
     String conversationId,
     CharacterProfile profile,
+    {bool isGroup = false}
   ) async {
     final messages = await _chatStore.loadMessages(conversationId);
     if (messages.isEmpty) {
       messages.add(
         ChatMessage(
           id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-          author: MessageAuthor.character,
-          text: profile.greeting,
+          author: isGroup ? MessageAuthor.system : MessageAuthor.character,
+          text: isGroup ? '群聊已创建' : profile.greeting,
           sentAt: DateTime.now(),
+          speakerCharacterId: isGroup ? '' : profile.id,
         ),
       );
       await _chatStore.saveMessages(conversationId, messages);
@@ -146,13 +157,164 @@ class _ChatScreenState extends State<ChatScreen> {
       conversations,
       characterId: _profile.id,
     );
-    final messages = await _messagesWithGreeting(conversation.id, _profile);
+    final messages = await _messagesWithGreeting(
+      conversation.id,
+      _profile,
+      isGroup: conversation.isGroup,
+    );
     if (!mounted) return;
     Navigator.of(context).maybePop();
     setState(() {
       _conversations = conversations;
       _currentConversation = conversation;
       _messages = messages;
+    });
+    _scrollToBottom(jump: true);
+  }
+
+  Future<void> _newGroupConversation() async {
+    if (_generating) {
+      _stopGenerating();
+      return;
+    }
+    if (_characters.length < 2) {
+      _showMessage('至少添加两个角色后才能创建群聊');
+      return;
+    }
+    _scaffoldKey.currentState?.closeDrawer();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    final selectedIds = _characters.map((item) => item.id).toSet();
+    final titleController = TextEditingController();
+    final draft = await showModalBottomSheet<_GroupDraft>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              0,
+              18,
+              MediaQuery.viewInsetsOf(context).bottom + 18,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '创建群聊',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: '群聊名称（可不填）',
+                      filled: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '选择角色 · 已选 ${selectedIds.length}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final character in _characters)
+                          CheckboxListTile(
+                            value: selectedIds.contains(character.id),
+                            title: Text(character.name),
+                            subtitle: character.status.trim().isEmpty
+                                ? null
+                                : Text(character.status),
+                            onChanged: (checked) {
+                              setSheetState(() {
+                                if (checked == true) {
+                                  selectedIds.add(character.id);
+                                } else {
+                                  selectedIds.remove(character.id);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: selectedIds.length < 2
+                        ? null
+                        : () => Navigator.pop(
+                              context,
+                              _GroupDraft(
+                                title: titleController.text.trim(),
+                                participantIds: selectedIds.toList(),
+                              ),
+                            ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    icon: const Icon(Icons.groups_2_outlined),
+                    label: const Text('创建群聊'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    titleController.dispose();
+    if (draft == null) return;
+    final participants = _characters
+        .where((item) => draft.participantIds.contains(item.id))
+        .toList();
+    if (participants.length < 2) return;
+    final now = DateTime.now();
+    final title = draft.title.isEmpty
+        ? participants.map((item) => item.name).join('、')
+        : draft.title;
+    final conversation = Conversation(
+      id: 'conversation-${now.microsecondsSinceEpoch}',
+      characterId: _profile.id,
+      title: title,
+      createdAt: now,
+      updatedAt: now,
+      participantIds: participants.map((item) => item.id).toList(),
+    );
+    final messages = <ChatMessage>[
+      ChatMessage(
+        id: 'group-start-${now.microsecondsSinceEpoch}',
+        author: MessageAuthor.system,
+        text: '群聊成员：${participants.map((item) => item.name).join('、')}',
+        sentAt: now,
+      ),
+    ];
+    final conversations = [conversation, ..._conversations];
+    await _chatStore.saveMessages(conversation.id, messages);
+    await _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _conversations = conversations;
+      _currentConversation = conversation;
+      _messages = messages;
+      _followStreamingOutput = true;
     });
     _scrollToBottom(jump: true);
   }
@@ -166,7 +328,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _stopGenerating();
       return;
     }
-    final messages = await _messagesWithGreeting(conversation.id, _profile);
+    final messages = await _messagesWithGreeting(
+      conversation.id,
+      _profile,
+      isGroup: conversation.isGroup,
+    );
     if (!mounted) return;
     Navigator.of(context).maybePop();
     setState(() {
@@ -215,7 +381,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (_currentConversation?.id == conversation.id) {
       final next = remaining.first;
-      final messages = await _messagesWithGreeting(next.id, _profile);
+      final messages = await _messagesWithGreeting(
+        next.id,
+        _profile,
+        isGroup: next.isGroup,
+      );
       if (!mounted) return;
       setState(() {
         _conversations = remaining;
@@ -461,8 +631,9 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.add(userMessage);
       _controller.clear();
+      _followStreamingOutput = true;
     });
-    _scrollToBottom();
+    _scrollToBottom(force: true);
     await _updateConversationTitle(text);
     await _persistMessages();
     await _queueReply();
@@ -503,6 +674,34 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_isMessageVisible(_messages[index])) index,
       ];
 
+  CharacterProfile? _characterForId(String id) {
+    for (final character in _characters) {
+      if (character.id == id) return character;
+    }
+    return null;
+  }
+
+  List<CharacterProfile> get _groupParticipants {
+    final ids = _currentConversation?.participantIds ?? const <String>[];
+    return _characters.where((item) => ids.contains(item.id)).toList();
+  }
+
+  String _speakerName(ChatMessage message) {
+    if (message.speakerCharacterId.isEmpty) return _profile.name;
+    return _characterForId(message.speakerCharacterId)?.name ?? _profile.name;
+  }
+
+  List<ChatMessage> _historyForModel(List<ChatMessage> history) {
+    if (_currentConversation?.isGroup != true) return history;
+    return history.map((message) {
+      if (message.author == MessageAuthor.system) return message;
+      final speaker = message.author == MessageAuthor.user
+          ? '用户'
+          : _speakerName(message);
+      return message.editText('$speaker：${message.text}');
+    }).toList();
+  }
+
   Future<void> _queueReply() async {
     _replyQueued = true;
     if (_drainingReplies) return;
@@ -511,16 +710,144 @@ class _ChatScreenState extends State<ChatScreen> {
       while (_replyQueued && mounted) {
         _replyQueued = false;
         if (!await _ensureProviderConfigured()) return;
-        await _requestReply();
+        if (_currentConversation?.isGroup == true) {
+          await _requestGroupReplies();
+        } else {
+          await _requestReply();
+        }
       }
     } finally {
       _drainingReplies = false;
     }
   }
 
+  Future<void> _requestGroupReplies() async {
+    _cancelled = false;
+    final participants = _groupParticipants;
+    if (participants.length < 2) {
+      _showMessage('这个群聊的有效角色不足两个');
+      return;
+    }
+    final visible = _messages.where(_isMessageVisible).toList();
+    ChatMessage? latestUser;
+    for (var index = visible.length - 1; index >= 0; index--) {
+      if (visible[index].author == MessageAuthor.user) {
+        latestUser = visible[index];
+        break;
+      }
+    }
+    if (latestUser == null) return;
+    final mentioned = <CharacterProfile>[];
+    for (final character in participants) {
+      final name = character.name.trim();
+      if (name.isEmpty) continue;
+      final text = latestUser.text;
+      if (text.contains('@$name') ||
+          text.startsWith('$name，') ||
+          text.startsWith('$name,') ||
+          text.startsWith('$name：') ||
+          text.startsWith('$name:')) {
+        mentioned.add(character);
+      }
+    }
+    final spokenIds = <String>[];
+    CharacterProfile? lastSpeaker;
+    const maxGroupTurns = 5;
+    for (var turn = 0; turn < maxGroupTurns; turn++) {
+      if (!mounted || _cancelled) return;
+      CharacterProfile? speaker;
+      if (mentioned.isNotEmpty) {
+        speaker = mentioned.removeAt(0);
+      } else {
+        speaker = await _selectNextGroupSpeaker(
+          participants: participants,
+          spokenIds: spokenIds,
+          lastSpeakerId: lastSpeaker?.id ?? '',
+        );
+      }
+      if (speaker == null) break;
+      final beforeCount = _messages.length;
+      await _requestReply(characterOverride: speaker);
+      if (_cancelled || _messages.length <= beforeCount) break;
+      final latest = _messages.last;
+      if (latest.author != MessageAuthor.character ||
+          latest.text.trim().isEmpty) {
+        break;
+      }
+      spokenIds.add(speaker.id);
+      lastSpeaker = speaker;
+    }
+  }
+
+  Future<CharacterProfile?> _selectNextGroupSpeaker({
+    required List<CharacterProfile> participants,
+    required List<String> spokenIds,
+    required String lastSpeakerId,
+  }) async {
+    final provider = _selectedProvider;
+    if (provider == null) return null;
+    final apiKey = await _providerStore.loadApiKey(provider.id);
+    if (apiKey.trim().isEmpty) return null;
+    final visible = _messages.where(_isMessageVisible).toList();
+    final start = visible.length > 14 ? visible.length - 14 : 0;
+    final transcript = visible.sublist(start).map((message) {
+      final speaker = message.author == MessageAuthor.user
+          ? '用户'
+          : message.author == MessageAuthor.character
+              ? _speakerName(message)
+              : '系统';
+      return '$speaker：${message.text}';
+    }).join('\n');
+    final roster = participants.map((character) {
+      final status = character.status.trim().isEmpty
+          ? ''
+          : '；当前状态：${character.status.trim()}';
+      return '- ${character.id} = ${character.name}$status';
+    }).join('\n');
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final request = ChatMessage(
+        id: 'group-router-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text: '群成员：\n$roster\n\n最近对话：\n$transcript\n\n'
+            '本轮已发言角色ID：${spokenIds.isEmpty ? '无' : spokenIds.join(', ')}\n'
+            '上一位发言角色ID：${lastSpeakerId.isEmpty ? '无' : lastSpeakerId}',
+        sentAt: DateTime.now(),
+      );
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: '你是群聊发言调度器，不代写角色回复。'
+            '根据最新对话判断此刻是否有某个角色真正想接话、被点名、被触发，或会自然回应另一角色。'
+            '不要为了让所有人轮流出现而安排发言；沉默完全允许；避免让同一角色连续发言。'
+            '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'
+            '禁止输出解释、名称或其他文字。',
+        history: [request],
+        temperature: 0.2,
+      )) {
+        raw += chunk;
+      }
+      final value = raw.trim().replaceAll(RegExp(r'[`"“”\s]'), '');
+      if (value.toUpperCase().contains('NONE')) return null;
+      for (final character in participants) {
+        if (value.contains(character.id)) return character;
+      }
+      for (final character in participants) {
+        if (value == character.name.trim()) return character;
+      }
+      return null;
+    } on Object {
+      return null;
+    } finally {
+      service.close();
+    }
+  }
+
   Future<void> _requestReply({
     ProviderProfile? providerOverride,
     int? targetReplyIndex,
+    CharacterProfile? characterOverride,
   }) async {
     final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
@@ -531,6 +858,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final isRetry = targetReplyIndex != null;
+    var speakingCharacter = characterOverride ?? _profile;
     late final int replyIndex;
     ChatMessage? originalReply;
     ChatMessage? newReply;
@@ -542,6 +870,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (targetReplyIndex < 0 || targetReplyIndex >= _messages.length) return;
       replyIndex = targetReplyIndex;
       originalReply = _messages[replyIndex];
+      final originalSpeaker = _characterForId(
+        originalReply.speakerCharacterId,
+      );
+      if (characterOverride == null && originalSpeaker != null) {
+        speakingCharacter = originalSpeaker;
+      }
       retrySnapshot = List<ChatMessage>.from(_messages);
       streamingVariant = ReplyVariant(
         id: 'variant-${DateTime.now().microsecondsSinceEpoch}',
@@ -557,6 +891,7 @@ class _ChatScreenState extends State<ChatScreen> {
         text: '',
         sentAt: DateTime.now(),
         branchBindings: _activeBranchBindings(),
+        speakerCharacterId: speakingCharacter.id,
       );
       replyIndex = _messages.length;
     }
@@ -600,8 +935,11 @@ class _ChatScreenState extends State<ChatScreen> {
         .toList();
     final systemPrompt = _assembledSystemPrompt(
       contextMessages: contextMessages,
+      character: speakingCharacter,
     );
-    final recent = _messagesWithinBudget(contextMessages, systemPrompt);
+    final recent = _historyForModel(
+      _messagesWithinBudget(contextMessages, systemPrompt),
+    );
     final service = AiChatService();
     _activeService = service;
     var fullReply = '';
@@ -701,12 +1039,36 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           }
           if (parsedReply.mood.isNotEmpty) {
-            _characterMood = parsedReply.mood;
+            if (_currentConversation?.isGroup != true ||
+                speakingCharacter.id == _profile.id) {
+              _characterMood = parsedReply.mood;
+            }
+          } else {
+            if (_currentConversation?.isGroup != true ||
+                speakingCharacter.id == _profile.id) {
+              _characterMood = '';
+            }
           }
         });
         if (parsedReply.mood.isNotEmpty) {
           unawaited(
-            _chatStore.saveCharacterMood(parsedReply.mood, _profile.id),
+            _chatStore.saveCharacterMood(
+              parsedReply.mood,
+              speakingCharacter.id,
+            ),
+          );
+        } else {
+          unawaited(
+            _chatStore.saveCharacterMood('', speakingCharacter.id),
+          );
+          unawaited(
+            _deriveMoodFromLatestTurn(
+              provider: provider,
+              apiKey: apiKey,
+              contextMessages: contextMessages,
+              replyText: replyText,
+              character: speakingCharacter,
+            ),
           );
         }
       }
@@ -816,6 +1178,66 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _editMessage(int messageIndex) async {
+    if (_generating ||
+        messageIndex < 0 ||
+        messageIndex >= _messages.length) {
+      return;
+    }
+    final original = _messages[messageIndex];
+    final controller = TextEditingController(text: original.text);
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          2,
+          18,
+          MediaQuery.viewInsetsOf(context).bottom + 18,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '编辑消息',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 12,
+              decoration: const InputDecoration(
+                alignLabelWithHint: true,
+                filled: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                controller.text.trim(),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: const Text('保存修改'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (value == null || value.isEmpty || value == original.text) return;
+    setState(() => _messages[messageIndex] = original.editText(value));
+    await _persistMessages();
+  }
+
   Future<void> _extractStylePreference(
     int messageIndex,
     ChatMessage likedReply,
@@ -908,7 +1330,7 @@ class _ChatScreenState extends State<ChatScreen> {
           entries.add(
             FavoriteReplyEntry(
               conversationTitle: conversation.title,
-              characterName: _profile.name,
+              characterName: _speakerName(message),
               text: variant.text,
               generatedAt: variant.generatedAt,
               modelId: variant.modelId,
@@ -978,7 +1400,11 @@ class _ChatScreenState extends State<ChatScreen> {
     return entries.map((entry) => '${entry.key}=${entry.value}').join('|');
   }
 
-  String _assembledSystemPrompt({List<ChatMessage>? contextMessages}) {
+  String _assembledSystemPrompt({
+    List<ChatMessage>? contextMessages,
+    CharacterProfile? character,
+  }) {
+    final activeCharacter = character ?? _profile;
     final now = DateTime.now().toLocal();
     ChatMessage? lastReply;
     for (var index = _messages.length - 1; index >= 0; index--) {
@@ -1036,9 +1462,27 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n其他近期对话的简短摘要（仅在相关时参考）：\n'
             '${previousSummaries.join('\n')}';
-    const moodInstruction = '\n\n回复正文结束后，必须另起一行输出“[[心绪:……]]”。'
-        '由角色自行选择只用一个小表情、简短文字，或两者组合；不超过12个字，不要在正文解释这行。';
-    return '${_profile.systemPrompt}\n\n'
+    final previousMood = activeCharacter.id == _profile.id &&
+            _characterMood.isNotEmpty
+        ? _characterMood
+        : '未记录';
+    final moodInstruction = '\n\n心绪输出规则：心绪只描述角色读完用户最新消息、'
+        '完成本轮回复后的即时内在状态，必须结合本轮内容重新判断，不能输出无关状态。'
+        '上一轮心绪是“$previousMood”，可以保持，也可以自然变化。'
+        '有鲜明情绪时优先使用一个贴切的 emoji、颜文字或“短词+emoji”。'
+        '回复正文结束后必须另起一行，严格输出“[[心绪:……]]”；'
+        '内容1—12个字，不要在正文解释。';
+    final globalPrompt = _globalSystemPrompt.isEmpty
+        ? ''
+        : '${_globalSystemPrompt.trim()}\n\n';
+    final groupInstruction = _currentConversation?.isGroup == true
+        ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
+            '只能输出这个角色的一次自然发言，不得代替其他成员说话，也不要列出多人回复。'
+            '你可以直接回应用户或其他角色，也可以自然点到另一位角色；'
+            '其他角色是否接话由系统另行判断。'
+            '群成员：${_groupParticipants.map((item) => item.name).join('、')}。'
+        : '';
+    return '$globalPrompt${activeCharacter.systemPrompt}$groupInstruction\n\n'
         '$context$memoryText$preferenceText$worldBookText'
         '$summaryText$previousSummaryText$moodInstruction';
   }
@@ -1085,10 +1529,77 @@ class _ChatScreenState extends State<ChatScreen> {
     if (match == null) return _TaggedReply(text: raw.trim(), mood: '');
     final text = '${raw.substring(0, match.start)}${raw.substring(match.end)}'
         .trim();
-    final mood = (match.group(1) ?? '')
+    final mood = _normalizeMood(match.group(1) ?? '');
+    return _TaggedReply(text: text, mood: mood);
+  }
+
+  String _normalizeMood(String raw) {
+    var value = raw
+        .replaceAll(RegExp(r'[\[\]\r\n]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return _TaggedReply(text: text, mood: mood);
+    if (value.characters.length > 12) {
+      value = value.characters.take(12).join();
+    }
+    return value;
+  }
+
+  Future<void> _deriveMoodFromLatestTurn({
+    required ProviderProfile provider,
+    required String apiKey,
+    required List<ChatMessage> contextMessages,
+    required String replyText,
+    required CharacterProfile character,
+  }) async {
+    ChatMessage? latestUser;
+    for (var index = contextMessages.length - 1; index >= 0; index--) {
+      if (contextMessages[index].author == MessageAuthor.user) {
+        latestUser = contextMessages[index];
+        break;
+      }
+    }
+    if (latestUser == null || replyText.trim().isEmpty) return;
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final request = ChatMessage(
+        id: 'mood-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text: '用户最新消息：${latestUser.text}\n\n'
+            '${character.name}的回复：$replyText',
+        sentAt: DateTime.now(),
+      );
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: '根据最新一轮真实对话，判断角色回复之后的即时心绪。'
+            '必须与这轮内容直接相关；可以只用一个贴切的 emoji、颜文字或简短文字。'
+            '只输出心绪本身，1—12个字，不解释。',
+        history: [request],
+        temperature: 0.3,
+      )) {
+        raw += chunk;
+      }
+      final mood = _normalizeMood(raw);
+      if (mood.isEmpty || !mounted) return;
+      ChatMessage? currentLatestUser;
+      for (var index = _messages.length - 1; index >= 0; index--) {
+        if (_messages[index].author == MessageAuthor.user) {
+          currentLatestUser = _messages[index];
+          break;
+        }
+      }
+      if (currentLatestUser?.id != latestUser.id) return;
+      if (_currentConversation?.isGroup != true ||
+          _profile.id == character.id) {
+        setState(() => _characterMood = mood);
+      }
+      await _chatStore.saveCharacterMood(mood, character.id);
+    } on Object {
+      // The chat reply remains valid even when the optional mood repair fails.
+    } finally {
+      service.close();
+    }
   }
 
   List<ChatMessage> _messagesWithinBudget(
@@ -1217,7 +1728,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final speaker = message.author == MessageAuthor.user
           ? '用户'
           : message.author == MessageAuthor.character
-              ? _profile.name
+              ? _speakerName(message)
               : '系统';
       return '$speaker：${message.text}';
     }).join('\n\n');
@@ -1348,13 +1859,20 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (_) => AppSettingsScreen(
           reasoningExpanded: _reasoningExpanded,
           contextTokenBudget: _contextTokenBudget,
-          onSave: (reasoningExpanded, contextTokenBudget) async {
+          globalSystemPrompt: _globalSystemPrompt,
+          onSave: (
+            reasoningExpanded,
+            contextTokenBudget,
+            globalSystemPrompt,
+          ) async {
             await _chatStore.saveReasoningExpanded(reasoningExpanded);
             await _chatStore.saveContextTokenBudget(contextTokenBudget);
+            await _chatStore.saveGlobalSystemPrompt(globalSystemPrompt);
             if (!mounted) return;
             setState(() {
               _reasoningExpanded = reasoningExpanded;
               _contextTokenBudget = contextTokenBudget;
+              _globalSystemPrompt = globalSystemPrompt;
             });
           },
         ),
@@ -1482,7 +2000,11 @@ class _ChatScreenState extends State<ChatScreen> {
       characterId: profile.id,
     );
     final current = conversations.first;
-    final messages = await _messagesWithGreeting(current.id, profile);
+    final messages = await _messagesWithGreeting(
+      current.id,
+      profile,
+      isGroup: current.isGroup,
+    );
     final mood = await _chatStore.loadCharacterMood(profile.id);
     if (!mounted) return;
     setState(() {
@@ -1512,9 +2034,14 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _scrollToBottom({bool jump = false}) {
+  void _scrollToBottom({bool jump = false, bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
+      if (!jump &&
+          !force &&
+          (_pointerHoldingMessages || !_followStreamingOutput)) {
+        return;
+      }
       final position = _scrollController.position.maxScrollExtent;
       if (jump) {
         _scrollController.jumpTo(position);
@@ -1526,6 +2053,21 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  void _updateStreamingFollow() {
+    if (!_scrollController.hasClients) return;
+    final distance = _scrollController.position.maxScrollExtent -
+        _scrollController.position.pixels;
+    final follow = distance <= 72;
+    if (follow != _followStreamingOutput && mounted) {
+      setState(() => _followStreamingOutput = follow);
+    }
+  }
+
+  void _resumeStreamingFollow() {
+    setState(() => _followStreamingOutput = true);
+    _scrollToBottom(force: true);
   }
 
   @override
@@ -1543,11 +2085,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final overlay = isDark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
-    final characterStatus = _generating
-        ? '正在回复…'
-        : (_characterMood.isNotEmpty
-            ? _characterMood
-            : (_profile.status == '在这里' ? '' : _profile.status));
+    final isGroup = _currentConversation?.isGroup == true;
+    final headerTitle = isGroup
+        ? (_currentConversation?.title ?? '群聊')
+        : _profile.name;
+    final characterStatus = isGroup
+        ? (_generating ? '群聊中…' : '${_groupParticipants.length} 位角色')
+        : (_generating
+            ? '正在回复…'
+            : (_characterMood.isNotEmpty
+                ? _characterMood
+                : (_profile.status == '在这里' ? '' : _profile.status)));
     final visibleMessageIndices = _visibleMessageIndices;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
@@ -1561,6 +2109,7 @@ class _ChatScreenState extends State<ChatScreen> {
           conversations: _conversations,
           selectedId: _currentConversation?.id,
           onNew: _newConversation,
+          onNewGroup: _newGroupConversation,
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
           onRename: _renameConversation,
@@ -1579,7 +2128,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           titleSpacing: 2,
           title: InkWell(
-            onTap: _showCharacterPicker,
+            onTap: isGroup ? null : _showCharacterPicker,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
@@ -1591,7 +2140,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _profile.name,
+                          headerTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1617,7 +2166,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(width: 2),
                   Icon(
-                    Icons.swap_horiz_rounded,
+                    isGroup
+                        ? Icons.groups_2_outlined
+                        : Icons.swap_horiz_rounded,
                     size: 17,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1699,60 +2250,124 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: _scrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(15, 12, 15, 24),
-                      itemCount: visibleMessageIndices.length,
-                      itemBuilder: (context, visibleIndex) {
-                        final index = visibleMessageIndices[visibleIndex];
-                        final message = _messages[index];
-                        if (_generating &&
-                            _activeRetryIndex == null &&
-                            message.id == _activeReplyId &&
-                            message.author == MessageAuthor.character &&
-                            message.text.isEmpty &&
-                            message.reasoning.isEmpty) {
-                          return _ThinkingRow(name: _profile.name);
-                        }
-                        final canUseActions =
-                            message.author == MessageAuthor.character &&
-                            message.text.isNotEmpty &&
-                            !_generating;
-                        return MessageBubble(
-                          message: message,
-                          characterName: _profile.name,
-                          reasoningInitiallyExpanded: _reasoningExpanded,
-                          showActions:
-                              message.author == MessageAuthor.character &&
-                              message.text.isNotEmpty,
-                          onPreviousVariant: canUseActions &&
-                                  message.activeVariantIndex > 0
-                              ? () => _moveVariant(index, -1)
-                              : null,
-                          onNextVariant: canUseActions &&
-                                  message.activeVariantIndex <
-                                      message.replyVariants.length - 1
-                              ? () => _moveVariant(index, 1)
-                              : null,
-                          onLike: canUseActions
-                              ? () => _toggleLike(index)
-                              : null,
-                          retryModels: [
-                            for (final provider in _providers)
-                              for (final model in provider.models)
-                                RetryModelOption(
-                                  providerId: provider.id,
-                                  providerName: provider.name,
-                                  modelId: model,
+                  : Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Listener(
+                            onPointerDown: (_) {
+                              _pointerHoldingMessages = true;
+                            },
+                            onPointerUp: (_) {
+                              _pointerHoldingMessages = false;
+                              _updateStreamingFollow();
+                            },
+                            onPointerCancel: (_) {
+                              _pointerHoldingMessages = false;
+                              _updateStreamingFollow();
+                            },
+                            child: NotificationListener<ScrollNotification>(
+                              onNotification: (notification) {
+                                if (notification is ScrollUpdateNotification &&
+                                    notification.dragDetails != null) {
+                                  _updateStreamingFollow();
+                                } else if (notification
+                                    is ScrollEndNotification) {
+                                  _updateStreamingFollow();
+                                }
+                                return false;
+                              },
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                padding: const EdgeInsets.fromLTRB(
+                                  15,
+                                  12,
+                                  15,
+                                  24,
                                 ),
-                          ],
-                          onRetryWithModel: canUseActions
-                              ? (option) => _retryReply(index, option)
-                              : null,
-                        );
-                      },
+                                itemCount: visibleMessageIndices.length,
+                                itemBuilder: (context, visibleIndex) {
+                                  final index =
+                                      visibleMessageIndices[visibleIndex];
+                                  final message = _messages[index];
+                                  if (_generating &&
+                                      _activeRetryIndex == null &&
+                                      message.id == _activeReplyId &&
+                                      message.author ==
+                                          MessageAuthor.character &&
+                                      message.text.isEmpty &&
+                                      message.reasoning.isEmpty) {
+                                    return _ThinkingRow(
+                                      name: _speakerName(message),
+                                    );
+                                  }
+                                  final canUseCharacterActions =
+                                      message.author ==
+                                          MessageAuthor.character &&
+                                      message.text.isNotEmpty &&
+                                      !_generating;
+                                  final canEdit =
+                                      message.author != MessageAuthor.system &&
+                                      message.text.isNotEmpty &&
+                                      !_generating;
+                                  return MessageBubble(
+                                    message: message,
+                                    characterName: _speakerName(message),
+                                    reasoningInitiallyExpanded:
+                                        _reasoningExpanded,
+                                    showActions: canEdit,
+                                    onEdit: canEdit
+                                        ? () => _editMessage(index)
+                                        : null,
+                                    onPreviousVariant:
+                                        canUseCharacterActions &&
+                                                message.activeVariantIndex > 0
+                                            ? () => _moveVariant(index, -1)
+                                            : null,
+                                    onNextVariant:
+                                        canUseCharacterActions &&
+                                                message.activeVariantIndex <
+                                                    message.replyVariants
+                                                            .length -
+                                                        1
+                                            ? () => _moveVariant(index, 1)
+                                            : null,
+                                    onLike: canUseCharacterActions
+                                        ? () => _toggleLike(index)
+                                        : null,
+                                    retryModels: [
+                                      for (final provider in _providers)
+                                        for (final model in provider.models)
+                                          RetryModelOption(
+                                            providerId: provider.id,
+                                            providerName: provider.name,
+                                            modelId: model,
+                                          ),
+                                    ],
+                                    onRetryWithModel: canUseCharacterActions
+                                        ? (option) =>
+                                            _retryReply(index, option)
+                                        : null,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (!_followStreamingOutput)
+                          Positioned(
+                            right: 14,
+                            bottom: 12,
+                            child: FloatingActionButton.small(
+                              tooltip: '回到最新消息',
+                              onPressed: _resumeStreamingFollow,
+                              child: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
             ),
             _Composer(
@@ -1776,6 +2391,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.conversations,
     required this.selectedId,
     required this.onNew,
+    required this.onNewGroup,
     required this.onSelect,
     required this.onDelete,
     required this.onRename,
@@ -1791,6 +2407,7 @@ class _ConversationDrawer extends StatelessWidget {
   final List<Conversation> conversations;
   final String? selectedId;
   final VoidCallback onNew;
+  final VoidCallback onNewGroup;
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
   final ValueChanged<Conversation> onRename;
@@ -1864,14 +2481,32 @@ class _ConversationDrawer extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: FilledButton.tonalIcon(
-                onPressed: onNew,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  alignment: Alignment.centerLeft,
-                ),
-                icon: const Icon(Icons.add_comment_outlined),
-                label: const Text('新对话'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onNew,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        alignment: Alignment.center,
+                      ),
+                      icon: const Icon(Icons.add_comment_outlined),
+                      label: const Text('新对话'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onNewGroup,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        alignment: Alignment.center,
+                      ),
+                      icon: const Icon(Icons.groups_2_outlined),
+                      label: const Text('新群聊'),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
@@ -1900,6 +2535,12 @@ class _ConversationDrawer extends StatelessWidget {
                     selectedTileColor: scheme.secondaryContainer,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
+                    ),
+                    leading: Icon(
+                      conversation.isGroup
+                          ? Icons.groups_2_outlined
+                          : Icons.chat_bubble_outline_rounded,
+                      size: 19,
                     ),
                     title: Text(
                       conversation.title,
@@ -2189,4 +2830,11 @@ class _ModelChoice {
 
   final ProviderProfile provider;
   final String model;
+}
+
+class _GroupDraft {
+  const _GroupDraft({required this.title, required this.participantIds});
+
+  final String title;
+  final List<String> participantIds;
 }

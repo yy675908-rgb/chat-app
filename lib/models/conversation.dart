@@ -7,6 +7,7 @@ class Conversation {
     required this.updatedAt,
     this.branchSummaries = const {},
     this.summarizedThroughMessageIds = const {},
+    this.participantIds = const [],
   });
 
   final String id;
@@ -16,12 +17,16 @@ class Conversation {
   final DateTime updatedAt;
   final Map<String, String> branchSummaries;
   final Map<String, String> summarizedThroughMessageIds;
+  final List<String> participantIds;
+
+  bool get isGroup => participantIds.length > 1;
 
   Conversation copyWith({
     String? title,
     DateTime? updatedAt,
     Map<String, String>? branchSummaries,
     Map<String, String>? summarizedThroughMessageIds,
+    List<String>? participantIds,
   }) => Conversation(
         id: id,
         characterId: characterId,
@@ -31,6 +36,7 @@ class Conversation {
         branchSummaries: branchSummaries ?? this.branchSummaries,
         summarizedThroughMessageIds:
             summarizedThroughMessageIds ?? this.summarizedThroughMessageIds,
+        participantIds: participantIds ?? this.participantIds,
       );
 
   Map<String, Object?> toJson() => {
@@ -41,6 +47,7 @@ class Conversation {
         'updatedAt': updatedAt.toIso8601String(),
         'branchSummaries': branchSummaries,
         'summarizedThroughMessageIds': summarizedThroughMessageIds,
+        'participantIds': participantIds,
       };
 
   factory Conversation.fromJson(Map<String, Object?> json) => Conversation(
@@ -61,5 +68,10 @@ class Conversation {
                   ),
                 ) ??
                 const {},
+        participantIds: (json['participantIds'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .where((item) => item.isNotEmpty)
+            .toSet()
+            .toList(),
       );
 }

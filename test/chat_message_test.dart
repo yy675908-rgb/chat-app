@@ -41,6 +41,29 @@ void main() {
     expect(restored.usedReasoningDurationMs, 2300);
   });
 
+  test('group speaker and edited active variant survive JSON round trip', () {
+    final original = ChatMessage(
+      id: 'group-reply',
+      author: MessageAuthor.character,
+      text: '原始回复',
+      sentAt: DateTime.utc(2026, 8, 19),
+      speakerCharacterId: 'character-2',
+      replyVariants: [
+        ReplyVariant(
+          id: 'variant-1',
+          text: '第一版',
+          generatedAt: DateTime.utc(2026, 8, 19),
+        ),
+      ],
+    ).editText('编辑后的回复');
+
+    final restored = ChatMessage.fromJson(original.toJson());
+
+    expect(restored.speakerCharacterId, 'character-2');
+    expect(restored.text, '编辑后的回复');
+    expect(restored.replyVariants.single.text, '编辑后的回复');
+  });
+
   test('conversation branch summaries survive JSON round trip', () {
     final original = Conversation(
       id: 'conversation-1',
@@ -56,6 +79,25 @@ void main() {
 
     expect(restored.branchSummaries['root'], '他们约好雨停后出门。');
     expect(restored.summarizedThroughMessageIds['root'], 'message-20');
+  });
+
+  test('group participants survive JSON round trip', () {
+    final original = Conversation(
+      id: 'group-1',
+      characterId: 'character-lin',
+      title: '夜谈',
+      createdAt: DateTime.utc(2026, 8, 19),
+      updatedAt: DateTime.utc(2026, 8, 19),
+      participantIds: const ['character-lin', 'character-2'],
+    );
+
+    final restored = Conversation.fromJson(original.toJson());
+
+    expect(restored.isGroup, isTrue);
+    expect(
+      restored.participantIds,
+      const ['character-lin', 'character-2'],
+    );
   });
 
   test('provider profile builds a chat completions endpoint', () {
