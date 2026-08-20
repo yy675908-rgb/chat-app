@@ -44,8 +44,19 @@ jobs:
       - name: Restore stable Android signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
+          path: /home/runner/.android/debug.keystore
           key: linjian-android-signing-v1
+
+      - name: Create signing key on first build
+        run: |
+          mkdir -p /home/runner/.android
+          if [ ! -f /home/runner/.android/debug.keystore ]; then
+            keytool -genkeypair -noprompt \
+              -keystore /home/runner/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -dname "CN=Linjian,OU=Android,O=Linjian,L=Beijing,C=CN" \
+              -keyalg RSA -keysize 2048 -validity 36500
+          fi
 
       - name: Build release APK
         run: flutter build apk --release
