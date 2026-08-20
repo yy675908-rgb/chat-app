@@ -1901,30 +1901,19 @@ class _ChatScreenState extends State<ChatScreen> {
           reasoningExpanded: _reasoningExpanded,
           contextTokenBudget: _contextTokenBudget,
           userProfile: _userProfile,
-          providers: _providers,
-          selectedProviderId: _selectedProvider?.id,
           onSave: (
             reasoningExpanded,
             contextTokenBudget,
             userProfile,
-            providers,
           ) async {
             await _chatStore.saveReasoningExpanded(reasoningExpanded);
             await _chatStore.saveContextTokenBudget(contextTokenBudget);
             await _chatStore.saveUserProfile(userProfile);
-            await _providerStore.saveProviders(providers);
             if (!mounted) return;
-            final selectedId = _selectedProvider?.id;
-            final selected = providers.firstWhere(
-              (item) => item.id == selectedId,
-              orElse: () => providers.first,
-            );
             setState(() {
               _reasoningExpanded = reasoningExpanded;
               _contextTokenBudget = contextTokenBudget;
               _userProfile = userProfile;
-              _providers = providers;
-              _selectedProvider = selected;
             });
           },
         ),

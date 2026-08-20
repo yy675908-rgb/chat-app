@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../models/provider_profile.dart';
 import '../models/user_profile.dart';
 import '../services/backup_service.dart';
 
@@ -13,8 +12,6 @@ class AppSettingsScreen extends StatefulWidget {
     required this.reasoningExpanded,
     required this.contextTokenBudget,
     required this.userProfile,
-    required this.providers,
-    required this.selectedProviderId,
     required this.onSave,
     super.key,
   });
@@ -22,13 +19,10 @@ class AppSettingsScreen extends StatefulWidget {
   final bool reasoningExpanded;
   final int contextTokenBudget;
   final UserProfile userProfile;
-  final List<ProviderProfile> providers;
-  final String? selectedProviderId;
   final Future<void> Function(
     bool reasoningExpanded,
     int contextTokenBudget,
     UserProfile userProfile,
-    List<ProviderProfile> providers,
   ) onSave;
 
   @override
@@ -41,9 +35,6 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool _saving = false;
   bool _backupBusy = false;
   final _backupService = BackupService();
-  late List<ProviderProfile> _providers;
-  String? _promptTargetKey;
-  late final TextEditingController _modelPromptController;
   late final TextEditingController _userNameController;
   late final TextEditingController _userGenderController;
   late final TextEditingController _userDescriptionController;
@@ -62,83 +53,11 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _contextTokenBudget = _budgets.containsKey(widget.contextTokenBudget)
         ? widget.contextTokenBudget
         : 32000;
-    _providers = [...widget.providers];
-    final targets = _promptTargets;
-    final selectedProvider = _providers.where(
-      (item) => item.id == widget.selectedProviderId,
-    );
-    final preferred = selectedProvider.isEmpty
-        ? null
-        : '${selectedProvider.first.id}\u0000${selectedProvider.first.selectedModel}';
-    _promptTargetKey = targets.any((item) => item.key == preferred)
-        ? preferred
-        : (targets.isEmpty ? null : targets.first.key);
-    _modelPromptController = TextEditingController(text: _currentModelPrompt);
     _userNameController = TextEditingController(text: widget.userProfile.name);
     _userGenderController =
         TextEditingController(text: widget.userProfile.gender);
     _userDescriptionController =
         TextEditingController(text: widget.userProfile.description);
-  }
-
-  List<_ModelPromptTarget> get _promptTargets => _providers
-      .expand(
-        (provider) => {
-          ...provider.models,
-          if (provider.selectedModel.isNotEmpty) provider.selectedModel,
-        }.map(
-              (model) => _ModelPromptTarget(
-                providerId: provider.id,
-                providerName: provider.name,
-                model: model,
-              ),
-            ),
-      )
-      .toList();
-
-  String get _currentModelPrompt {
-    final target = _targetForKey(_promptTargetKey);
-    if (target == null) return '';
-    final provider = _providers.firstWhere(
-      (item) => item.id == target.providerId,
-    );
-    return provider.systemPromptForModel(target.model);
-  }
-
-  _ModelPromptTarget? _targetForKey(String? key) {
-    if (key == null) return null;
-    for (final target in _promptTargets) {
-      if (target.key == key) return target;
-    }
-    return null;
-  }
-
-  void _storePromptDraft() {
-    final target = _targetForKey(_promptTargetKey);
-    if (target == null) return;
-    final index = _providers.indexWhere((item) => item.id == target.providerId);
-    if (index < 0) return;
-    final prompts = Map<String, String>.from(
-      _providers[index].modelSystemPrompts,
-    );
-    final value = _modelPromptController.text.trim();
-    if (value.isEmpty) {
-      prompts.remove(target.model);
-    } else {
-      prompts[target.model] = value;
-    }
-    _providers[index] = _providers[index].copyWith(
-      modelSystemPrompts: prompts,
-    );
-  }
-
-  void _selectPromptTarget(String? key) {
-    if (key == null || key == _promptTargetKey) return;
-    _storePromptDraft();
-    setState(() {
-      _promptTargetKey = key;
-      _modelPromptController.text = _currentModelPrompt;
-    });
   }
 
   UserProfile get _userProfileDraft => UserProfile(
@@ -148,12 +67,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       );
 
   Future<void> _persistSettings() async {
-    _storePromptDraft();
     await widget.onSave(
       _reasoningExpanded,
       _contextTokenBudget,
       _userProfileDraft,
-      _providers,
     );
   }
 
@@ -276,7 +193,6 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   @override
   void dispose() {
-    _modelPromptController.dispose();
     _userNameController.dispose();
     _userGenderController.dispose();
     _userDescriptionController.dispose();
@@ -405,59 +321,6 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           ),
           const SizedBox(height: 24),
           const Text(
-            '模型系统提示词',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          if (_promptTargets.isEmpty)
-            const Card(
-              elevation: 0,
-              child: ListTile(
-                title: Text('还没有可配置的模型'),
-                subtitle: Text('请先在“模型供应商”中添加模型 ID'),
-              ),
-            )
-          else ...[
-            DropdownButtonFormField<String>(
-              key: ValueKey(_promptTargetKey),
-              initialValue: _promptTargetKey,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: '供应商与模型',
-                filled: true,
-                border: OutlineInputBorder(),
-              ),
-              items: _promptTargets
-                  .map(
-                    (target) => DropdownMenuItem(
-                      value: target.key,
-                      child: Text(
-                        '${target.providerName} · ${target.model}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _selectPromptTarget,
-            ),
-            const SizedBox(height: 10),
-          TextField(
-            controller: _modelPromptController,
-            minLines: 6,
-            maxLines: 14,
-            decoration: const InputDecoration(
-              labelText: '隐藏规则与禁忌',
-              hintText: '例如：日常回复控制在1—3句话；不要使用某些表达……',
-              helperText: '只对上方选中的模型生效；发送给模型但不显示在聊天中',
-              alignLabelWithHint: true,
-              filled: true,
-              border: OutlineInputBorder(),
-            ),
-          ),
-          ],
-          const SizedBox(height: 24),
-          const Text(
             '本地数据',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
@@ -497,18 +360,4 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       ),
     );
   }
-}
-
-class _ModelPromptTarget {
-  const _ModelPromptTarget({
-    required this.providerId,
-    required this.providerName,
-    required this.model,
-  });
-
-  final String providerId;
-  final String providerName;
-  final String model;
-
-  String get key => '$providerId\u0000$model';
 }

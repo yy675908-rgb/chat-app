@@ -289,9 +289,12 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   late final TextEditingController _baseController;
   late final TextEditingController _keyController;
   late final TextEditingController _modelsController;
+  late final TextEditingController _modelPromptController;
+  late final Map<String, String> _modelSystemPrompts;
   late ProviderProtocol _protocol;
   late String _selectedPresetId;
   String _selectedModel = '';
+  String _promptModel = '';
   bool _editingBaseUrl = false;
   bool _loadingKey = true;
   bool _fetching = false;
@@ -307,6 +310,15 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     _baseController = TextEditingController(text: provider.baseUrl);
     _keyController = TextEditingController();
     _modelsController = TextEditingController(text: provider.models.join('\n'));
+    _modelSystemPrompts = Map<String, String>.from(
+      provider.modelSystemPrompts,
+    );
+    _promptModel = provider.models.contains(provider.selectedModel)
+        ? provider.selectedModel
+        : (provider.models.isEmpty ? '' : provider.models.first);
+    _modelPromptController = TextEditingController(
+      text: _promptForModel(_promptModel),
+    );
     final matchedPreset = _matchPreset(provider.protocol, provider.baseUrl);
     _selectedPresetId = matchedPreset?.id ?? _customPresetId;
     _editingBaseUrl = matchedPreset == null;
@@ -328,6 +340,53 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   List<_ProviderPreset> get _availablePresets =>
       _presetsForProtocol(_protocol);
 
+  String _promptForModel(String model) {
+    return _modelSystemPrompts[model]?.trim() ?? '';
+  }
+
+  void _storeModelPromptDraft() {
+    if (_promptModel.isEmpty) return;
+    final value = _modelPromptController.text.trim();
+    if (value.isEmpty) {
+      _modelSystemPrompts.remove(_promptModel);
+    } else {
+      _modelSystemPrompts[_promptModel] = value;
+    }
+  }
+
+  void _selectPromptModel(String? model) {
+    if (model == null || model == _promptModel) return;
+    _storeModelPromptDraft();
+    setState(() {
+      _promptModel = model;
+      _modelPromptController.text = _promptForModel(model);
+    });
+  }
+
+  void _selectDefaultModel(String? model) {
+    if (model == null) return;
+    _storeModelPromptDraft();
+    setState(() {
+      _selectedModel = model;
+      _promptModel = model;
+      _modelPromptController.text = _promptForModel(model);
+    });
+  }
+
+  void _modelsChanged() {
+    _storeModelPromptDraft();
+    final models = _models;
+    final selected = models.contains(_selectedModel)
+        ? _selectedModel
+        : (models.isEmpty ? '' : models.first);
+    final promptModel = models.contains(_promptModel) ? _promptModel : selected;
+    setState(() {
+      _selectedModel = selected;
+      _promptModel = promptModel;
+      _modelPromptController.text = _promptForModel(promptModel);
+    });
+  }
+
   _ProviderPreset? _matchPreset(
     ProviderProtocol protocol,
     String baseUrl,
@@ -341,6 +400,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
 
   void _changeProtocol(ProviderProtocol protocol) {
     if (protocol == _protocol) return;
+    _storeModelPromptDraft();
     final preset = _presetsForProtocol(protocol).first;
     setState(() {
       _protocol = protocol;
@@ -350,6 +410,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       _baseController.text = preset.baseUrl;
       _modelsController.clear();
       _selectedModel = '';
+      _promptModel = '';
+      _modelPromptController.clear();
     });
   }
 
@@ -368,6 +430,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     final urlChanged =
         _normalizeBaseUrl(_baseController.text) !=
         _normalizeBaseUrl(preset.baseUrl);
+    if (urlChanged) _storeModelPromptDraft();
     setState(() {
       _selectedPresetId = preset.id;
       _editingBaseUrl = false;
@@ -376,6 +439,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       if (urlChanged) {
         _modelsController.clear();
         _selectedModel = '';
+        _promptModel = '';
+        _modelPromptController.clear();
       }
     });
   }
@@ -398,6 +463,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       baseUrl: _baseController.text.trim(),
       models: models,
       selectedModel: selected,
+      modelSystemPrompts: Map<String, String>.from(_modelSystemPrompts),
     );
   }
 
@@ -412,9 +478,14 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     try {
       final models = await _service.fetchModels(draft, _keyController.text);
       if (!mounted) return;
+      _storeModelPromptDraft();
       setState(() {
         _modelsController.text = models.join('\n');
         if (!models.contains(_selectedModel)) _selectedModel = models.first;
+        if (!models.contains(_promptModel)) {
+          _promptModel = _selectedModel;
+          _modelPromptController.text = _promptForModel(_promptModel);
+        }
       });
       _show('已读取 ${models.length} 个模型');
     } on AiChatException catch (error) {
@@ -425,6 +496,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   }
 
   Future<void> _save() async {
+    _storeModelPromptDraft();
     final draft = _draft();
     final uri = Uri.tryParse(draft.baseUrl);
     if (draft.name.isEmpty) {
@@ -460,6 +532,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     _baseController.dispose();
     _keyController.dispose();
     _modelsController.dispose();
+    _modelPromptController.dispose();
     super.dispose();
   }
 
@@ -691,7 +764,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                   minLines: 3,
                   maxLines: 8,
                   autocorrect: false,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) => _modelsChanged(),
                   decoration: const InputDecoration(
                     hintText: '每行一个模型 ID，也可以用逗号分隔',
                     filled: true,
@@ -701,6 +774,9 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 if (_models.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   DropdownButtonFormField<String>(
+                    key: ValueKey(
+                      'default-model-${_models.join('|')}-$_selectedModel',
+                    ),
                     initialValue: _models.contains(_selectedModel)
                         ? _selectedModel
                         : _models.first,
@@ -722,8 +798,62 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                           ),
                         )
                         .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedModel = value ?? ''),
+                    onChanged: _selectDefaultModel,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    '模型系统提示词',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(
+                      'prompt-model-${_models.join('|')}-$_promptModel',
+                    ),
+                    initialValue: _models.contains(_promptModel)
+                        ? _promptModel
+                        : _models.first,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: '对应模型',
+                      filled: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _models
+                        .map(
+                          (model) => DropdownMenuItem(
+                            value: model,
+                            child: Text(
+                              model,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _selectPromptModel,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _modelPromptController,
+                    minLines: 6,
+                    maxLines: 14,
+                    decoration: const InputDecoration(
+                      labelText: '隐藏规则与禁忌',
+                      hintText: '例如：日常回复控制在1—3句话；不要使用某些表达……',
+                      alignLabelWithHint: true,
+                      filled: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    '每个模型单独保存；会发送给模型，但不会显示在聊天中。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 14),
