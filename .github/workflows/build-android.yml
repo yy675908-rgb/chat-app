@@ -3,8 +3,6 @@ name: Build Android APK
 on:
   push:
     branches: [main, "agent/**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -42,6 +40,12 @@ jobs:
           flutter test
           test/chat_message_test.dart
           test/settings_backup_test.dart
+
+      - name: Restore stable Android signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: linjian-android-signing-v1
 
       - name: Build release APK
         run: flutter build apk --release
