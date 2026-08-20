@@ -58,6 +58,9 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 36500
           fi
 
+      - name: Configure release signing
+        run: dart run tool/configure_android_signing.dart
+
       - name: Build release APK
         run: flutter build apk --release
 
