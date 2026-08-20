@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [main, "agent/**"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -30,10 +32,16 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze lib test/chat_message_test.dart
+        run: >-
+          flutter analyze lib
+          test/chat_message_test.dart
+          test/settings_backup_test.dart
 
       - name: Test
-        run: flutter test test/chat_message_test.dart
+        run: >-
+          flutter test
+          test/chat_message_test.dart
+          test/settings_backup_test.dart
 
       - name: Build release APK
         run: flutter build apk --release

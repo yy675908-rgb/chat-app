@@ -6,6 +6,7 @@ import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../models/world_book_entry.dart';
+import '../models/user_profile.dart';
 
 class ChatStore {
   static const _legacyMessagesKey = 'chat_messages_v1';
@@ -22,6 +23,7 @@ class ChatStore {
   static const _reasoningExpandedKey = 'reasoning_expanded_v1';
   static const _contextTokenBudgetKey = 'context_token_budget_v1';
   static const _globalSystemPromptKey = 'global_system_prompt_v1';
+  static const _userProfileKey = 'user_profile_v1';
 
   Future<List<Conversation>> loadConversations({String? characterId}) async {
     final preferences = await SharedPreferences.getInstance();
@@ -183,6 +185,28 @@ class ChatStore {
     } else {
       await preferences.setString(_globalSystemPromptKey, value);
     }
+  }
+
+  Future<UserProfile> loadUserProfile() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_userProfileKey);
+    if (raw == null || raw.isEmpty) return const UserProfile();
+    try {
+      return UserProfile.fromJson(
+        Map<String, Object?>.from(jsonDecode(raw) as Map),
+      );
+    } on Object {
+      return const UserProfile();
+    }
+  }
+
+  Future<void> saveUserProfile(UserProfile profile) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (profile.isEmpty) {
+      await preferences.remove(_userProfileKey);
+      return;
+    }
+    await preferences.setString(_userProfileKey, jsonEncode(profile.toJson()));
   }
 
   Future<List<String>> loadStylePreferences() async {
