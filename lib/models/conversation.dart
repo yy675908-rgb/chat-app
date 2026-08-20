@@ -1,4 +1,6 @@
 class Conversation {
+  static const groupSpaceId = 'group-space';
+
   const Conversation({
     required this.id,
     required this.characterId,

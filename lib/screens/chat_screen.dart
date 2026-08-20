@@ -50,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
   AiChatService? _activeService;
   String? _activeReplyId;
   bool _loading = true;
+  bool _groupScope = false;
   bool _generating = false;
   bool _cancelled = false;
   bool _replyQueued = false;
@@ -60,6 +61,18 @@ class _ChatScreenState extends State<ChatScreen> {
   int _compressionPromptedAtCount = 0;
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
+
+  Future<void> _saveScopedConversations(
+    List<Conversation> conversations,
+  ) {
+    if (_groupScope) {
+      return _chatStore.saveGroupConversations(conversations);
+    }
+    return _chatStore.saveConversations(
+      conversations,
+      characterId: _profile.id,
+    );
+  }
 
   @override
   void initState() {
@@ -127,6 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _providers = providers;
       _selectedProvider = selected;
       _messages = messages;
+      _groupScope = false;
       _loading = false;
     });
     _scrollToBottom(jump: true);
@@ -167,10 +181,7 @@ class _ChatScreenState extends State<ChatScreen> {
       updatedAt: now,
     );
     final conversations = [conversation, ..._conversations];
-    await _chatStore.saveConversations(
-      conversations,
-      characterId: _profile.id,
-    );
+    await _chatStore.saveConversations(conversations, characterId: _profile.id);
     final messages = await _messagesWithGreeting(
       conversation.id,
       _profile,
@@ -182,6 +193,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _conversations = conversations;
       _currentConversation = conversation;
       _messages = messages;
+      _groupScope = false;
     });
     _scrollToBottom(jump: true);
   }
@@ -303,7 +315,7 @@ class _ChatScreenState extends State<ChatScreen> {
         : draft.title;
     final conversation = Conversation(
       id: 'conversation-${now.microsecondsSinceEpoch}',
-      characterId: _profile.id,
+      characterId: Conversation.groupSpaceId,
       title: title,
       createdAt: now,
       updatedAt: now,
@@ -317,20 +329,22 @@ class _ChatScreenState extends State<ChatScreen> {
         sentAt: now,
       ),
     ];
-    final conversations = [conversation, ..._conversations];
+    final existingGroups = _groupScope
+        ? _conversations
+        : await _chatStore.loadGroupConversations();
+    final conversations = [conversation, ...existingGroups];
     await _chatStore.saveMessages(conversation.id, messages);
-    await _chatStore.saveConversations(
-      conversations,
-      characterId: _profile.id,
-    );
+    await _chatStore.saveGroupConversations(conversations);
     if (!mounted) return;
     setState(() {
       _conversations = conversations;
       _currentConversation = conversation;
       _messages = messages;
+      _groupScope = true;
       _followStreamingOutput = true;
     });
     _scrollToBottom(jump: true);
+    await _queueReply();
   }
 
   Future<void> _selectConversation(Conversation conversation) async {
@@ -352,6 +366,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _currentConversation = conversation;
       _messages = messages;
+      _groupScope = conversation.isGroup;
     });
     _scrollToBottom(jump: true);
   }
@@ -384,15 +399,22 @@ class _ChatScreenState extends State<ChatScreen> {
         .where((item) => item.id != conversation.id)
         .toList();
     if (remaining.isEmpty) {
+      if (_groupScope) {
+        await _chatStore.saveGroupConversations(const []);
+        if (!mounted) return;
+        setState(() {
+          _conversations = const [];
+          _currentConversation = null;
+          _messages = const [];
+        });
+        return;
+      }
       if (!mounted) return;
       setState(() => _conversations = const []);
       await _newConversation();
       return;
     }
-    await _chatStore.saveConversations(
-      remaining,
-      characterId: _profile.id,
-    );
+    await _saveScopedConversations(remaining);
     if (_currentConversation?.id == conversation.id) {
       final next = remaining.first;
       final messages = await _messagesWithGreeting(
@@ -445,10 +467,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final conversations = _conversations
         .map((item) => item.id == updated.id ? updated : item)
         .toList();
-    await _chatStore.saveConversations(
-      conversations,
-      characterId: _profile.id,
-    );
+    await _saveScopedConversations(conversations);
     if (!mounted) return;
     setState(() {
       _conversations = conversations;
@@ -771,23 +790,24 @@ class _ChatScreenState extends State<ChatScreen> {
         break;
       }
     }
-    if (latestUser == null) return;
     final mentioned = <CharacterProfile>[];
-    for (final character in participants) {
-      final name = character.name.trim();
-      if (name.isEmpty) continue;
-      final text = latestUser.text;
-      if (text.contains('@$name') ||
-          text.startsWith('$name，') ||
-          text.startsWith('$name,') ||
-          text.startsWith('$name：') ||
-          text.startsWith('$name:')) {
-        mentioned.add(character);
+    if (latestUser != null) {
+      for (final character in participants) {
+        final name = character.name.trim();
+        if (name.isEmpty) continue;
+        final text = latestUser.text;
+        if (text.contains('@$name') ||
+            text.startsWith('$name，') ||
+            text.startsWith('$name,') ||
+            text.startsWith('$name：') ||
+            text.startsWith('$name:')) {
+          mentioned.add(character);
+        }
       }
     }
     final spokenIds = <String>[];
     CharacterProfile? lastSpeaker;
-    const maxGroupTurns = 5;
+    const maxGroupTurns = 7;
     for (var turn = 0; turn < maxGroupTurns; turn++) {
       if (!mounted || _cancelled) return;
       CharacterProfile? speaker;
@@ -849,7 +869,7 @@ class _ChatScreenState extends State<ChatScreen> {
         id: 'group-router-${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text: '群成员：\n$roster\n\n最近对话：\n$transcript\n\n'
-            '本轮已发言角色ID：${spokenIds.isEmpty ? '无' : spokenIds.join(', ')}\n'
+            '本段连续对话中已发言角色ID：${spokenIds.isEmpty ? '无' : spokenIds.join(', ')}\n'
             '上一位发言角色ID：${lastSpeakerId.isEmpty ? '无' : lastSpeakerId}',
         sentAt: DateTime.now(),
       );
@@ -857,9 +877,11 @@ class _ChatScreenState extends State<ChatScreen> {
         provider: provider,
         apiKey: apiKey,
         systemPrompt: '你是群聊发言调度器，不代写角色回复。'
-            '根据最新对话判断此刻是否有某个角色真正想接话、被点名、被触发，或会自然回应另一角色。'
+            '根据最新对话判断此刻是否有某个角色真正想接话、被点名、被触发、会自然回应另一角色，'
+            '或会基于自身性格与关系主动开启一个合时宜的话题。用户不必在每两次角色发言之间回复。'
             '结合每个角色的设定与用户对他们的亲密度判断，但亲密度高不代表必须发言。'
-            '不要为了让所有人轮流出现而安排发言；沉默完全允许；避免让同一角色连续发言。'
+            '不要为了让所有人轮流出现而安排发言；已经说过话的角色仍可在情境需要时再次接话；'
+            '沉默和结束话题完全允许；避免让同一角色连续自言自语，也不要为了热闹强行延长。'
             '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'
             '禁止输出解释、名称或其他文字。',
         history: [request],
@@ -1401,10 +1423,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final conversations = _conversations
         .map((item) => item.id == updated.id ? updated : item)
         .toList();
-    await _chatStore.saveConversations(
-      conversations,
-      characterId: _profile.id,
-    );
+    await _saveScopedConversations(conversations);
     if (!mounted) return;
     setState(() {
       _currentConversation = updated;
@@ -1421,10 +1440,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((item) => item.id == updated.id ? updated : item)
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    await _chatStore.saveConversations(
-      conversations,
-      characterId: _profile.id,
-    );
+    await _saveScopedConversations(conversations);
     if (!mounted) return;
     setState(() {
       _currentConversation = updated;
@@ -1539,7 +1555,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final groupInstruction = _currentConversation?.isGroup == true
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
             '只能输出这个角色的一次自然发言，不得代替其他成员说话，也不要列出多人回复。'
-            '你可以直接回应用户或其他角色，也可以自然点到另一位角色；'
+            '系统判断你此刻有自然的发言动机。你可以回应用户、接住其他角色的话、'
+            '对他们做出符合性格的反应，或主动开启一个合时宜的话题；不需要等待用户再次发言。'
+            '若是在回应某位角色，要让对象从措辞中自然可辨，不要机械写“回复某某”。'
+            '也可以自然点到另一位角色；'
             '其他角色是否接话由系统另行判断。'
             '群成员：${_groupParticipants.map((item) => item.name).join('、')}。'
         : '';
@@ -1855,10 +1874,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final conversations = _conversations
           .map((item) => item.id == updated.id ? updated : item)
           .toList();
-      await _chatStore.saveConversations(
-        conversations,
-        characterId: _profile.id,
-      );
+      await _saveScopedConversations(conversations);
       if (!mounted) return;
       setState(() {
         _currentConversation = updated;
@@ -1980,7 +1996,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 const Padding(
                   padding: EdgeInsets.fromLTRB(10, 0, 10, 8),
                   child: Text(
-                    '选择角色',
+                    '切换对话空间',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -1991,6 +2007,36 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: ListView(
                     shrinkWrap: true,
                     children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(10, 4, 10, 4),
+                        child: Text(
+                          '群聊',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.groups_2_outlined),
+                        ),
+                        title: const Text('群聊'),
+                        subtitle: Text(
+                          _groupScope
+                              ? '当前分组'
+                              : '独立于所有角色的多人对话',
+                        ),
+                        trailing: _groupScope
+                            ? const Icon(Icons.check_circle_rounded)
+                            : null,
+                        onTap: () => Navigator.pop(context, '__groups__'),
+                      ),
+                      const Divider(height: 18),
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(10, 4, 10, 4),
+                        child: Text(
+                          '角色',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
                       for (final character in _characters)
                         ListTile(
                           leading: CircleAvatar(
@@ -2002,11 +2048,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           title: Text(character.name),
                           subtitle: Text(
-                            character.id == _profile.id
+                            !_groupScope && character.id == _profile.id
                                 ? '当前角色'
                                 : '切换到这个角色',
                           ),
-                          trailing: character.id == _profile.id
+                          trailing: !_groupScope && character.id == _profile.id
                               ? const Icon(Icons.check_circle_rounded)
                               : null,
                           onTap: () => Navigator.pop(context, character.id),
@@ -2031,7 +2077,14 @@ class _ChatScreenState extends State<ChatScreen> {
       await _createCharacter();
       return;
     }
-    if (selectedId == null || selectedId == _profile.id) return;
+    if (selectedId == '__groups__') {
+      if (!_groupScope) await _switchToGroupScope();
+      return;
+    }
+    if (selectedId == null ||
+        (!_groupScope && selectedId == _profile.id)) {
+      return;
+    }
     final selected = _characters.firstWhere((item) => item.id == selectedId);
     await _switchCharacter(selected);
   }
@@ -2076,8 +2129,36 @@ class _ChatScreenState extends State<ChatScreen> {
       _currentConversation = current;
       _messages = messages;
       _characterMood = mood;
+      _groupScope = false;
     });
     _scrollToBottom(jump: true);
+  }
+
+  Future<void> _switchToGroupScope() async {
+    if (_generating) {
+      _stopGenerating();
+      while (_generating && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    }
+    final conversations = await _chatStore.loadGroupConversations();
+    final current = conversations.isEmpty ? null : conversations.first;
+    final messages = current == null
+        ? <ChatMessage>[]
+        : await _messagesWithGreeting(
+            current.id,
+            _profile,
+            isGroup: true,
+          );
+    if (!mounted) return;
+    setState(() {
+      _groupScope = true;
+      _conversations = conversations;
+      _currentConversation = current;
+      _messages = messages;
+    });
+    _scrollToBottom(jump: true);
+    if (current == null) await _newGroupConversation();
   }
 
   Future<void> _editCharacter() async {
@@ -2161,12 +2242,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final overlay = isDark
         ? SystemUiOverlayStyle.light
         : SystemUiOverlayStyle.dark;
-    final isGroup = _currentConversation?.isGroup == true;
+    final isGroup = _groupScope;
     final headerTitle = isGroup
         ? (_currentConversation?.title ?? '群聊')
         : _profile.name;
     final characterStatus = isGroup
-        ? (_generating ? '群聊中…' : '${_groupParticipants.length} 位角色')
+        ? (_currentConversation == null
+            ? '暂无群聊'
+            : (_generating ? '群聊中…' : '${_groupParticipants.length} 位角色'))
         : (_generating
             ? '正在回复…'
             : (_characterMood.isNotEmpty
@@ -2182,6 +2265,7 @@ class _ChatScreenState extends State<ChatScreen> {
         key: _scaffoldKey,
         drawer: _ConversationDrawer(
           profile: _profile,
+          groupScope: _groupScope,
           conversations: _conversations,
           selectedId: _currentConversation?.id,
           onNew: _newConversation,
@@ -2205,7 +2289,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           titleSpacing: 2,
           title: InkWell(
-            onTap: isGroup ? null : _showCharacterPicker,
+            onTap: _showCharacterPicker,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
@@ -2327,6 +2411,41 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _currentConversation == null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.groups_2_outlined,
+                                  size: 42,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  '还没有群聊',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '从左侧会话栏创建一个群聊',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
                   : Stack(
                       children: [
                         Positioned.fill(
@@ -2449,7 +2568,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             _Composer(
               controller: _controller,
-              enabled: !_loading,
+              enabled: !_loading && _currentConversation != null,
               generating: _generating,
               onSend: _send,
               onStop: _stopGenerating,
@@ -2465,6 +2584,7 @@ class _ChatScreenState extends State<ChatScreen> {
 class _ConversationDrawer extends StatelessWidget {
   const _ConversationDrawer({
     required this.profile,
+    required this.groupScope,
     required this.conversations,
     required this.selectedId,
     required this.onNew,
@@ -2482,6 +2602,7 @@ class _ConversationDrawer extends StatelessWidget {
   });
 
   final CharacterProfile profile;
+  final bool groupScope;
   final List<Conversation> conversations;
   final String? selectedId;
   final VoidCallback onNew;
@@ -2511,15 +2632,20 @@ class _ConversationDrawer extends StatelessWidget {
                   CircleAvatar(
                     radius: 22,
                     backgroundColor: scheme.secondaryContainer,
-                    child: Text(
-                      profile.name.isEmpty
-                          ? '林'
-                          : profile.name.characters.first,
-                      style: TextStyle(
-                        color: scheme.onSecondaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    child: groupScope
+                        ? Icon(
+                            Icons.groups_2_outlined,
+                            color: scheme.onSecondaryContainer,
+                          )
+                        : Text(
+                            profile.name.isEmpty
+                                ? '林'
+                                : profile.name.characters.first,
+                            style: TextStyle(
+                              color: scheme.onSecondaryContainer,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 11),
                   Expanded(
@@ -2532,14 +2658,16 @@ class _ConversationDrawer extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              profile.name,
+                              groupScope ? '群聊' : profile.name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
                               ),
                             ),
                             Text(
-                              '点击切换或添加角色',
+                              groupScope
+                                  ? '点击切换到角色或其他分组'
+                                  : '点击切换角色或进入群聊',
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 11.5,
@@ -2551,50 +2679,37 @@ class _ConversationDrawer extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: '切换角色',
+                    tooltip: '切换对话空间',
                     onPressed: onCharacterPicker,
                     icon: const Icon(Icons.unfold_more_rounded, size: 20),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
-              child: _IntimacyControl(
-                value: profile.userIntimacy,
-                onChanged: (value) {
-                  unawaited(onIntimacyChanged(value));
-                },
+            if (!groupScope)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+                child: _IntimacyControl(
+                  value: profile.userIntimacy,
+                  onChanged: (value) {
+                    unawaited(onIntimacyChanged(value));
+                  },
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: onNew,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        alignment: Alignment.center,
-                      ),
-                      icon: const Icon(Icons.add_comment_outlined),
-                      label: const Text('新对话'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: onNewGroup,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        alignment: Alignment.center,
-                      ),
-                      icon: const Icon(Icons.groups_2_outlined),
-                      label: const Text('新群聊'),
-                    ),
-                  ),
-                ],
+              child: FilledButton.tonalIcon(
+                onPressed: groupScope ? onNewGroup : onNew,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  alignment: Alignment.center,
+                ),
+                icon: Icon(
+                  groupScope
+                      ? Icons.group_add_outlined
+                      : Icons.add_comment_outlined,
+                ),
+                label: Text(groupScope ? '新群聊' : '新对话'),
               ),
             ),
             Padding(
@@ -2602,7 +2717,7 @@ class _ConversationDrawer extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '最近对话',
+                  groupScope ? '群聊会话' : '最近对话',
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
                     fontSize: 12,
@@ -2681,9 +2796,13 @@ class _ConversationDrawer extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _DrawerShortcut(
-                          icon: Icons.manage_accounts_outlined,
-                          label: '角色设定',
-                          onTap: onEditCharacter,
+                          icon: groupScope
+                              ? Icons.people_alt_outlined
+                              : Icons.manage_accounts_outlined,
+                          label: groupScope ? '角色与亲密度' : '角色设定',
+                          onTap: groupScope
+                              ? onCharacterPicker
+                              : onEditCharacter,
                         ),
                       ),
                       const SizedBox(width: 8),

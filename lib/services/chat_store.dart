@@ -41,9 +41,7 @@ class ChatStore {
         if (characterId == null) return conversations;
         final matching = conversations
             .where(
-              (item) =>
-                  item.characterId == characterId ||
-                  item.participantIds.contains(characterId),
+              (item) => !item.isGroup && item.characterId == characterId,
             )
             .toList();
         if (matching.isNotEmpty) return matching;
@@ -71,6 +69,26 @@ class ChatStore {
     return [first];
   }
 
+  Future<List<Conversation>> loadGroupConversations() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_conversationsKey);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final conversations = (jsonDecode(raw) as List<dynamic>)
+          .map(
+            (item) => Conversation.fromJson(
+              Map<String, Object?>.from(item as Map),
+            ),
+          )
+          .where((item) => item.isGroup)
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return conversations;
+    } on Object {
+      return const [];
+    }
+  }
+
   Future<void> saveConversations(
     List<Conversation> conversations, {
     String? characterId,
@@ -96,8 +114,7 @@ class ChatStore {
       items = [
         ...existing.where(
           (item) =>
-              item.characterId != characterId &&
-              !item.participantIds.contains(characterId),
+              item.isGroup || item.characterId != characterId,
         ),
         ...conversations,
       ];
@@ -107,6 +124,35 @@ class ChatStore {
       jsonEncode(
         items.map((conversation) => conversation.toJson()).toList(),
       ),
+    );
+  }
+
+  Future<void> saveGroupConversations(
+    List<Conversation> conversations,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_conversationsKey);
+    final existing = <Conversation>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        existing.addAll(
+          (jsonDecode(raw) as List<dynamic>).map(
+            (item) => Conversation.fromJson(
+              Map<String, Object?>.from(item as Map),
+            ),
+          ),
+        );
+      } on Object {
+        // Replace malformed group data while preserving what can be decoded.
+      }
+    }
+    final items = [
+      ...existing.where((item) => !item.isGroup),
+      ...conversations,
+    ];
+    await preferences.setString(
+      _conversationsKey,
+      jsonEncode(items.map((item) => item.toJson()).toList()),
     );
   }
 
