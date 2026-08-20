@@ -11,6 +11,7 @@ import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
 import '../services/chat_store.dart';
+import '../services/group_reply_policy.dart';
 import '../services/provider_store.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
@@ -806,10 +807,20 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     final spokenIds = <String>[];
-    CharacterProfile? lastSpeaker;
+    var userReplyCovered = !GroupReplyPolicy.latestUserNeedsReply(visible);
+    var lastSpeakerId = '';
+    for (var index = visible.length - 1; index >= 0; index--) {
+      final message = visible[index];
+      if (message.author == MessageAuthor.character &&
+          message.speakerCharacterId.isNotEmpty) {
+        lastSpeakerId = message.speakerCharacterId;
+        break;
+      }
+    }
     const maxGroupTurns = 7;
     for (var turn = 0; turn < maxGroupTurns; turn++) {
       if (!mounted || _cancelled) return;
+      final requireSpeaker = latestUser != null && !userReplyCovered;
       CharacterProfile? speaker;
       if (mentioned.isNotEmpty) {
         speaker = mentioned.removeAt(0);
@@ -817,8 +828,17 @@ class _ChatScreenState extends State<ChatScreen> {
         speaker = await _selectNextGroupSpeaker(
           participants: participants,
           spokenIds: spokenIds,
-          lastSpeakerId: lastSpeaker?.id ?? '',
+          lastSpeakerId: lastSpeakerId,
+          requireSpeaker: requireSpeaker,
         );
+      }
+      if (speaker == null && requireSpeaker) {
+        final fallbackId = GroupReplyPolicy.fallbackSpeakerId(
+          participants.map((item) => item.id).toList(),
+          lastSpeakerId: lastSpeakerId,
+          seed: latestUser!.id,
+        );
+        if (fallbackId != null) speaker = _characterForId(fallbackId);
       }
       if (speaker == null) break;
       final beforeCount = _messages.length;
@@ -830,7 +850,18 @@ class _ChatScreenState extends State<ChatScreen> {
         break;
       }
       spokenIds.add(speaker.id);
-      lastSpeaker = speaker;
+      lastSpeakerId = speaker.id;
+      final latestVisible = _messages.where(_isMessageVisible).toList();
+      userReplyCovered =
+          !GroupReplyPolicy.latestUserNeedsReply(latestVisible);
+      if (!userReplyCovered) {
+        for (var index = latestVisible.length - 1; index >= 0; index--) {
+          if (latestVisible[index].author == MessageAuthor.user) {
+            latestUser = latestVisible[index];
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -838,6 +869,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required List<CharacterProfile> participants,
     required List<String> spokenIds,
     required String lastSpeakerId,
+    required bool requireSpeaker,
   }) async {
     final provider = _selectedProvider;
     if (provider == null) return null;
@@ -870,7 +902,8 @@ class _ChatScreenState extends State<ChatScreen> {
         author: MessageAuthor.user,
         text: '群成员：\n$roster\n\n最近对话：\n$transcript\n\n'
             '本段连续对话中已发言角色ID：${spokenIds.isEmpty ? '无' : spokenIds.join(', ')}\n'
-            '上一位发言角色ID：${lastSpeakerId.isEmpty ? '无' : lastSpeakerId}',
+            '上一位发言角色ID：${lastSpeakerId.isEmpty ? '无' : lastSpeakerId}\n'
+            '本次必须选择角色：${requireSpeaker ? '是' : '否'}',
         sentAt: DateTime.now(),
       );
       await for (final chunk in service.streamReply(
@@ -882,7 +915,7 @@ class _ChatScreenState extends State<ChatScreen> {
             '结合每个角色的设定与用户对他们的亲密度判断，但亲密度高不代表必须发言。'
             '不要为了让所有人轮流出现而安排发言；已经说过话的角色仍可在情境需要时再次接话；'
             '沉默和结束话题完全允许；避免让同一角色连续自言自语，也不要为了热闹强行延长。'
-            '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'
+            '${requireSpeaker ? '用户刚发了尚未被回应的消息，本次必须选择一名最合适的角色，禁止输出NONE。' : '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'}'
             '禁止输出解释、名称或其他文字。',
         history: [request],
         temperature: 0.2,

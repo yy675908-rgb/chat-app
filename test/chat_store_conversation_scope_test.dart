@@ -1,5 +1,7 @@
+import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/conversation.dart';
 import 'package:character_chat_app/services/chat_store.dart';
+import 'package:character_chat_app/services/group_reply_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,5 +92,46 @@ void main() {
           .title,
       '改名单聊',
     );
+  });
+
+  test('the latest user message always requires one character reply', () {
+    final now = DateTime.utc(2026, 8, 20);
+    ChatMessage message(String id, MessageAuthor author) => ChatMessage(
+          id: id,
+          author: author,
+          text: id,
+          sentAt: now,
+        );
+
+    expect(
+      GroupReplyPolicy.latestUserNeedsReply([
+        message('角色回复', MessageAuthor.character),
+        message('用户新消息', MessageAuthor.user),
+        message('系统消息', MessageAuthor.system),
+      ]),
+      isTrue,
+    );
+    expect(
+      GroupReplyPolicy.latestUserNeedsReply([
+        message('用户消息', MessageAuthor.user),
+        message('角色回复', MessageAuthor.character),
+      ]),
+      isFalse,
+    );
+  });
+
+  test('fallback speaker is valid and avoids consecutive speech', () {
+    final selected = GroupReplyPolicy.fallbackSpeakerId(
+      const ['character-a', 'character-b', 'character-c'],
+      lastSpeakerId: 'character-a',
+      seed: 'message-1',
+    );
+
+    expect(selected, isNotNull);
+    expect(
+      const ['character-a', 'character-b', 'character-c'],
+      contains(selected),
+    );
+    expect(selected, isNot('character-a'));
   });
 }
