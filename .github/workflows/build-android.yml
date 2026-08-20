@@ -33,12 +33,14 @@ jobs:
         run: >-
           flutter analyze lib
           test/chat_message_test.dart
+          test/chat_store_conversation_scope_test.dart
           test/settings_backup_test.dart
 
       - name: Test
         run: >-
           flutter test
           test/chat_message_test.dart
+          test/chat_store_conversation_scope_test.dart
           test/settings_backup_test.dart
 
       - name: Restore stable Android signing key
