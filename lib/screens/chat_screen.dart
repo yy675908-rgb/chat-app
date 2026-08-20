@@ -836,7 +836,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final fallbackId = GroupReplyPolicy.fallbackSpeakerId(
           participants.map((item) => item.id).toList(),
           lastSpeakerId: lastSpeakerId,
-          seed: latestUser!.id,
+          seed: latestUser.id,
         );
         if (fallbackId != null) speaker = _characterForId(fallbackId);
       }
