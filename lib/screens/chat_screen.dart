@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/world_book_entry.dart';
+import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
 import '../services/chat_store.dart';
 import '../services/provider_store.dart';
@@ -41,7 +42,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _stylePreferences = [];
   List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
-  String _globalSystemPrompt = '';
+  UserProfile _userProfile = const UserProfile();
   bool _reasoningExpanded = true;
   int _contextTokenBudget = 32000;
   List<ProviderProfile> _providers = const [];
@@ -80,17 +81,30 @@ class _ChatScreenState extends State<ChatScreen> {
     final characterMood = await _chatStore.loadCharacterMood(profile.id);
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
-    final globalSystemPrompt = await _chatStore.loadGlobalSystemPrompt();
+    final userProfile = await _chatStore.loadUserProfile();
     final conversations = await _chatStore.loadConversations(
       characterId: profile.id,
     );
-    final providers = await _providerStore.loadProviders();
+    var providers = await _providerStore.loadProviders();
     final current = conversations.first;
     final selectedId = await _providerStore.loadSelectedProviderId();
-    final selected = providers.firstWhere(
+    var selected = providers.firstWhere(
       (provider) => provider.id == selectedId,
       orElse: () => providers.first,
     );
+    final legacyPrompt = await _chatStore.loadGlobalSystemPrompt();
+    if (legacyPrompt.isNotEmpty && selected.selectedModel.isNotEmpty) {
+      if (selected.systemPromptForModel().isEmpty) {
+        final prompts = Map<String, String>.from(selected.modelSystemPrompts)
+          ..[selected.selectedModel] = legacyPrompt;
+        selected = selected.copyWith(modelSystemPrompts: prompts);
+        providers = providers
+            .map((item) => item.id == selected.id ? selected : item)
+            .toList();
+        await _providerStore.saveProviders(providers);
+      }
+      await _chatStore.saveGlobalSystemPrompt('');
+    }
     await _providerStore.saveSelectedProviderId(selected.id);
     final messages = await _messagesWithGreeting(
       current.id,
@@ -107,7 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _characterMood = characterMood;
       _reasoningExpanded = reasoningExpanded;
       _contextTokenBudget = contextTokenBudget;
-      _globalSystemPrompt = globalSystemPrompt;
+      _userProfile = userProfile;
       _conversations = conversations;
       _currentConversation = current;
       _providers = providers;
@@ -445,12 +459,25 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _reloadProviders() async {
-    final providers = await _providerStore.loadProviders();
+    var providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
-    final selected = providers.firstWhere(
+    var selected = providers.firstWhere(
       (provider) => provider.id == selectedId,
       orElse: () => providers.first,
     );
+    final legacyPrompt = await _chatStore.loadGlobalSystemPrompt();
+    if (legacyPrompt.isNotEmpty && selected.selectedModel.isNotEmpty) {
+      if (selected.systemPromptForModel().isEmpty) {
+        final prompts = Map<String, String>.from(selected.modelSystemPrompts)
+          ..[selected.selectedModel] = legacyPrompt;
+        selected = selected.copyWith(modelSystemPrompts: prompts);
+        providers = providers
+            .map((item) => item.id == selected.id ? selected : item)
+            .toList();
+        await _providerStore.saveProviders(providers);
+      }
+      await _chatStore.saveGlobalSystemPrompt('');
+    }
     if (!mounted) return;
     setState(() {
       _providers = providers;
@@ -1472,9 +1499,22 @@ class _ChatScreenState extends State<ChatScreen> {
         '有鲜明情绪时优先使用一个贴切的 emoji、颜文字或“短词+emoji”。'
         '回复正文结束后必须另起一行，严格输出“[[心绪:……]]”；'
         '内容1—12个字，不要在正文解释。';
-    final globalPrompt = _globalSystemPrompt.isEmpty
+    final modelPrompt = _selectedProvider?.systemPromptForModel() ?? '';
+    final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
-        : '${_globalSystemPrompt.trim()}\n\n';
+        : '${modelPrompt.trim()}\n\n';
+    final userFields = <String>[
+      if (_userProfile.name.trim().isNotEmpty)
+        '名字：${_userProfile.name.trim()}',
+      if (_userProfile.gender.trim().isNotEmpty)
+        '性别：${_userProfile.gender.trim()}',
+      if (_userProfile.description.trim().isNotEmpty)
+        '设定：${_userProfile.description.trim()}',
+    ];
+    final userProfileText = userFields.isEmpty
+        ? ''
+        : '\n\n正在与你对话的用户资料（这是用户的信息，不是你的角色设定）：\n'
+            '${userFields.join('\n')}';
     final groupInstruction = _currentConversation?.isGroup == true
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
             '只能输出这个角色的一次自然发言，不得代替其他成员说话，也不要列出多人回复。'
@@ -1482,7 +1522,8 @@ class _ChatScreenState extends State<ChatScreen> {
             '其他角色是否接话由系统另行判断。'
             '群成员：${_groupParticipants.map((item) => item.name).join('、')}。'
         : '';
-    return '$globalPrompt${activeCharacter.systemPrompt}$groupInstruction\n\n'
+    return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
+        '$groupInstruction$userProfileText\n\n'
         '$context$memoryText$preferenceText$worldBookText'
         '$summaryText$previousSummaryText$moodInstruction';
   }
@@ -1859,20 +1900,31 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (_) => AppSettingsScreen(
           reasoningExpanded: _reasoningExpanded,
           contextTokenBudget: _contextTokenBudget,
-          globalSystemPrompt: _globalSystemPrompt,
+          userProfile: _userProfile,
+          providers: _providers,
+          selectedProviderId: _selectedProvider?.id,
           onSave: (
             reasoningExpanded,
             contextTokenBudget,
-            globalSystemPrompt,
+            userProfile,
+            providers,
           ) async {
             await _chatStore.saveReasoningExpanded(reasoningExpanded);
             await _chatStore.saveContextTokenBudget(contextTokenBudget);
-            await _chatStore.saveGlobalSystemPrompt(globalSystemPrompt);
+            await _chatStore.saveUserProfile(userProfile);
+            await _providerStore.saveProviders(providers);
             if (!mounted) return;
+            final selectedId = _selectedProvider?.id;
+            final selected = providers.firstWhere(
+              (item) => item.id == selectedId,
+              orElse: () => providers.first,
+            );
             setState(() {
               _reasoningExpanded = reasoningExpanded;
               _contextTokenBudget = contextTokenBudget;
-              _globalSystemPrompt = globalSystemPrompt;
+              _userProfile = userProfile;
+              _providers = providers;
+              _selectedProvider = selected;
             });
           },
         ),

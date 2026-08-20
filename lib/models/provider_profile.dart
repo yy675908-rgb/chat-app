@@ -8,6 +8,7 @@ class ProviderProfile {
     required this.baseUrl,
     required this.models,
     required this.selectedModel,
+    this.modelSystemPrompts = const {},
   });
 
   final String id;
@@ -16,6 +17,11 @@ class ProviderProfile {
   final String baseUrl;
   final List<String> models;
   final String selectedModel;
+  final Map<String, String> modelSystemPrompts;
+
+  String systemPromptForModel([String? model]) {
+    return modelSystemPrompts[model ?? selectedModel]?.trim() ?? '';
+  }
 
   factory ProviderProfile.openAi() => const ProviderProfile(
         id: 'openai-default',
@@ -24,6 +30,7 @@ class ProviderProfile {
         baseUrl: 'https://api.openai.com/v1',
         models: [],
         selectedModel: '',
+        modelSystemPrompts: {},
       );
 
   bool get isConfigured =>
@@ -60,6 +67,7 @@ class ProviderProfile {
     String? baseUrl,
     List<String>? models,
     String? selectedModel,
+    Map<String, String>? modelSystemPrompts,
   }) {
     return ProviderProfile(
       id: id,
@@ -68,6 +76,7 @@ class ProviderProfile {
       baseUrl: baseUrl ?? this.baseUrl,
       models: models ?? this.models,
       selectedModel: selectedModel ?? this.selectedModel,
+      modelSystemPrompts: modelSystemPrompts ?? this.modelSystemPrompts,
     );
   }
 
@@ -78,6 +87,7 @@ class ProviderProfile {
         'baseUrl': baseUrl,
         'models': models,
         'selectedModel': selectedModel,
+        'modelSystemPrompts': modelSystemPrompts,
       };
 
   factory ProviderProfile.fromJson(Map<String, Object?> json) {
@@ -93,6 +103,10 @@ class ProviderProfile {
           .map((item) => item.toString())
           .toList(),
       selectedModel: json['selectedModel'] as String? ?? '',
+      modelSystemPrompts: (json['modelSystemPrompts'] as Map?)?.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ) ??
+          const {},
     );
   }
 }
