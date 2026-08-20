@@ -6,6 +6,7 @@ class CharacterProfile {
     required this.firstMetAt,
     required this.greeting,
     required this.systemPrompt,
+    this.userIntimacy = 50,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class CharacterProfile {
   final DateTime firstMetAt;
   final String greeting;
   final String systemPrompt;
+  final int userIntimacy;
 
   factory CharacterProfile.lin(DateTime firstMetAt) {
     return CharacterProfile(
@@ -45,6 +47,7 @@ class CharacterProfile {
     String? status,
     String? greeting,
     String? systemPrompt,
+    int? userIntimacy,
   }) {
     return CharacterProfile(
       id: id,
@@ -53,6 +56,8 @@ class CharacterProfile {
       firstMetAt: firstMetAt,
       greeting: greeting ?? this.greeting,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      userIntimacy:
+          (userIntimacy ?? this.userIntimacy).clamp(0, 100).toInt(),
     );
   }
 
@@ -63,6 +68,7 @@ class CharacterProfile {
         'firstMetAt': firstMetAt.toIso8601String(),
         'greeting': greeting,
         'systemPrompt': systemPrompt,
+        'userIntimacy': userIntimacy,
       };
 
   factory CharacterProfile.fromJson(Map<String, Object?> json) {
@@ -76,6 +82,10 @@ class CharacterProfile {
       firstMetAt: firstMetAt,
       greeting: json['greeting'] as String? ?? fallback.greeting,
       systemPrompt: json['systemPrompt'] as String? ?? fallback.systemPrompt,
+      userIntimacy: (json['userIntimacy'] as num? ?? 50)
+          .round()
+          .clamp(0, 100)
+          .toInt(),
     );
   }
 

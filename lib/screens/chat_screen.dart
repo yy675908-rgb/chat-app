@@ -713,6 +713,14 @@ class _ChatScreenState extends State<ChatScreen> {
     return _characters.where((item) => ids.contains(item.id)).toList();
   }
 
+  String _compactCharacterSetting(CharacterProfile character) {
+    final compact = character.systemPrompt
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (compact.characters.length <= 240) return compact;
+    return '${compact.characters.take(240).join()}…';
+  }
+
   String _speakerName(ChatMessage message) {
     if (message.speakerCharacterId.isEmpty) return _profile.name;
     return _characterForId(message.speakerCharacterId)?.name ?? _profile.name;
@@ -829,7 +837,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final status = character.status.trim().isEmpty
           ? ''
           : '；当前状态：${character.status.trim()}';
-      return '- ${character.id} = ${character.name}$status';
+      return '- ${character.id} = ${character.name}$status；'
+          '用户亲密度：${character.userIntimacy}/100'
+          '（${_intimacyLabel(character.userIntimacy)}）；'
+          '设定摘要：${_compactCharacterSetting(character)}';
     }).join('\n');
     final service = AiChatService();
     var raw = '';
@@ -847,6 +858,7 @@ class _ChatScreenState extends State<ChatScreen> {
         apiKey: apiKey,
         systemPrompt: '你是群聊发言调度器，不代写角色回复。'
             '根据最新对话判断此刻是否有某个角色真正想接话、被点名、被触发，或会自然回应另一角色。'
+            '结合每个角色的设定与用户对他们的亲密度判断，但亲密度高不代表必须发言。'
             '不要为了让所有人轮流出现而安排发言；沉默完全允许；避免让同一角色连续发言。'
             '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'
             '禁止输出解释、名称或其他文字。',
@@ -1515,6 +1527,15 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n正在与你对话的用户资料（这是用户的信息，不是你的角色设定）：\n'
             '${userFields.join('\n')}';
+    final intimacyInstruction = _currentConversation?.isGroup == true
+        ? '\n\n用户对群聊成员的亲密度如下，所有参与角色都知道这些信息：\n'
+            '${_groupParticipants.map((item) => '- ${item.name}：${item.userIntimacy}/100（${_intimacyLabel(item.userIntimacy)}）').join('\n')}\n'
+            '亲密度可以影响在意、吃醋、争抢或克制等反应，但必须服从各自原有性格和当前情境。'
+            '不要机械复述数值，也不要为了比较亲密度而强行争执。'
+        : '\n\n用户对你的亲密度为${activeCharacter.userIntimacy}/100'
+            '（${_intimacyLabel(activeCharacter.userIntimacy)}）。'
+            '这是用户主动设定、且你能够感知的关系信号，不代表你的好感度，也不要求你迎合。'
+            '请按照自己的性格和当前情境自然反应，不要机械复述数值。';
     final groupInstruction = _currentConversation?.isGroup == true
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
             '只能输出这个角色的一次自然发言，不得代替其他成员说话，也不要列出多人回复。'
@@ -1523,6 +1544,7 @@ class _ChatScreenState extends State<ChatScreen> {
             '群成员：${_groupParticipants.map((item) => item.name).join('、')}。'
         : '';
     return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
+        '$intimacyInstruction'
         '$groupInstruction$userProfileText\n\n'
         '$context$memoryText$preferenceText$worldBookText'
         '$summaryText$previousSummaryText$moodInstruction';
@@ -2075,6 +2097,19 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _saveUserIntimacy(int value) async {
+    final updated = _profile.copyWith(userIntimacy: value);
+    final characters = _characters
+        .map((item) => item.id == updated.id ? updated : item)
+        .toList();
+    await _chatStore.saveCharacters(characters);
+    if (!mounted) return;
+    setState(() {
+      _characters = characters;
+      if (_profile.id == updated.id) _profile = updated;
+    });
+  }
+
   void _scrollToBottom({bool jump = false, bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -2155,6 +2190,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onDelete: _deleteConversation,
           onRename: _renameConversation,
           onCharacterPicker: _showCharacterPicker,
+          onIntimacyChanged: _saveUserIntimacy,
           onEditCharacter: _editCharacter,
           onFavorites: _openFavorites,
           onMemoryWorld: _openMemories,
@@ -2437,6 +2473,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.onDelete,
     required this.onRename,
     required this.onCharacterPicker,
+    required this.onIntimacyChanged,
     required this.onEditCharacter,
     required this.onFavorites,
     required this.onMemoryWorld,
@@ -2453,6 +2490,7 @@ class _ConversationDrawer extends StatelessWidget {
   final ValueChanged<Conversation> onDelete;
   final ValueChanged<Conversation> onRename;
   final VoidCallback onCharacterPicker;
+  final Future<void> Function(int value) onIntimacyChanged;
   final VoidCallback onEditCharacter;
   final VoidCallback onFavorites;
   final VoidCallback onMemoryWorld;
@@ -2518,6 +2556,15 @@ class _ConversationDrawer extends StatelessWidget {
                     icon: const Icon(Icons.unfold_more_rounded, size: 20),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+              child: _IntimacyControl(
+                value: profile.userIntimacy,
+                onChanged: (value) {
+                  unawaited(onIntimacyChanged(value));
+                },
               ),
             ),
             Padding(
@@ -2665,6 +2712,104 @@ class _ConversationDrawer extends StatelessWidget {
       ),
     );
   }
+}
+
+class _IntimacyControl extends StatefulWidget {
+  const _IntimacyControl({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_IntimacyControl> createState() => _IntimacyControlState();
+}
+
+class _IntimacyControlState extends State<_IntimacyControl> {
+  late int _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _IntimacyControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) _value = widget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '亲密度',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                Text(
+                  '$_value · ${_intimacyLabel(_value)}',
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _value.toDouble(),
+                    min: 0,
+                    max: 100,
+                    divisions: 100,
+                    label: '$_value',
+                    onChanged: (value) {
+                      setState(() => _value = value.round());
+                    },
+                    onChangeEnd: (value) {
+                      widget.onChanged(value.round());
+                    },
+                  ),
+                ),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '角色可以感知；进入群聊后，其他参与角色也能知道。',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _intimacyLabel(int value) {
+  if (value < 20) return '疏远';
+  if (value < 40) return '保留';
+  if (value < 60) return '普通';
+  if (value < 80) return '亲近';
+  return '很亲密';
 }
 
 class _DrawerShortcut extends StatelessWidget {

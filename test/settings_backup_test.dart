@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/user_profile.dart';
 import 'package:character_chat_app/services/backup_service.dart';
@@ -31,6 +32,39 @@ void main() {
 
     expect(restored.systemPromptForModel('deepseek-chat'), '简短回复。');
     expect(restored.systemPromptForModel('deepseek-reasoner'), '不要展示推理。');
+  });
+
+  test('character intimacy survives JSON and stays within range', () {
+    final original = CharacterProfile.newCharacter(
+      DateTime.utc(2026, 8, 20),
+    ).copyWith(userIntimacy: 82);
+
+    final restored = CharacterProfile.fromJson(original.toJson());
+    final tooHigh = restored.copyWith(userIntimacy: 130);
+
+    expect(restored.userIntimacy, 82);
+    expect(tooHigh.userIntimacy, 100);
+    expect(
+      CharacterProfile.fromJson({
+        ...original.toJson(),
+        'userIntimacy': -20,
+      }).userIntimacy,
+      0,
+    );
+  });
+
+  test('legacy character defaults intimacy without losing settings', () {
+    final restored = CharacterProfile.fromJson({
+      'id': 'legacy',
+      'name': '旧角色',
+      'status': '',
+      'firstMetAt': '2026-01-01T00:00:00.000Z',
+      'greeting': '你好',
+      'systemPrompt': '保持原设定。',
+    });
+
+    expect(restored.userIntimacy, 50);
+    expect(restored.systemPrompt, '保持原设定。');
   });
 
   test('user profile survives JSON round trip', () {
