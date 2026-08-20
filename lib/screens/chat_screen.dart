@@ -49,10 +49,12 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
+  final Set<AiChatService> _groupIntentServices = {};
   String? _activeReplyId;
   bool _loading = true;
   bool _groupScope = false;
   bool _generating = false;
+  bool _evaluatingGroupIntents = false;
   bool _cancelled = false;
   bool _replyQueued = false;
   bool _drainingReplies = false;
@@ -62,6 +64,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int _compressionPromptedAtCount = 0;
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
+
+  bool get _isBusy => _generating || _evaluatingGroupIntents;
 
   Future<void> _saveScopedConversations(
     List<Conversation> conversations,
@@ -169,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _newConversation() async {
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
       return;
     }
@@ -200,7 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _newGroupConversation() async {
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
       return;
     }
@@ -353,7 +357,7 @@ class _ChatScreenState extends State<ChatScreen> {
       Navigator.of(context).maybePop();
       return;
     }
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
       return;
     }
@@ -373,7 +377,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteConversation(Conversation conversation) async {
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
       return;
     }
@@ -733,14 +737,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return _characters.where((item) => ids.contains(item.id)).toList();
   }
 
-  String _compactCharacterSetting(CharacterProfile character) {
-    final compact = character.systemPrompt
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (compact.characters.length <= 240) return compact;
-    return '${compact.characters.take(240).join()}…';
-  }
-
   String _speakerName(ChatMessage message) {
     if (message.speakerCharacterId.isEmpty) return _profile.name;
     return _characterForId(message.speakerCharacterId)?.name ?? _profile.name;
@@ -791,22 +787,8 @@ class _ChatScreenState extends State<ChatScreen> {
         break;
       }
     }
-    final mentioned = <CharacterProfile>[];
-    if (latestUser != null) {
-      for (final character in participants) {
-        final name = character.name.trim();
-        if (name.isEmpty) continue;
-        final text = latestUser.text;
-        if (text.contains('@$name') ||
-            text.startsWith('$name，') ||
-            text.startsWith('$name,') ||
-            text.startsWith('$name：') ||
-            text.startsWith('$name:')) {
-          mentioned.add(character);
-        }
-      }
-    }
     final spokenIds = <String>[];
+    final scheduledSpeakers = <CharacterProfile>[];
     var userReplyCovered = !GroupReplyPolicy.latestUserNeedsReply(visible);
     var lastSpeakerId = '';
     for (var index = visible.length - 1; index >= 0; index--) {
@@ -821,26 +803,27 @@ class _ChatScreenState extends State<ChatScreen> {
     for (var turn = 0; turn < maxGroupTurns; turn++) {
       if (!mounted || _cancelled) return;
       final requireSpeaker = latestUser != null && !userReplyCovered;
-      CharacterProfile? speaker;
-      if (mentioned.isNotEmpty) {
-        speaker = mentioned.removeAt(0);
-      } else {
-        speaker = await _selectNextGroupSpeaker(
-          participants: participants,
-          spokenIds: spokenIds,
-          lastSpeakerId: lastSpeakerId,
-          requireSpeaker: requireSpeaker,
+      if (scheduledSpeakers.isEmpty) {
+        scheduledSpeakers.addAll(
+          await _selectGroupSpeakers(
+            participants: participants,
+            spokenIds: spokenIds,
+            lastSpeakerId: lastSpeakerId,
+          ),
         );
       }
-      if (speaker == null && requireSpeaker) {
+      if (!mounted || _cancelled) return;
+      if (scheduledSpeakers.isEmpty && requireSpeaker) {
         final fallbackId = GroupReplyPolicy.fallbackSpeakerId(
           participants.map((item) => item.id).toList(),
           lastSpeakerId: lastSpeakerId,
           seed: latestUser.id,
         );
-        if (fallbackId != null) speaker = _characterForId(fallbackId);
+        final fallback = fallbackId == null ? null : _characterForId(fallbackId);
+        if (fallback != null) scheduledSpeakers.add(fallback);
       }
-      if (speaker == null) break;
+      if (scheduledSpeakers.isEmpty) break;
+      final speaker = scheduledSpeakers.removeAt(0);
       final beforeCount = _messages.length;
       await _requestReply(characterOverride: speaker);
       if (_cancelled || _messages.length <= beforeCount) break;
@@ -865,18 +848,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<CharacterProfile?> _selectNextGroupSpeaker({
+  Future<List<CharacterProfile>> _selectGroupSpeakers({
     required List<CharacterProfile> participants,
     required List<String> spokenIds,
     required String lastSpeakerId,
-    required bool requireSpeaker,
   }) async {
     final provider = _selectedProvider;
-    if (provider == null) return null;
+    if (provider == null) return const [];
     final apiKey = await _providerStore.loadApiKey(provider.id);
-    if (apiKey.trim().isEmpty) return null;
+    if (apiKey.trim().isEmpty) return const [];
     final visible = _messages.where(_isMessageVisible).toList();
-    final start = visible.length > 14 ? visible.length - 14 : 0;
+    final start = visible.length > 16 ? visible.length - 16 : 0;
     final transcript = visible.sublist(start).map((message) {
       final speaker = message.author == MessageAuthor.user
           ? '用户'
@@ -889,51 +871,107 @@ class _ChatScreenState extends State<ChatScreen> {
       final status = character.status.trim().isEmpty
           ? ''
           : '；当前状态：${character.status.trim()}';
-      return '- ${character.id} = ${character.name}$status；'
+      return '- ${character.name}$status；'
           '用户亲密度：${character.userIntimacy}/100'
-          '（${_intimacyLabel(character.userIntimacy)}）；'
-          '设定摘要：${_compactCharacterSetting(character)}';
+          '（${_intimacyLabel(character.userIntimacy)}）';
     }).join('\n');
+    final candidates = participants
+        .where((character) => character.id != lastSpeakerId)
+        .toList();
+    if (candidates.isEmpty) candidates.addAll(participants);
+    final spokenNames = spokenIds
+        .map(_characterForId)
+        .whereType<CharacterProfile>()
+        .map((character) => character.name)
+        .join('、');
+    final lastSpeakerName = _characterForId(lastSpeakerId)?.name ?? '';
+    if (mounted) setState(() => _evaluatingGroupIntents = true);
+    try {
+      final evaluations = await Future.wait([
+        for (final character in candidates)
+          _evaluateGroupReplyIntent(
+            character: character,
+            provider: provider,
+            apiKey: apiKey,
+            transcript: transcript,
+            roster: roster,
+            spokenNames: spokenNames,
+            lastSpeakerName: lastSpeakerName,
+          ),
+      ]);
+      if (_cancelled) return const [];
+      final intents = {
+        for (final evaluation in evaluations)
+          evaluation.character.id: evaluation.intent,
+      };
+      final seed = visible.isEmpty ? '' : visible.last.id;
+      final rankedIds = GroupReplyPolicy.rankWillingSpeakers(
+        intents,
+        spokenIds: spokenIds,
+        lastSpeakerId: lastSpeakerId,
+        seed: seed,
+      );
+      return rankedIds
+          .map(_characterForId)
+          .whereType<CharacterProfile>()
+          .toList();
+    } finally {
+      if (mounted) setState(() => _evaluatingGroupIntents = false);
+    }
+  }
+
+  Future<_CharacterGroupIntent> _evaluateGroupReplyIntent({
+    required CharacterProfile character,
+    required ProviderProfile provider,
+    required String apiKey,
+    required String transcript,
+    required String roster,
+    required String spokenNames,
+    required String lastSpeakerName,
+  }) async {
     final service = AiChatService();
+    _groupIntentServices.add(service);
     var raw = '';
     try {
+      final modelPrompt = provider.systemPromptForModel().trim();
       final request = ChatMessage(
-        id: 'group-router-${DateTime.now().microsecondsSinceEpoch}',
+        id: 'group-intent-${character.id}-'
+            '${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
-        text: '群成员：\n$roster\n\n最近对话：\n$transcript\n\n'
-            '本段连续对话中已发言角色ID：${spokenIds.isEmpty ? '无' : spokenIds.join(', ')}\n'
-            '上一位发言角色ID：${lastSpeakerId.isEmpty ? '无' : lastSpeakerId}\n'
-            '本次必须选择角色：${requireSpeaker ? '是' : '否'}',
+        text: '群聊成员与用户亲密度：\n$roster\n\n'
+            '最近对话：\n$transcript\n\n'
+            '本段已发言角色：${spokenNames.isEmpty ? '无' : spokenNames}\n'
+            '上一位发言角色：${lastSpeakerName.isEmpty ? '无' : lastSpeakerName}\n\n'
+            '请只判断“${character.name}”此刻是否自然想接话。',
         sentAt: DateTime.now(),
       );
       await for (final chunk in service.streamReply(
         provider: provider,
         apiKey: apiKey,
-        systemPrompt: '你是群聊发言调度器，不代写角色回复。'
-            '根据最新对话判断此刻是否有某个角色真正想接话、被点名、被触发、会自然回应另一角色，'
-            '或会基于自身性格与关系主动开启一个合时宜的话题。用户不必在每两次角色发言之间回复。'
-            '结合每个角色的设定与用户对他们的亲密度判断，但亲密度高不代表必须发言。'
-            '不要为了让所有人轮流出现而安排发言；已经说过话的角色仍可在情境需要时再次接话；'
-            '沉默和结束话题完全允许；避免让同一角色连续自言自语，也不要为了热闹强行延长。'
-            '${requireSpeaker ? '用户刚发了尚未被回应的消息，本次必须选择一名最合适的角色，禁止输出NONE。' : '如果有人应该说话，只输出该角色的完整ID；如果没人想说，只输出NONE。'}'
-            '禁止输出解释、名称或其他文字。',
+        systemPrompt: '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
+            '${character.systemPrompt}\n\n'
+            '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
+            '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
+            '由这个角色自己判断是否想回应用户、回应其他角色或主动接续话题。'
+            '被点名、在意、吃醋、反驳、安慰或不愿让用户的话落空，都可以构成接话动机；'
+            '没有自然动机时可以沉默。不要替其他角色判断。'
+            '严格只输出 REPLY|0-100 或 PASS|0-100；数字表示此刻发言意愿强度。',
         history: [request],
-        temperature: 0.2,
+        temperature: 0.1,
       )) {
         raw += chunk;
       }
-      final value = raw.trim().replaceAll(RegExp(r'[`"“”\s]'), '');
-      if (value.toUpperCase().contains('NONE')) return null;
-      for (final character in participants) {
-        if (value.contains(character.id)) return character;
-      }
-      for (final character in participants) {
-        if (value == character.name.trim()) return character;
-      }
-      return null;
+      return _CharacterGroupIntent(
+        character: character,
+        intent: GroupReplyPolicy.parseIntent(raw),
+      );
     } on Object {
-      return null;
+      return _CharacterGroupIntent(
+        character: character,
+        intent: const GroupReplyIntent(wantsToReply: false, priority: 0),
+      );
     } finally {
+      _groupIntentServices.remove(service);
       service.close();
     }
   }
@@ -1209,7 +1247,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopGenerating() {
     _cancelled = true;
     _activeService?.close();
+    for (final service in _groupIntentServices.toList()) {
+      service.close();
+    }
+    _groupIntentServices.clear();
     setState(() {
+      _evaluatingGroupIntents = false;
       final retryIndex = _activeRetryIndex;
       final retrySnapshot = _activeRetrySnapshot;
       if (retryIndex != null &&
@@ -1233,7 +1276,7 @@ class _ChatScreenState extends State<ChatScreen> {
     int replyIndex,
     RetryModelOption option,
   ) async {
-    if (_generating) return;
+    if (_isBusy) return;
     final source = _providers.firstWhere(
       (item) => item.id == option.providerId,
       orElse: () => _providers.first,
@@ -1246,7 +1289,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _moveVariant(int messageIndex, int delta) async {
-    if (_generating || messageIndex < 0 || messageIndex >= _messages.length) {
+    if (_isBusy || messageIndex < 0 || messageIndex >= _messages.length) {
       return;
     }
     final message = _messages[messageIndex];
@@ -1273,7 +1316,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _editMessage(int messageIndex) async {
-    if (_generating ||
+    if (_isBusy ||
         messageIndex < 0 ||
         messageIndex >= _messages.length) {
       return;
@@ -1762,7 +1805,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _maybeOfferCompression() async {
     if (!mounted ||
         _loading ||
-        _generating ||
+        _isBusy ||
         _compressionPromptActive) {
       return;
     }
@@ -2138,9 +2181,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _switchCharacter(CharacterProfile profile) async {
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
-      while (_generating && mounted) {
+      while (_isBusy && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     }
@@ -2168,9 +2211,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _switchToGroupScope() async {
-    if (_generating) {
+    if (_isBusy) {
       _stopGenerating();
-      while (_generating && mounted) {
+      while (_isBusy && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     }
@@ -2264,6 +2307,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _cancelled = true;
     _activeService?.close();
+    for (final service in _groupIntentServices.toList()) {
+      service.close();
+    }
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -2282,8 +2328,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final characterStatus = isGroup
         ? (_currentConversation == null
             ? '暂无群聊'
-            : (_generating ? '群聊中…' : '${_groupParticipants.length} 位角色'))
-        : (_generating
+            : (_evaluatingGroupIntents
+                ? '角色正在判断是否接话…'
+                : (_generating
+                    ? '群聊中…'
+                    : '${_groupParticipants.length} 位角色')))
+        : (_isBusy
             ? '正在回复…'
             : (_characterMood.isNotEmpty
                 ? _characterMood
@@ -2535,11 +2585,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                       message.author ==
                                           MessageAuthor.character &&
                                       message.text.isNotEmpty &&
-                                      !_generating;
+                                      !_isBusy;
                                   final canEdit =
                                       message.author != MessageAuthor.system &&
                                       message.text.isNotEmpty &&
-                                      !_generating;
+                                      !_isBusy;
                                   return MessageBubble(
                                     message: message,
                                     characterName: _speakerName(message),
@@ -2602,7 +2652,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _Composer(
               controller: _controller,
               enabled: !_loading && _currentConversation != null,
-              generating: _generating,
+              generating: _isBusy,
               onSend: _send,
               onStop: _stopGenerating,
             ),
@@ -3175,4 +3225,14 @@ class _GroupDraft {
 
   final String title;
   final List<String> participantIds;
+}
+
+class _CharacterGroupIntent {
+  const _CharacterGroupIntent({
+    required this.character,
+    required this.intent,
+  });
+
+  final CharacterProfile character;
+  final GroupReplyIntent intent;
 }

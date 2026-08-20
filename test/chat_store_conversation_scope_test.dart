@@ -134,4 +134,39 @@ void main() {
     );
     expect(selected, isNot('character-a'));
   });
+
+  test('character reply intents parse strict reply and pass decisions', () {
+    final reply = GroupReplyPolicy.parseIntent('REPLY|87');
+    final pass = GroupReplyPolicy.parseIntent('PASS|12');
+
+    expect(reply.wantsToReply, isTrue);
+    expect(reply.priority, 87);
+    expect(pass.wantsToReply, isFalse);
+    expect(pass.priority, 12);
+  });
+
+  test('willing characters are ranked without repeating the last speaker',
+      () {
+    final ranked = GroupReplyPolicy.rankWillingSpeakers(
+      const {
+        'character-a': GroupReplyIntent(
+          wantsToReply: true,
+          priority: 95,
+        ),
+        'character-b': GroupReplyIntent(
+          wantsToReply: true,
+          priority: 80,
+        ),
+        'character-c': GroupReplyIntent(
+          wantsToReply: false,
+          priority: 99,
+        ),
+      },
+      spokenIds: const [],
+      lastSpeakerId: 'character-a',
+      seed: 'message-2',
+    );
+
+    expect(ranked, ['character-b']);
+  });
 }
