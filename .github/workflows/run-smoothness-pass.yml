@@ -42,3 +42,5 @@ jobs:
             git commit -m "Smooth chat interactions and restore per-chat opener"
             git push origin HEAD:agent/ux-smoothness-pass
           fi
+
+# rerun after patch-script syntax fix
