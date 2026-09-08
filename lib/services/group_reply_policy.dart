@@ -1,10 +1,7 @@
 import '../models/chat_message.dart';
 
 class GroupReplyIntent {
-  const GroupReplyIntent({
-    required this.wantsToReply,
-    required this.priority,
-  });
+  const GroupReplyIntent({required this.wantsToReply, required this.priority});
 
   final bool wantsToReply;
   final int priority;
@@ -36,8 +33,7 @@ class GroupReplyPolicy {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
     var index = hash % participantIds.length;
-    if (participantIds.length > 1 &&
-        participantIds[index] == lastSpeakerId) {
+    if (participantIds.length > 1 && participantIds[index] == lastSpeakerId) {
       index = (index + 1) % participantIds.length;
     }
     return participantIds[index];
@@ -48,10 +44,12 @@ class GroupReplyPolicy {
     final scoreMatch = RegExp(r'(?<!\d)(100|[0-9]{1,2})(?!\d)')
         .firstMatch(normalized);
     final score = int.tryParse(scoreMatch?.group(1) ?? '') ?? 0;
-    final passes = normalized.startsWith('PASS') ||
+    final passes =
+        normalized.startsWith('PASS') ||
         normalized.startsWith('NONE') ||
         normalized.contains('沉默');
-    final replies = normalized.startsWith('REPLY') ||
+    final replies =
+        normalized.startsWith('REPLY') ||
         normalized.startsWith('TALK') ||
         normalized.contains('接话');
     return GroupReplyIntent(
@@ -68,8 +66,7 @@ class GroupReplyPolicy {
   }) {
     final entries = intents.entries
         .where(
-          (entry) =>
-              entry.value.wantsToReply && entry.key != lastSpeakerId,
+          (entry) => entry.value.wantsToReply && entry.key != lastSpeakerId,
         )
         .toList();
     entries.sort((a, b) {

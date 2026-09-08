@@ -70,17 +70,14 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
                 leading: const Icon(Icons.hub_outlined),
                 title: const Text('OpenAI 兼容'),
                 subtitle: const Text('适合 OpenAI、代理站和大多数聚合服务'),
-                onTap: () => Navigator.pop(
-                  context,
-                  ProviderProtocol.openAiCompatible,
-                ),
+                onTap: () =>
+                    Navigator.pop(context, ProviderProtocol.openAiCompatible),
               ),
               ListTile(
                 leading: const Icon(Icons.auto_awesome_outlined),
                 title: const Text('Anthropic'),
                 subtitle: const Text('Claude 原生 Messages API'),
-                onTap: () =>
-                    Navigator.pop(context, ProviderProtocol.anthropic),
+                onTap: () => Navigator.pop(context, ProviderProtocol.anthropic),
               ),
             ],
           ),
@@ -91,9 +88,7 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
     final now = DateTime.now().microsecondsSinceEpoch;
     final provider = ProviderProfile(
       id: 'provider-$now',
-      name: protocol == ProviderProtocol.anthropic
-          ? 'Anthropic'
-          : 'OpenAI 兼容',
+      name: protocol == ProviderProtocol.anthropic ? 'Anthropic' : 'OpenAI 兼容',
       protocol: protocol,
       baseUrl: protocol == ProviderProtocol.anthropic
           ? 'https://api.anthropic.com/v1'
@@ -155,7 +150,9 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    final providers = _providers.where((item) => item.id != provider.id).toList();
+    final providers = _providers
+        .where((item) => item.id != provider.id)
+        .toList();
     await _store.saveProviders(providers);
     await _store.deleteProviderKey(provider.id);
     var selected = _selectedId;
@@ -179,9 +176,7 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('模型供应商'),
-      ),
+      appBar: AppBar(title: const Text('模型供应商')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -310,9 +305,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     _baseController = TextEditingController(text: provider.baseUrl);
     _keyController = TextEditingController();
     _modelsController = TextEditingController(text: provider.models.join('\n'));
-    _modelSystemPrompts = Map<String, String>.from(
-      provider.modelSystemPrompts,
-    );
+    _modelSystemPrompts = Map<String, String>.from(provider.modelSystemPrompts);
     _promptModel = provider.models.contains(provider.selectedModel)
         ? provider.selectedModel
         : (provider.models.isEmpty ? '' : provider.models.first);
@@ -337,8 +330,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       .toSet()
       .toList();
 
-  List<_ProviderPreset> get _availablePresets =>
-      _presetsForProtocol(_protocol);
+  List<_ProviderPreset> get _availablePresets => _presetsForProtocol(_protocol);
 
   String _promptForModel(String model) {
     return _modelSystemPrompts[model]?.trim() ?? '';
@@ -387,10 +379,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     });
   }
 
-  _ProviderPreset? _matchPreset(
-    ProviderProtocol protocol,
-    String baseUrl,
-  ) {
+  _ProviderPreset? _matchPreset(ProviderProtocol protocol, String baseUrl) {
     final normalized = _normalizeBaseUrl(baseUrl);
     for (final preset in _presetsForProtocol(protocol)) {
       if (_normalizeBaseUrl(preset.baseUrl) == normalized) return preset;
@@ -424,9 +413,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       });
       return;
     }
-    final preset = _availablePresets.firstWhere(
-      (item) => item.id == presetId,
-    );
+    final preset = _availablePresets.firstWhere((item) => item.id == presetId);
     final urlChanged =
         _normalizeBaseUrl(_baseController.text) !=
         _normalizeBaseUrl(preset.baseUrl);
@@ -577,16 +564,14 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                       value: ProviderProtocol.openAiCompatible,
                       child: _ProtocolOption(
                         title: 'OpenAI 兼容',
-                        providers:
-                            'OpenAI、DeepSeek、OpenRouter、硅基流动、Kimi、通义千问等',
+                        providers: 'OpenAI、DeepSeek、OpenRouter、硅基流动、Kimi、通义千问等',
                       ),
                     ),
                     DropdownMenuItem(
                       value: ProviderProtocol.anthropic,
                       child: _ProtocolOption(
                         title: 'Anthropic',
-                        providers:
-                            'Anthropic Claude、DeepSeek，以及提供此格式的代理',
+                        providers: 'Anthropic Claude、DeepSeek，以及提供此格式的代理',
                       ),
                     ),
                   ],
@@ -933,11 +918,7 @@ const _openAiPresets = <_ProviderPreset>[
     name: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
   ),
-  _ProviderPreset(
-    id: 'xai',
-    name: 'xAI',
-    baseUrl: 'https://api.x.ai/v1',
-  ),
+  _ProviderPreset(id: 'xai', name: 'xAI', baseUrl: 'https://api.x.ai/v1'),
 ];
 
 const _anthropicPresets = <_ProviderPreset>[
@@ -999,10 +980,7 @@ class _UrlOption extends StatelessWidget {
 }
 
 class _ProtocolSelectedLabel extends StatelessWidget {
-  const _ProtocolSelectedLabel({
-    required this.icon,
-    required this.text,
-  });
+  const _ProtocolSelectedLabel({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -1010,20 +988,13 @@ class _ProtocolSelectedLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: [
-        Icon(icon, size: 20),
-        const SizedBox(width: 10),
-        Text(text),
-      ],
+      children: [Icon(icon, size: 20), const SizedBox(width: 10), Text(text)],
     );
   }
 }
 
 class _ProtocolOption extends StatelessWidget {
-  const _ProtocolOption({
-    required this.title,
-    required this.providers,
-  });
+  const _ProtocolOption({required this.title, required this.providers});
 
   final String title;
   final String providers;
@@ -1036,10 +1007,7 @@ class _ProtocolOption extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
           Text(
             providers,

@@ -523,7 +523,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('修改对话名称'),
         content: TextField(
           controller: controller,
-          autofocus: true,
+          autofocus: false,
           maxLength: 30,
           decoration: const InputDecoration(labelText: '名称'),
           onSubmitted: (value) => Navigator.pop(context, value.trim()),
@@ -1466,7 +1466,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              autofocus: true,
+              autofocus: false,
               minLines: 3,
               maxLines: 12,
               decoration: const InputDecoration(

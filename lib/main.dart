@@ -15,30 +15,31 @@ class CharacterChatApp extends StatelessWidget {
     const ink = Color(0xFF192426);
     const mist = Color(0xFFF4F6F5);
     const teal = Color(0xFF3F6B70);
-    final scheme = ColorScheme.fromSeed(
-      seedColor: teal,
-      brightness: Brightness.light,
-      surface: const Color(0xFFFBFCFA),
-    ).copyWith(
-      primary: teal,
-      onPrimary: Colors.white,
-      primaryContainer: const Color(0xFFDDEBEC),
-      onPrimaryContainer: const Color(0xFF17383C),
-      secondary: const Color(0xFF62777A),
-      secondaryContainer: const Color(0xFFE8EEEE),
-      onSecondaryContainer: const Color(0xFF2A3B3E),
-      surface: const Color(0xFFFBFCFA),
-      surfaceContainerLowest: Colors.white,
-      surfaceContainerLow: const Color(0xFFF7F9F8),
-      surfaceContainer: const Color(0xFFF0F3F2),
-      surfaceContainerHigh: const Color(0xFFE9EEEC),
-      surfaceContainerHighest: const Color(0xFFE2E8E6),
-      onSurface: ink,
-      onSurfaceVariant: const Color(0xFF667174),
-      outline: const Color(0xFFCBD4D2),
-      outlineVariant: const Color(0xFFE1E7E5),
-      error: const Color(0xFFBA4B4B),
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: teal,
+          brightness: Brightness.light,
+          surface: const Color(0xFFFBFCFA),
+        ).copyWith(
+          primary: teal,
+          onPrimary: Colors.white,
+          primaryContainer: const Color(0xFFDDEBEC),
+          onPrimaryContainer: const Color(0xFF17383C),
+          secondary: const Color(0xFF62777A),
+          secondaryContainer: const Color(0xFFE8EEEE),
+          onSecondaryContainer: const Color(0xFF2A3B3E),
+          surface: const Color(0xFFFBFCFA),
+          surfaceContainerLowest: Colors.white,
+          surfaceContainerLow: const Color(0xFFF7F9F8),
+          surfaceContainer: const Color(0xFFF0F3F2),
+          surfaceContainerHigh: const Color(0xFFE9EEEC),
+          surfaceContainerHighest: const Color(0xFFE2E8E6),
+          onSurface: ink,
+          onSurfaceVariant: const Color(0xFF667174),
+          outline: const Color(0xFFCBD4D2),
+          outlineVariant: const Color(0xFFE1E7E5),
+          error: const Color(0xFFBA4B4B),
+        );
 
     final base = ThemeData(
       colorScheme: scheme,
@@ -68,10 +69,7 @@ class CharacterChatApp extends StatelessWidget {
           ),
           bodyLarge: const TextStyle(color: ink, fontSize: 15.5, height: 1.5),
           bodyMedium: const TextStyle(color: ink, fontSize: 14, height: 1.45),
-          labelLarge: const TextStyle(
-            color: ink,
-            fontWeight: FontWeight.w600,
-          ),
+          labelLarge: const TextStyle(color: ink, fontWeight: FontWeight.w600),
         );
 
     return MaterialApp(
@@ -263,10 +261,7 @@ class CharacterChatApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          labelStyle: TextStyle(
-            color: scheme.onSurfaceVariant,
-            fontSize: 12,
-          ),
+          labelStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
         ),
       ),
       home: const ChatScreen(),
