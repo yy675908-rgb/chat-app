@@ -11,10 +11,7 @@ class ProviderService {
     String apiKey,
   ) async {
     final headers = provider.protocol == ProviderProtocol.anthropic
-        ? {
-            'x-api-key': apiKey.trim(),
-            'anthropic-version': '2023-06-01',
-          }
+        ? {'x-api-key': apiKey.trim(), 'anthropic-version': '2023-06-01'}
         : {'Authorization': 'Bearer ${apiKey.trim()}'};
     late http.Response response;
     try {
@@ -32,13 +29,14 @@ class ProviderService {
     try {
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       final data = payload['data'] as List<dynamic>? ?? const [];
-      final models = data
-          .map((item) => (item as Map<String, dynamic>)['id']?.toString())
-          .whereType<String>()
-          .where((model) => model.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+      final models =
+          data
+              .map((item) => (item as Map<String, dynamic>)['id']?.toString())
+              .whereType<String>()
+              .where((model) => model.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
       if (models.isEmpty) {
         throw const AiChatException('接口成功，但没有返回模型；请手动填写模型 ID。');
       }

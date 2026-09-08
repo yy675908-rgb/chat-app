@@ -187,7 +187,9 @@ class MessageBubble extends StatelessWidget {
                       Text(
                         time,
                         style: TextStyle(
-                          color: scheme.onSurfaceVariant.withValues(alpha: 0.68),
+                          color: scheme.onSurfaceVariant.withValues(
+                            alpha: 0.68,
+                          ),
                           fontSize: 10.5,
                         ),
                       ),
@@ -224,7 +226,12 @@ class MessageBubble extends StatelessWidget {
                         color: scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      blockquotePadding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
+                      blockquotePadding: const EdgeInsets.fromLTRB(
+                        12,
+                        7,
+                        10,
+                        7,
+                      ),
                       blockquoteDecoration: BoxDecoration(
                         color: scheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(8),
@@ -298,8 +305,7 @@ class _TokenUsage extends StatelessWidget {
     final details = <String>[
       '输入 ${message.usedPromptTokens}',
       '输出 ${message.usedCompletionTokens}',
-      if (message.usedReasoningTokens > 0)
-        '思考 ${message.usedReasoningTokens}',
+      if (message.usedReasoningTokens > 0) '思考 ${message.usedReasoningTokens}',
     ].join(' · ');
     return Wrap(
       spacing: 5,
@@ -354,8 +360,8 @@ class _BubbleAction extends StatelessWidget {
     final foreground = !enabled
         ? scheme.onSurface.withValues(alpha: 0.3)
         : selected
-            ? scheme.primary
-            : scheme.onSurfaceVariant;
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
 
     return Tooltip(
       message: tooltip,

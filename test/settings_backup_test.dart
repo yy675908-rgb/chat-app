@@ -35,9 +35,8 @@ void main() {
   });
 
   test('character intimacy survives JSON and stays within range', () {
-    final original = CharacterProfile.newCharacter(
-      DateTime.utc(2026, 8, 20),
-    ).copyWith(userIntimacy: 82);
+    final original = CharacterProfile.newCharacter(DateTime.utc(2026, 8, 20))
+        .copyWith(userIntimacy: 82);
 
     final restored = CharacterProfile.fromJson(original.toJson());
     final tooHigh = restored.copyWith(userIntimacy: 130);
@@ -45,10 +44,8 @@ void main() {
     expect(restored.userIntimacy, 82);
     expect(tooHigh.userIntimacy, 100);
     expect(
-      CharacterProfile.fromJson({
-        ...original.toJson(),
-        'userIntimacy': -20,
-      }).userIntimacy,
+      CharacterProfile.fromJson({...original.toJson(), 'userIntimacy': -20})
+          .userIntimacy,
       0,
     );
   });
@@ -101,10 +98,9 @@ void main() {
     await providerStore.saveSelectedProviderId('deepseek');
     final existing = await chatStore.loadConversations();
     final selectedCharacter = await chatStore.loadProfile();
-    await chatStore.saveMemories(
-      ['只属于当前角色的记忆'],
-      characterId: selectedCharacter.id,
-    );
+    await chatStore.saveMemories([
+      '只属于当前角色的记忆',
+    ], characterId: selectedCharacter.id);
     await chatStore.saveAutoMemoryEnabled(false);
 
     final raw = await BackupService(
@@ -120,30 +116,26 @@ void main() {
     expect(data.containsKey('characterMoods'), isFalse);
     expect(data['userProfile']['name'], '小满');
     expect(data['autoMemoryEnabled'], isFalse);
-    expect(
-      data['characterMemories'][selectedCharacter.id],
-      ['只属于当前角色的记忆'],
-    );
+    expect(data['characterMemories'][selectedCharacter.id], ['只属于当前角色的记忆']);
     expect(
       data['providers'][0]['modelSystemPrompts']['deepseek-chat'],
       '控制在三句话内。',
     );
 
-    await chatStore.saveMemories(
-      ['临时覆盖'],
-      characterId: selectedCharacter.id,
-    );
+    await chatStore.saveMemories(['临时覆盖'], characterId: selectedCharacter.id);
     await chatStore.saveAutoMemoryEnabled(true);
     await BackupService(
       chatStore: chatStore,
       providerStore: providerStore,
     ).restoreBackup(raw);
     final afterRestore = await chatStore.loadConversations();
-    expect(afterRestore.map((item) => item.id), existing.map((item) => item.id));
     expect(
-      await chatStore.loadMemories(characterId: selectedCharacter.id),
-      ['只属于当前角色的记忆'],
+      afterRestore.map((item) => item.id),
+      existing.map((item) => item.id),
     );
+    expect(await chatStore.loadMemories(characterId: selectedCharacter.id), [
+      '只属于当前角色的记忆',
+    ]);
     expect(await chatStore.loadAutoMemoryEnabled(), isFalse);
   });
 }

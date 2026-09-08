@@ -128,9 +128,7 @@ class _MemoryScreenState extends State<MemoryScreen>
         characterId: widget.characterId,
       );
       if (!saved) throw StateError('本地存储未确认写入');
-      final latest = await _store.loadMemories(
-        characterId: widget.characterId,
-      );
+      final latest = await _store.loadMemories(characterId: widget.characterId);
       if (!mounted) return;
       setState(() => _memories = latest);
     } on Object catch (error) {
@@ -155,10 +153,7 @@ class _MemoryScreenState extends State<MemoryScreen>
     await _store.saveStylePreferences(_preferences);
   }
 
-  Future<void> _deleteSimple({
-    required bool memory,
-    required int index,
-  }) async {
+  Future<void> _deleteSimple({required bool memory, required int index}) async {
     if (memory) {
       final next = [..._memories]..removeAt(index);
       await _saveAndReloadMemories(next);
@@ -253,7 +248,8 @@ class _MemoryScreenState extends State<MemoryScreen>
                   Navigator.pop(
                     context,
                     WorldBookEntry(
-                      id: entry?.id ??
+                      id:
+                          entry?.id ??
                           'world-${DateTime.now().microsecondsSinceEpoch}',
                       title: titleController.text.trim().isEmpty
                           ? '未命名条目'
@@ -325,10 +321,7 @@ class _MemoryScreenState extends State<MemoryScreen>
   void _notice(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -342,10 +335,7 @@ class _MemoryScreenState extends State<MemoryScreen>
     }
   }
 
-  Widget _simpleList({
-    required List<String> items,
-    required bool memory,
-  }) {
+  Widget _simpleList({required List<String> items, required bool memory}) {
     if (items.isEmpty) {
       return _MemoryEmptyState(
         icon: memory
@@ -382,9 +372,8 @@ class _MemoryScreenState extends State<MemoryScreen>
             ),
           ),
           title: Text(items[index]),
-          onTap: () => memory
-              ? _addOrEditMemory(index)
-              : _addOrEditPreference(index),
+          onTap: () =>
+              memory ? _addOrEditMemory(index) : _addOrEditPreference(index),
           trailing: IconButton(
             tooltip: '删除',
             onPressed: () => _deleteSimple(memory: memory, index: index),
@@ -453,10 +442,12 @@ class _MemoryScreenState extends State<MemoryScreen>
                     spacing: 6,
                     runSpacing: 4,
                     children: entry.keywords
-                        .map((keyword) => Chip(
-                              label: Text(keyword),
-                              visualDensity: VisualDensity.compact,
-                            ))
+                        .map(
+                          (keyword) => Chip(
+                            label: Text(keyword),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
                         .toList(),
                   ),
                 const SizedBox(height: 6),
@@ -560,10 +551,7 @@ class _MemoryEmptyState extends StatelessWidget {
             const SizedBox(height: 17),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(

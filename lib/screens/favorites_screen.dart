@@ -17,10 +17,7 @@ class FavoriteReplyEntry {
 }
 
 class FavoritesScreen extends StatelessWidget {
-  const FavoritesScreen({
-    required this.entries,
-    super.key,
-  });
+  const FavoritesScreen({required this.entries, super.key});
 
   final List<FavoriteReplyEntry> entries;
 

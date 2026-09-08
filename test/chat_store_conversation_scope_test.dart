@@ -1,3 +1,4 @@
+import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/conversation.dart';
 import 'package:character_chat_app/services/chat_store.dart';
@@ -12,87 +13,89 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('group chats are independent from every character conversation list',
-      () async {
-    final store = ChatStore();
-    final now = DateTime.utc(2026, 8, 20);
-    final characterA = Conversation(
-      id: 'single-a',
-      characterId: 'character-a',
-      title: 'A 的对话',
-      createdAt: now,
-      updatedAt: now,
-    );
-    final characterB = Conversation(
-      id: 'single-b',
-      characterId: 'character-b',
-      title: 'B 的对话',
-      createdAt: now,
-      updatedAt: now,
-    );
-    final legacyGroup = Conversation(
-      id: 'legacy-group',
-      characterId: 'character-a',
-      title: '旧群聊',
-      createdAt: now,
-      updatedAt: now.add(const Duration(minutes: 1)),
-      participantIds: const ['character-a', 'character-b'],
-    );
-    await store.saveConversations([characterA, characterB, legacyGroup]);
+  test(
+    'group chats are independent from every character conversation list',
+    () async {
+      final store = ChatStore();
+      final now = DateTime.utc(2026, 8, 20);
+      final characterA = Conversation(
+        id: 'single-a',
+        characterId: 'character-a',
+        title: 'A 的对话',
+        createdAt: now,
+        updatedAt: now,
+      );
+      final characterB = Conversation(
+        id: 'single-b',
+        characterId: 'character-b',
+        title: 'B 的对话',
+        createdAt: now,
+        updatedAt: now,
+      );
+      final legacyGroup = Conversation(
+        id: 'legacy-group',
+        characterId: 'character-a',
+        title: '旧群聊',
+        createdAt: now,
+        updatedAt: now.add(const Duration(minutes: 1)),
+        participantIds: const ['character-a', 'character-b'],
+      );
+      await store.saveConversations([characterA, characterB, legacyGroup]);
 
-    expect(
-      (await store.loadConversations(characterId: 'character-a'))
-          .map((item) => item.id),
-      ['single-a'],
-    );
-    expect(
-      (await store.loadConversations(characterId: 'character-b'))
-          .map((item) => item.id),
-      ['single-b'],
-    );
-    expect(
-      (await store.loadGroupConversations()).map((item) => item.id),
-      ['legacy-group'],
-    );
-  });
+      expect(
+        (await store.loadConversations(characterId: 'character-a'))
+            .map((item) => item.id),
+        ['single-a'],
+      );
+      expect(
+        (await store.loadConversations(characterId: 'character-b'))
+            .map((item) => item.id),
+        ['single-b'],
+      );
+      expect((await store.loadGroupConversations()).map((item) => item.id), [
+        'legacy-group',
+      ]);
+    },
+  );
 
-  test('saving either scope preserves conversations in the other scope',
-      () async {
-    final store = ChatStore();
-    final now = DateTime.utc(2026, 8, 20);
-    final single = Conversation(
-      id: 'single-a',
-      characterId: 'character-a',
-      title: '单聊',
-      createdAt: now,
-      updatedAt: now,
-    );
-    final group = Conversation(
-      id: 'group-a',
-      characterId: Conversation.groupSpaceId,
-      title: '群聊',
-      createdAt: now,
-      updatedAt: now,
-      participantIds: const ['character-a', 'character-b'],
-    );
-    await store.saveConversations([single, group]);
+  test(
+    'saving either scope preserves conversations in the other scope',
+    () async {
+      final store = ChatStore();
+      final now = DateTime.utc(2026, 8, 20);
+      final single = Conversation(
+        id: 'single-a',
+        characterId: 'character-a',
+        title: '单聊',
+        createdAt: now,
+        updatedAt: now,
+      );
+      final group = Conversation(
+        id: 'group-a',
+        characterId: Conversation.groupSpaceId,
+        title: '群聊',
+        createdAt: now,
+        updatedAt: now,
+        participantIds: const ['character-a', 'character-b'],
+      );
+      await store.saveConversations([single, group]);
 
-    final renamedSingle = single.copyWith(title: '改名单聊');
-    await store.saveConversations(
-      [renamedSingle],
-      characterId: 'character-a',
-    );
-    expect((await store.loadGroupConversations()).single.id, 'group-a');
+      final renamedSingle = single.copyWith(title: '改名单聊');
+      await store.saveConversations([
+        renamedSingle,
+      ], characterId: 'character-a');
+      expect((await store.loadGroupConversations()).single.id, 'group-a');
 
-    final renamedGroup = group.copyWith(title: '改名群聊');
-    await store.saveGroupConversations([renamedGroup]);
-    expect(
-      (await store.loadConversations(characterId: 'character-a'))
-          .single
-          .title,
-      '改名单聊',
-    );
-  });
+      final renamedGroup = group.copyWith(title: '改名群聊');
+      await store.saveGroupConversations([renamedGroup]);
+      expect(
+        (await store.loadConversations(characterId: 'character-a'))
+            .single
+            .title,
+        '改名单聊',
+      );
+    },
+  );
 
   test('relationship memory and mood stay isolated by character', () async {
     final store = ChatStore();
@@ -100,14 +103,8 @@ void main() {
     await store.saveMemories(['B 的共同记忆'], characterId: 'character-b');
     await store.saveCharacterMood('开心', 'character-a');
 
-    expect(
-      await store.loadMemories(characterId: 'character-a'),
-      ['A 的共同记忆'],
-    );
-    expect(
-      await store.loadMemories(characterId: 'character-b'),
-      ['B 的共同记忆'],
-    );
+    expect(await store.loadMemories(characterId: 'character-a'), ['A 的共同记忆']);
+    expect(await store.loadMemories(characterId: 'character-b'), ['B 的共同记忆']);
     expect(await store.loadCharacterMood('character-a'), '开心');
     expect(await store.loadCharacterMood('character-b'), isEmpty);
 
@@ -116,31 +113,87 @@ void main() {
     expect(await store.loadAutoMemoryEnabled(), isFalse);
   });
 
-  test('legacy relationship memory migrates only to the built-in character',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'relationship_memories_v1': ['旧的共同记忆'],
-    });
-    final store = ChatStore();
+  test(
+    'deleting a conversation clears only data derived from that conversation',
+    () async {
+      final store = ChatStore();
+      final now = DateTime.utc(2026, 8, 20);
+      final character = CharacterProfile.newCharacter(now)
+          .copyWith(status: '在生闷气');
+      await store.saveCharacters([character]);
+      await store.addMemory(
+        '来自将删除对话的记忆',
+        characterId: character.id,
+        sourceConversationId: 'conversation-a',
+      );
+      await store.addMemory(
+        '来自其他对话的记忆',
+        characterId: character.id,
+        sourceConversationId: 'conversation-b',
+      );
+      await store.addMemory('手动添加的关系记忆', characterId: character.id);
+      await store.saveCharacterMood('不高兴', character.id);
+      await store.saveCharacterMoodSource(character.id, 'conversation-a');
+      await store.saveCharacterStatusSource(character.id, 'conversation-a');
 
-    expect(
-      await store.loadMemories(characterId: 'character-lin'),
-      ['旧的共同记忆'],
-    );
-    expect(
-      await store.loadMemories(characterId: 'character-new'),
-      isEmpty,
-    );
-  });
+      await store.clearConversationDerivedState(
+        conversationId: 'conversation-a',
+        characterIds: [character.id],
+      );
+
+      expect(await store.loadMemories(characterId: character.id), [
+        '来自其他对话的记忆',
+        '手动添加的关系记忆',
+      ]);
+      expect(await store.loadCharacterMood(character.id), isEmpty);
+      expect((await store.loadCharacters()).single.status, isEmpty);
+      expect(await store.loadCharacterMoodSource(character.id), isEmpty);
+      expect(await store.loadCharacterStatusSource(character.id), isEmpty);
+    },
+  );
+
+  test(
+    'deleting a character clears scoped relationship state completely',
+    () async {
+      final store = ChatStore();
+      await store.addMemory(
+        '角色记忆',
+        characterId: 'character-a',
+        sourceConversationId: 'conversation-a',
+      );
+      await store.saveCharacterMood('开心', 'character-a');
+      await store.saveCharacterMoodSource('character-a', 'conversation-a');
+      await store.saveCharacterStatusSource('character-a', 'conversation-a');
+
+      await store.clearCharacterState('character-a');
+
+      expect(await store.loadMemories(characterId: 'character-a'), isEmpty);
+      expect(await store.loadMemorySources('character-a'), isEmpty);
+      expect(await store.loadCharacterMood('character-a'), isEmpty);
+      expect(await store.loadCharacterMoodSource('character-a'), isEmpty);
+      expect(await store.loadCharacterStatusSource('character-a'), isEmpty);
+    },
+  );
+
+  test(
+    'legacy relationship memory migrates only to the built-in character',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'relationship_memories_v1': ['旧的共同记忆'],
+      });
+      final store = ChatStore();
+
+      expect(await store.loadMemories(characterId: 'character-lin'), [
+        '旧的共同记忆',
+      ]);
+      expect(await store.loadMemories(characterId: 'character-new'), isEmpty);
+    },
+  );
 
   test('the latest user message always requires one character reply', () {
     final now = DateTime.utc(2026, 8, 20);
-    ChatMessage message(String id, MessageAuthor author) => ChatMessage(
-          id: id,
-          author: author,
-          text: id,
-          sentAt: now,
-        );
+    ChatMessage message(String id, MessageAuthor author) =>
+        ChatMessage(id: id, author: author, text: id, sentAt: now);
 
     expect(
       GroupReplyPolicy.latestUserNeedsReply([
@@ -167,10 +220,11 @@ void main() {
     );
 
     expect(selected, isNotNull);
-    expect(
-      const ['character-a', 'character-b', 'character-c'],
-      contains(selected),
-    );
+    expect(const [
+      'character-a',
+      'character-b',
+      'character-c',
+    ], contains(selected));
     expect(selected, isNot('character-a'));
   });
 
@@ -184,22 +238,12 @@ void main() {
     expect(pass.priority, 12);
   });
 
-  test('willing characters are ranked without repeating the last speaker',
-      () {
+  test('willing characters are ranked without repeating the last speaker', () {
     final ranked = GroupReplyPolicy.rankWillingSpeakers(
       const {
-        'character-a': GroupReplyIntent(
-          wantsToReply: true,
-          priority: 95,
-        ),
-        'character-b': GroupReplyIntent(
-          wantsToReply: true,
-          priority: 80,
-        ),
-        'character-c': GroupReplyIntent(
-          wantsToReply: false,
-          priority: 99,
-        ),
+        'character-a': GroupReplyIntent(wantsToReply: true, priority: 95),
+        'character-b': GroupReplyIntent(wantsToReply: true, priority: 80),
+        'character-c': GroupReplyIntent(wantsToReply: false, priority: 99),
       },
       spokenIds: const [],
       lastSpeakerId: 'character-a',

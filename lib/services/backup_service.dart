@@ -12,11 +12,9 @@ import 'provider_store.dart';
 enum BackupScope { full, configuration }
 
 class BackupService {
-  BackupService({
-    ChatStore? chatStore,
-    ProviderStore? providerStore,
-  })  : _chatStore = chatStore ?? ChatStore(),
-        _providerStore = providerStore ?? ProviderStore();
+  BackupService({ChatStore? chatStore, ProviderStore? providerStore})
+    : _chatStore = chatStore ?? ChatStore(),
+      _providerStore = providerStore ?? ProviderStore();
 
   final ChatStore _chatStore;
   final ProviderStore _providerStore;
@@ -31,8 +29,9 @@ class BackupService {
     if (scope == BackupScope.full) {
       for (final conversation in conversations) {
         final items = await _chatStore.loadMessages(conversation.id);
-        messages[conversation.id] =
-            items.map((message) => message.toJson()).toList();
+        messages[conversation.id] = items
+            .map((message) => message.toJson())
+            .toList();
       }
     }
     final providers = await _providerStore.loadProviders();
@@ -95,9 +94,7 @@ class BackupService {
     final characters = (data['characters'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(
-          (item) => CharacterProfile.fromJson(
-            Map<String, Object?>.from(item),
-          ),
+          (item) => CharacterProfile.fromJson(Map<String, Object?>.from(item)),
         )
         .toList();
     if (characters.isNotEmpty) {
@@ -120,9 +117,7 @@ class BackupService {
     }
     final conversations = (data['conversations'] as List<dynamic>? ?? const [])
         .whereType<Map>()
-        .map(
-          (item) => Conversation.fromJson(Map<String, Object?>.from(item)),
-        )
+        .map((item) => Conversation.fromJson(Map<String, Object?>.from(item)))
         .toList();
     if (hasConversationData) {
       if (conversations.isEmpty) {
@@ -138,9 +133,7 @@ class BackupService {
           final messages = list
               .whereType<Map>()
               .map(
-                (item) => ChatMessage.fromJson(
-                  Map<String, Object?>.from(item),
-                ),
+                (item) => ChatMessage.fromJson(Map<String, Object?>.from(item)),
               )
               .toList();
           await _chatStore.saveMessages(conversation.id, messages);
@@ -181,9 +174,7 @@ class BackupService {
       (data['worldBooks'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map(
-            (item) => WorldBookEntry.fromJson(
-              Map<String, Object?>.from(item),
-            ),
+            (item) => WorldBookEntry.fromJson(Map<String, Object?>.from(item)),
           )
           .toList(),
     );
@@ -222,9 +213,7 @@ class BackupService {
     final providers = (data['providers'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(
-          (item) => ProviderProfile.fromJson(
-            Map<String, Object?>.from(item),
-          ),
+          (item) => ProviderProfile.fromJson(Map<String, Object?>.from(item)),
         )
         .toList();
     if (providers.isNotEmpty) {

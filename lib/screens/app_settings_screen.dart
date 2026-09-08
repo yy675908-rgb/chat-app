@@ -26,7 +26,8 @@ class AppSettingsScreen extends StatefulWidget {
     int contextTokenBudget,
     bool autoMemoryEnabled,
     UserProfile userProfile,
-  ) onSave;
+  )
+  onSave;
 
   @override
   State<AppSettingsScreen> createState() => _AppSettingsScreenState();
@@ -59,17 +60,19 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
         : 32000;
     _autoMemoryEnabled = widget.autoMemoryEnabled;
     _userNameController = TextEditingController(text: widget.userProfile.name);
-    _userGenderController =
-        TextEditingController(text: widget.userProfile.gender);
-    _userDescriptionController =
-        TextEditingController(text: widget.userProfile.description);
+    _userGenderController = TextEditingController(
+      text: widget.userProfile.gender,
+    );
+    _userDescriptionController = TextEditingController(
+      text: widget.userProfile.description,
+    );
   }
 
   UserProfile get _userProfileDraft => UserProfile(
-        name: _userNameController.text.trim(),
-        gender: _userGenderController.text.trim(),
-        description: _userDescriptionController.text.trim(),
-      );
+    name: _userNameController.text.trim(),
+    gender: _userGenderController.text.trim(),
+    description: _userDescriptionController.text.trim(),
+  );
 
   Future<void> _persistSettings() async {
     await widget.onSave(
@@ -115,8 +118,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 leading: const Icon(Icons.badge_outlined),
                 title: const Text('仅角色与设置'),
                 subtitle: const Text('不包含聊天记录；保留角色卡、模型提示词、用户信息等'),
-                onTap: () =>
-                    Navigator.pop(context, BackupScope.configuration),
+                onTap: () => Navigator.pop(context, BackupScope.configuration),
               ),
             ],
           ),
@@ -131,7 +133,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       final now = DateTime.now();
       String two(int value) => value.toString().padLeft(2, '0');
       final kind = scope == BackupScope.full ? 'full' : 'settings';
-      final fileName = 'linjian-$kind-${now.year}${two(now.month)}'
+      final fileName =
+          'linjian-$kind-${now.year}${two(now.month)}'
           '${two(now.day)}-${two(now.hour)}${two(now.minute)}.json';
       final path = await FilePicker.saveFile(
         dialogTitle: '保存林间备份',
@@ -190,10 +193,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   void _notice(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -279,7 +279,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             child: SwitchListTile(
               title: const Text('自动沉淀共同记忆'),
               subtitle: const Text(
-                '每约 8 个用户回合检查一次明确的长期信息，并按角色分别保存；会产生少量额外模型调用。',
+                '每约 24 个用户回合检查一次值得长期保留的信息；提取后会先弹窗，可编辑并确认后才写入。会产生少量额外模型调用。',
               ),
               value: _autoMemoryEnabled,
               onChanged: (value) {
