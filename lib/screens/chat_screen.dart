@@ -65,7 +65,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int? _activeRetryIndex;
   List<ChatMessage>? _activeRetrySnapshot;
   bool _compressionPromptActive = false;
-  int _compressionPromptedAtCount = 0;
+  final Map<String, int> _compressionPromptedAtCounts = {};
+  bool _memoryPromptActive = false;
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
 
@@ -1973,7 +1974,9 @@ class _ChatScreenState extends State<ChatScreen> {
     required ProviderProfile provider,
     required String apiKey,
   }) async {
-    if (!_autoMemoryEnabled || apiKey.trim().isEmpty) return;
+    if (!_autoMemoryEnabled || apiKey.trim().isEmpty || _memoryPromptActive) {
+      return;
+    }
     final current = _currentConversation;
     if (current == null ||
         current.isGroup ||
@@ -1991,6 +1994,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (userTurns < 24 || userTurns % 24 != 0) return;
     final marker = '$conversationId|$userTurns';
     if (!_autoMemoryExtractionMarkers.add(marker)) return;
+    final sourceBranchKey = _currentBranchKey();
+    _memoryPromptActive = true;
 
     final start = visible.length > 40 ? visible.length - 40 : 0;
     final recent = visible.sublist(start);
@@ -2040,7 +2045,15 @@ class _ChatScreenState extends State<ChatScreen> {
         memory = memory.characters.take(60).join();
       }
       if (memory.isEmpty || !mounted) return;
-      if (_currentConversation?.id != conversationId) return;
+      if (_currentConversation?.id != conversationId ||
+          _currentBranchKey() != sourceBranchKey) {
+        return;
+      }
+      final currentUserTurns = _messages
+          .where(_isMessageVisible)
+          .where((message) => message.author == MessageAuthor.user)
+          .length;
+      if (currentUserTurns != userTurns) return;
 
       final controller = TextEditingController(text: memory);
       final approved = await showDialog<String>(
@@ -2091,6 +2104,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // Memory extraction is optional; never invalidate a successful reply.
     } finally {
       service.close();
+      _memoryPromptActive = false;
     }
   }
 
@@ -2137,18 +2151,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _maybeOfferCompression() async {
-    if (!mounted || _loading || _isBusy || _compressionPromptActive) {
-      return;
-    }
-    final visible = _messages.where(_isMessageVisible).toList();
-    if (visible.length < 20 ||
-        visible.length < _compressionPromptedAtCount + 10) {
+    if (!mounted ||
+        _loading ||
+        _isBusy ||
+        _compressionPromptActive ||
+        _memoryPromptActive) {
       return;
     }
     final current = _currentConversation;
     if (current == null) return;
-    final markerId =
-        current.summarizedThroughMessageIds[_currentBranchKey()] ?? '';
+    final visible = _messages.where(_isMessageVisible).toList();
+    final branchKey = _currentBranchKey();
+    final promptKey = '${current.id}|$branchKey';
+    final promptedAt = _compressionPromptedAtCounts[promptKey] ?? 0;
+    if (visible.length < 20 || visible.length < promptedAt + 10) {
+      return;
+    }
+    final markerId = current.summarizedThroughMessageIds[branchKey] ?? '';
     var start = 0;
     if (markerId.isNotEmpty) {
       final marker = visible.indexWhere((message) => message.id == markerId);
@@ -2162,7 +2181,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (estimated < (_contextTokenBudget * 0.82).round()) return;
 
     _compressionPromptActive = true;
-    _compressionPromptedAtCount = visible.length;
+    _compressionPromptedAtCounts[promptKey] = visible.length;
     try {
       final confirmed = await showDialog<bool>(
         context: context,
