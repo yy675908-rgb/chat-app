@@ -154,7 +154,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const _SectionLabel('第一次对话'),
+          const _SectionLabel('开场白'),
           const SizedBox(height: 9),
           TextField(
             controller: _greetingController,
@@ -162,13 +162,13 @@ class _CharacterScreenState extends State<CharacterScreen> {
             maxLines: 4,
             decoration: const InputDecoration(
               labelText: '开场白',
-              hintText: '角色第一次开始聊天时先说的话',
+              hintText: '每次新建对话时，角色先说的话',
               alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 7),
           Text(
-            '只在这个角色第一次开始聊天时使用；之后新建对话不会反复重播开场白。',
+            '每次新建单聊时都会先显示这段开场白，让角色先开口；内容完全由你自己决定。',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               fontSize: 12,
