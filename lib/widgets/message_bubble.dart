@@ -250,8 +250,8 @@ class MessageBubble extends StatelessWidget {
                   if (showActions) ...[
                     const SizedBox(height: 9),
                     Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
+                      spacing: 4,
+                      runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (message.variantCount > 1)
@@ -374,14 +374,14 @@ class _BubbleAction extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: background,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(10),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
           child: SizedBox(
-            width: 36,
-            height: 34,
-            child: Icon(icon, size: 17, color: foreground),
+            width: 32,
+            height: 30,
+            child: Icon(icon, size: 16, color: foreground),
           ),
         ),
       ),
@@ -403,7 +403,7 @@ class _RetryPicker extends StatelessWidget {
       tooltip: '选择模型重新生成',
       enabled: enabled,
       position: PopupMenuPosition.over,
-      offset: const Offset(0, 38),
+      offset: const Offset(0, 34),
       constraints: const BoxConstraints(minWidth: 190, maxWidth: 260),
       onSelected: onSelected,
       itemBuilder: (context) => [
@@ -440,24 +440,24 @@ class _RetryPicker extends StatelessWidget {
         color: enabled
             ? scheme.primaryContainer.withValues(alpha: 0.78)
             : scheme.primaryContainer.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(10),
         clipBehavior: Clip.antiAlias,
         child: SizedBox(
-          width: 40,
-          height: 34,
+          width: 36,
+          height: 30,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.refresh_rounded,
-                size: 19,
+                size: 17,
                 color: enabled
                     ? scheme.onPrimaryContainer
                     : scheme.onSurface.withValues(alpha: 0.3),
               ),
               Icon(
                 Icons.arrow_drop_down_rounded,
-                size: 13,
+                size: 11,
                 color: enabled
                     ? scheme.onPrimaryContainer
                     : scheme.onSurface.withValues(alpha: 0.3),
@@ -487,10 +487,10 @@ class _VersionControl extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      height: 34,
+      height: 30,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -506,7 +506,7 @@ class _VersionControl extends StatelessWidget {
               '$current/$total',
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 11.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -542,11 +542,11 @@ class _CompactArrow extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          width: 30,
-          height: 34,
+          width: 26,
+          height: 30,
           child: Icon(
             icon,
-            size: 19,
+            size: 17,
             color: onPressed == null
                 ? scheme.onSurface.withValues(alpha: 0.25)
                 : scheme.onSurfaceVariant,

@@ -956,7 +956,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ? ''
               : '；当前状态：${character.status.trim()}';
           return '- ${character.name}$mood$status；'
-              '关系亲密度：${character.userIntimacy}/100'
+              '用户好感度：${character.userIntimacy}/100'
               '（${_intimacyLabel(character.userIntimacy)}）';
         })
         .join('\n');
@@ -1035,7 +1035,7 @@ class _ChatScreenState extends State<ChatScreen> {
             '${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text:
-            '群聊成员与用户亲密度：\n$roster\n\n'
+            '用户对群聊各角色的好感度：\n$roster\n\n'
             '最近对话：\n$transcript\n\n'
             '本段已发言角色：${spokenNames.isEmpty ? '无' : spokenNames}\n'
             '上一位发言角色：${lastSpeakerName.isEmpty ? '无' : lastSpeakerName}\n\n'
@@ -1050,9 +1050,9 @@ class _ChatScreenState extends State<ChatScreen> {
             '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
             '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
             '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
-            '当前关系不是背景资料：${_intimacyBehavior(character.userIntimacy)}'
-            '亲密度必须参与是否主动接话、是否在意用户或其他角色的判断，'
-            '但不得盖过角色性格和当前情境。'
+            '用户对这个角色的好感度：${_intimacyBehavior(character.userIntimacy)}'
+            '好感度可以影响角色是否想主动接话、争取注意或改变用户观感，'
+            '但它不是关系定义；具体权重由角色性格、真实关系和当前情境决定。'
             '由这个角色自己判断是否想回应用户、回应其他角色或主动接续话题。'
             '被点名、在意、吃醋、反驳、安慰或不愿让用户的话落空，都可以构成接话动机；'
             '没有自然动机时可以沉默。不要替其他角色判断。'
@@ -1761,20 +1761,21 @@ class _ChatScreenState extends State<ChatScreen> {
         : '\n\n正在与你对话的用户资料（这是用户的信息，不是你的角色设定）：\n'
               '${userFields.join('\n')}';
     final intimacyInstruction = _currentConversation?.isGroup == true
-        ? '\n\n群聊成员与用户的关系亲密度如下，所有参与角色都知道这些信息：\n'
+        ? '\n\n用户对群聊各角色的好感度如下，所有参与角色都知道这些信息：\n'
               '${_groupParticipants.map((item) => '- ${item.name}：${item.userIntimacy}/100（${_intimacyLabel(item.userIntimacy)}）').join('\n')}\n'
-              '你自己的关系行为基线：${_intimacyBehavior(activeCharacter.userIntimacy)}'
-              '亲密度是持续影响行为的关系状态，不是只供知晓的标签。'
-              '决定是否主动、是否追问或挽留、关心强度、边界、吃醋、护短或争取注意时都要参考它，'
-              '但必须服从各自原有性格和当前情境。'
-              '不要机械复述数值，也不要为了比较亲密度而强行争执。'
-        : '\n\n你与用户当前的关系亲密度为${activeCharacter.userIntimacy}/100'
+              '好感度只表示用户对某个角色的主观好感和接受程度，不定义任何关系类型。'
+              '当前角色对这个数值的感知：${_intimacyBehavior(activeCharacter.userIntimacy)}'
+              '角色可以按自己的性格决定是否在意、是否想提高、维持或改变用户的好感，'
+              '并让这种动机自然影响主动程度、接话、试探、关心、争取注意或保持距离等行为。'
+              '但不得仅凭好感度推断恋爱、暧昧、伴侣、亲属或其他关系，也不要机械迎合用户。'
+        : '\n\n用户当前对你的好感度为${activeCharacter.userIntimacy}/100'
               '（${_intimacyLabel(activeCharacter.userIntimacy)}）。'
-              '这不是背景资料，而是你每次行动和表达都要考虑的关系状态。'
-              '当前行为基线：${_intimacyBehavior(activeCharacter.userIntimacy)}'
-              '它应自然影响主动程度、关注和追问、边界、依赖、吃醋、护短、挽留或争取注意等行为，'
-              '具体表现必须符合你的性格和当前情境。'
-              '不要复述数值，也不要为了表现亲密度而机械撒娇或迎合。';
+              '好感度只表示用户对你的主观好感和接受程度，不定义你们是什么关系。'
+              '你能感知这个数值，并可以按自己的性格和当前处境决定是否在意、'
+              '是否希望提高、维持或改变它，再把这种动机自然反映到你的行为上。'
+              '你可以尝试讨用户喜欢、试探、拉近或拉开距离，也可以不把提高好感当目标。'
+              '真正的关系由角色设定、共同经历和当前对话决定；'
+              '不要仅凭好感度推断恋爱、暧昧、伴侣、亲属或其他固定关系，也不要机械迎合用户。';
     final groupInstruction = _currentConversation?.isGroup == true
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
               '只能输出这个角色的一次自然发言，不得代替其他成员说话，也不要列出多人回复。'
@@ -3529,7 +3530,7 @@ class _ConversationDrawer extends StatelessWidget {
                           icon: groupScope
                               ? Icons.people_alt_outlined
                               : Icons.manage_accounts_outlined,
-                          label: groupScope ? '角色与亲密度' : '角色设定',
+                          label: groupScope ? '角色与好感度' : '角色设定',
                           onTap: groupScope
                               ? onCharacterPicker
                               : onEditCharacter,
@@ -3603,7 +3604,7 @@ class _IntimacyControlState extends State<_IntimacyControl> {
             Row(
               children: [
                 const Text(
-                  '亲密度',
+                  '用户好感度',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const Spacer(),
@@ -3639,8 +3640,8 @@ class _IntimacyControlState extends State<_IntimacyControl> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '作为角色的关系行为基线；会影响主动、边界与在意程度，'
-                '群聊中成员也能感知差异。',
+                '表示你对这个角色的好感，不等于关系类型；角色能感知这个数值，'
+                '并会按自己的性格决定如何反应。',
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
               ),
             ),
@@ -3652,27 +3653,17 @@ class _IntimacyControlState extends State<_IntimacyControl> {
 }
 
 String _intimacyLabel(int value) {
-  if (value < 20) return '疏远';
-  if (value < 40) return '保留';
-  if (value < 60) return '普通';
-  if (value < 80) return '亲近';
-  return '很亲密';
+  if (value < 20) return '很低';
+  if (value < 40) return '偏低';
+  if (value < 60) return '一般';
+  if (value < 80) return '较高';
+  return '很高';
 }
 
 String _intimacyBehavior(int value) {
-  if (value < 20) {
-    return '保持明显距离：少主动追问或索取关注，边界感强，关心也更克制，不默认拥有亲密关系中的权利。';
-  }
-  if (value < 40) {
-    return '关系仍在试探：可以关心和记住细节，但主动程度有限，亲昵、吃醋或占有感应很轻或不出现。';
-  }
-  if (value < 60) {
-    return '关系熟悉但未深度绑定：会自然延续话题、追问重要后续，偶尔表达偏好或不满，同时保留彼此空间。';
-  }
-  if (value < 80) {
-    return '关系亲近：会更主动地关心、追问、挽留或争取注意；符合性格时可以护短、吃醋、偏心或表达依赖。';
-  }
-  return '关系高度亲密：把彼此视为持续存在的重要联结，会主动维护关系、表达需要和偏爱；符合性格时可更直接地亲昵、吃醋、护短、约束或争取用户，同时尊重明确边界。';
+  return '$value/100（${_intimacyLabel(value)}）。'
+      '这是用户对角色的主观好感和接受程度，不是关系类型。'
+      '角色可以自行决定是否在意，以及是否想提高、维持或改变它。';
 }
 
 class _DrawerShortcut extends StatelessWidget {
