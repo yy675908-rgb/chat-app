@@ -25,15 +25,15 @@ jobs:
         run: git checkout origin/main -- lib pubspec.yaml
       - name: Apply focus guard
         run: python3 tool/apply_keyboard_focus_guard.py
-      - name: Format changed Dart files
-        run: dart format lib/main.dart lib/screens/chat_screen.dart lib/screens/app_settings_screen.dart lib/screens/api_settings_screen.dart lib/screens/memory_screen.dart lib/screens/style_preferences_screen.dart lib/screens/character_screen.dart
-      - name: Audit automatic focus
+      - name: Audit automatic focus and diff size
         run: |
-          echo "Automatic focus calls:" 
+          echo "Automatic focus calls:"
           grep -R -n -E 'autofocus:[[:space:]]*true|requestFocus\(' lib || true
           if grep -R -q -E 'autofocus:[[:space:]]*true|requestFocus\(' lib; then exit 1; fi
-          echo "Changed files:" 
+          echo "Changed files:"
           git diff --name-only origin/main -- lib pubspec.yaml
+          echo "Diff stat:"
+          git diff --stat origin/main -- lib pubspec.yaml
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
