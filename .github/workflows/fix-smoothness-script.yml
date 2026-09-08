@@ -1,0 +1,37 @@
+name: Fix Smoothness Script
+
+on:
+  push:
+    branches: ["agent/ux-smoothness-pass"]
+    paths:
+      - ".github/workflows/fix-smoothness-script.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ux-smoothness-pass
+      - name: Fix script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tool/apply_smoothness_pass.py')
+          text = p.read_text()
+          old = '? const SizedBox.shrink('
+          new = '? const SizedBox.shrink()'
+          if old not in text:
+              raise SystemExit('anchor missing')
+          p.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tool/apply_smoothness_pass.py
+          git commit -m "Fix smoothness patch syntax"
+          git push origin HEAD:agent/ux-smoothness-pass
