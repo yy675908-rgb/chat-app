@@ -4,7 +4,7 @@ on:
   push:
     branches: ["agent/deletion-memory-status-pass"]
     paths:
-      - "tool/apply_deletion_memory_status.py"
+      - "tool/finalize_deletion_provenance.py"
       - ".github/workflows/apply-deletion-memory-status.yml"
 
 permissions:
@@ -21,19 +21,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Apply patch
-        run: python3 tool/apply_deletion_memory_status.py
-      - name: Fix test import
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('test/chat_store_conversation_scope_test.dart')
-          text = p.read_text()
-          imp = "import 'package:character_chat_app/models/character_profile.dart';\n"
-          if imp not in text:
-              text = imp + text
-              p.write_text(text)
-          PY
+      - name: Apply final hardening
+        run: python3 tool/finalize_deletion_provenance.py
       - name: Format
         run: dart format lib test
       - name: Install dependencies
@@ -46,10 +35,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib test pubspec.yaml
+          git add lib test
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Make deletion forget derived state and confirm memories"
+            git commit -m "Preserve deletion provenance across derived preferences and backups"
             git push origin HEAD:agent/deletion-memory-status-pass
           fi
