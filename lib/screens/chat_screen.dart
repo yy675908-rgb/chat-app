@@ -2542,6 +2542,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         final updated = conversation.copyWith(
           participantIds: participantIds,
+          branchSummaries: const {},
+          summarizedThroughMessageIds: const {},
           updatedAt: DateTime.now(),
         );
         keptConversations.add(updated);
