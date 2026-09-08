@@ -76,6 +76,37 @@ jobs:
           """
               p.write_text(text.replace(marker, test + marker, 1))
           PY
+      - name: Fix backup provenance test setup
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('test/settings_backup_test.dart')
+          text = p.read_text()
+          old = """    await chatStore.saveMemories([
+                '只属于当前角色的记忆',
+              ], characterId: selectedCharacter.id);
+          """
+          if old in text:
+              new = """    await chatStore.addMemory(
+                '只属于当前角色的记忆',
+                characterId: selectedCharacter.id,
+                sourceConversationId: existing.first.id,
+              );
+              await chatStore.addStylePreference(
+                '当用户疲惫时：回应简短一些',
+                sourceConversationId: existing.first.id,
+                sourceCharacterId: selectedCharacter.id,
+              );
+              await chatStore.saveCharacterStatusSource(
+                selectedCharacter.id,
+                existing.first.id,
+              );
+          """
+              text = text.replace(old, new, 1)
+          elif "sourceConversationId: existing.first.id" not in text:
+              raise SystemExit('backup provenance setup anchor not found')
+          p.write_text(text)
+          PY
       - name: Format
         run: dart format lib test
       - name: Install dependencies
