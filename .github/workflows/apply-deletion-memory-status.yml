@@ -22,7 +22,60 @@ jobs:
         with:
           channel: stable
       - name: Apply final hardening
-        run: python3 tool/finalize_deletion_provenance.py
+        shell: bash
+        run: |
+          set +e
+          output=$(python3 tool/finalize_deletion_provenance.py 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ] && ! grep -q "missing preference deletion test anchor" <<<"$output"; then
+            exit "$status"
+          fi
+      - name: Insert preference deletion test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('test/chat_store_conversation_scope_test.dart')
+          text = p.read_text()
+          if 'conversation deletion also clears auto-derived response preferences' not in text:
+              marker = "  test(\n    'deleting a character clears scoped relationship state completely',"
+              if marker not in text:
+                  raise SystemExit('formatted deletion test marker not found')
+              test = """  test(
+            'conversation deletion also clears auto-derived response preferences',
+            () async {
+              final store = ChatStore();
+              await store.addStylePreference(
+                '来自将删除对话的偏好',
+                sourceConversationId: 'conversation-a',
+                sourceCharacterId: 'character-a',
+              );
+              await store.addStylePreference(
+                '来自其他对话的偏好',
+                sourceConversationId: 'conversation-b',
+                sourceCharacterId: 'character-a',
+              );
+              await store.saveStylePreferences([
+                ...await store.loadStylePreferences(),
+                '手动添加的偏好',
+              ]);
+
+              await store.clearConversationDerivedState(
+                conversationId: 'conversation-a',
+                characterIds: const ['character-a'],
+              );
+
+              expect(
+                await store.loadStylePreferences(),
+                ['来自其他对话的偏好', '手动添加的偏好'],
+              );
+            },
+          );
+
+          """
+              p.write_text(text.replace(marker, test + marker, 1))
+          PY
       - name: Format
         run: dart format lib test
       - name: Install dependencies
