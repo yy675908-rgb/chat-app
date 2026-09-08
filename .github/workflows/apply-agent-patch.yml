@@ -4,7 +4,7 @@ on:
   push:
     branches: ["agent/role-delete-intimacy"]
     paths:
-      - "patches/agent-role-delete-intimacy.patch"
+      - "tool/apply_agent_changes.py"
 
 permissions:
   contents: write
@@ -19,16 +19,15 @@ jobs:
           ref: agent/role-delete-intimacy
           fetch-depth: 0
 
-      - name: Apply patch and push
+      - name: Apply source rewrite and push
         shell: bash
         run: |
           set -euo pipefail
-          patch_file="patches/agent-role-delete-intimacy.patch"
-          if [ ! -f "$patch_file" ]; then
+          script="tool/apply_agent_changes.py"
+          if [ ! -f "$script" ]; then
             exit 0
           fi
-          git apply --check "$patch_file"
-          git apply "$patch_file"
+          python3 "$script"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add lib/screens/chat_screen.dart
