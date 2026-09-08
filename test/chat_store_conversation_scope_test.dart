@@ -153,6 +153,34 @@ void main() {
   );
 
   test(
+    'conversation deletion also clears auto-derived response preferences',
+    () async {
+      final store = ChatStore();
+      await store.addStylePreference(
+        '来自将删除对话的偏好',
+        sourceConversationId: 'conversation-a',
+        sourceCharacterId: 'character-a',
+      );
+      await store.addStylePreference(
+        '来自其他对话的偏好',
+        sourceConversationId: 'conversation-b',
+        sourceCharacterId: 'character-a',
+      );
+      await store.saveStylePreferences([
+        ...await store.loadStylePreferences(),
+        '手动添加的偏好',
+      ]);
+
+      await store.clearConversationDerivedState(
+        conversationId: 'conversation-a',
+        characterIds: const ['character-a'],
+      );
+
+      expect(await store.loadStylePreferences(), ['来自其他对话的偏好', '手动添加的偏好']);
+    },
+  );
+
+  test(
     'deleting a character clears scoped relationship state completely',
     () async {
       final store = ChatStore();

@@ -1455,6 +1455,11 @@ class _ChatScreenState extends State<ChatScreen> {
     int messageIndex,
     ChatMessage likedReply,
   ) async {
+    final sourceConversationId = _currentConversation?.id ?? '';
+    final sourceCharacterId = likedReply.speakerCharacterId.isEmpty
+        ? _profile.id
+        : likedReply.speakerCharacterId;
+    if (sourceConversationId.isEmpty || sourceCharacterId.isEmpty) return;
     var userContext = '';
     for (var index = messageIndex - 1; index >= 0; index--) {
       if (_messages[index].author == MessageAuthor.user) {
@@ -1505,7 +1510,13 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       final rule = _cleanPreference(raw);
       if (rule.isEmpty) return;
-      final added = await _chatStore.addStylePreference(rule);
+      final conversations = await _chatStore.loadConversations();
+      if (!conversations.any((item) => item.id == sourceConversationId)) return;
+      final added = await _chatStore.addStylePreference(
+        rule,
+        sourceConversationId: sourceConversationId,
+        sourceCharacterId: sourceCharacterId,
+      );
       if (!added) return;
       final latest = await _chatStore.loadStylePreferences();
       if (!mounted) return;
@@ -2541,6 +2552,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     for (final conversationId in deletedConversationIds) {
+      final original = allConversations.firstWhere(
+        (item) => item.id == conversationId,
+      );
+      await _chatStore.clearConversationDerivedState(
+        conversationId: conversationId,
+        characterIds: original.isGroup
+            ? original.participantIds
+            : <String>[original.characterId],
+      );
       await _chatStore.deleteConversation(conversationId);
     }
     for (final group in updatedGroups) {

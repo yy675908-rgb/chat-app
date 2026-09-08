@@ -98,9 +98,20 @@ void main() {
     await providerStore.saveSelectedProviderId('deepseek');
     final existing = await chatStore.loadConversations();
     final selectedCharacter = await chatStore.loadProfile();
-    await chatStore.saveMemories([
+    await chatStore.addMemory(
       '只属于当前角色的记忆',
-    ], characterId: selectedCharacter.id);
+      characterId: selectedCharacter.id,
+      sourceConversationId: existing.first.id,
+    );
+    await chatStore.addStylePreference(
+      '当用户疲惫时：回应简短一些',
+      sourceConversationId: existing.first.id,
+      sourceCharacterId: selectedCharacter.id,
+    );
+    await chatStore.saveCharacterStatusSource(
+      selectedCharacter.id,
+      existing.first.id,
+    );
     await chatStore.saveAutoMemoryEnabled(false);
 
     final raw = await BackupService(
@@ -109,13 +120,25 @@ void main() {
     ).createBackup(scope: BackupScope.configuration);
     final data = jsonDecode(raw) as Map<String, dynamic>;
 
-    expect(data['version'], 3);
+    expect(data['version'], 4);
     expect(data['scope'], 'configuration');
     expect(data.containsKey('conversations'), isFalse);
     expect(data.containsKey('messages'), isFalse);
     expect(data.containsKey('characterMoods'), isFalse);
     expect(data['userProfile']['name'], '小满');
     expect(data['autoMemoryEnabled'], isFalse);
+    expect(
+      data['characterMemorySources'][selectedCharacter.id]['只属于当前角色的记忆'],
+      existing.first.id,
+    );
+    expect(
+      data['stylePreferenceSources']['当用户疲惫时：回应简短一些'],
+      '${existing.first.id}::${selectedCharacter.id}',
+    );
+    expect(
+      data['characterStatusSources'][selectedCharacter.id],
+      existing.first.id,
+    );
     expect(data['characterMemories'][selectedCharacter.id], ['只属于当前角色的记忆']);
     expect(
       data['providers'][0]['modelSystemPrompts']['deepseek-chat'],
@@ -124,6 +147,9 @@ void main() {
 
     await chatStore.saveMemories(['临时覆盖'], characterId: selectedCharacter.id);
     await chatStore.saveAutoMemoryEnabled(true);
+    await chatStore.saveMemorySources(selectedCharacter.id, {});
+    await chatStore.saveStylePreferenceSources({});
+    await chatStore.saveCharacterStatusSource(selectedCharacter.id, '');
     await BackupService(
       chatStore: chatStore,
       providerStore: providerStore,
@@ -137,5 +163,17 @@ void main() {
       '只属于当前角色的记忆',
     ]);
     expect(await chatStore.loadAutoMemoryEnabled(), isFalse);
+    expect(
+      (await chatStore.loadMemorySources(selectedCharacter.id))['只属于当前角色的记忆'],
+      existing.first.id,
+    );
+    expect(
+      (await chatStore.loadStylePreferenceSources())['当用户疲惫时：回应简短一些'],
+      '${existing.first.id}::${selectedCharacter.id}',
+    );
+    expect(
+      await chatStore.loadCharacterStatusSource(selectedCharacter.id),
+      existing.first.id,
+    );
   });
 }

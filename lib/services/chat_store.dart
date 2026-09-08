@@ -15,6 +15,7 @@ class ChatStore {
   static const _memoriesKey = 'relationship_memories_v1';
   static const _memorySourcesKey = 'relationship_memory_sources_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
+  static const _stylePreferenceSourcesKey = 'style_preference_sources_v1';
   static const _characterMoodKey = 'character_mood_v1';
   static const _characterMoodSourceKey = 'character_mood_source_v1';
   static const _characterStatusSourceKey = 'character_status_source_v1';
@@ -338,17 +339,64 @@ class ChatStore {
         .toSet()
         .toList();
     await preferences.setStringList(_stylePreferencesKey, normalized);
+    final sources = await loadStylePreferenceSources();
+    sources.removeWhere((preference, _) => !normalized.contains(preference));
+    await saveStylePreferenceSources(sources);
   }
 
-  Future<bool> addStylePreference(String item) async {
+  Future<bool> addStylePreference(
+    String item, {
+    String? sourceConversationId,
+    String? sourceCharacterId,
+  }) async {
     final value = item.trim();
     if (value.isEmpty) return false;
     final preferences = await SharedPreferences.getInstance();
     final items = preferences.getStringList(_stylePreferencesKey) ?? <String>[];
     if (items.contains(value)) return false;
     items.add(value);
-    await preferences.setStringList(_stylePreferencesKey, items);
-    return true;
+    final saved = await preferences.setStringList(_stylePreferencesKey, items);
+    if (saved &&
+        sourceConversationId != null &&
+        sourceConversationId.trim().isNotEmpty &&
+        sourceCharacterId != null &&
+        sourceCharacterId.trim().isNotEmpty) {
+      final sources = await loadStylePreferenceSources();
+      sources[value] =
+          '${sourceConversationId.trim()}::${sourceCharacterId.trim()}';
+      await saveStylePreferenceSources(sources);
+    }
+    return saved;
+  }
+
+  Future<Map<String, String>> loadStylePreferenceSources() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_stylePreferenceSourcesKey);
+    if (raw == null || raw.isEmpty) return <String, String>{};
+    try {
+      final decoded = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      return decoded.map((key, value) => MapEntry(key, value?.toString() ?? ''))
+        ..removeWhere((_, value) => value.isEmpty);
+    } on Object {
+      return <String, String>{};
+    }
+  }
+
+  Future<void> saveStylePreferenceSources(Map<String, String> sources) async {
+    final preferences = await SharedPreferences.getInstance();
+    final normalized = Map<String, String>.from(sources)
+      ..removeWhere(
+        (preference, source) =>
+            preference.trim().isEmpty || source.trim().isEmpty,
+      );
+    if (normalized.isEmpty) {
+      await preferences.remove(_stylePreferenceSourcesKey);
+    } else {
+      await preferences.setString(
+        _stylePreferenceSourcesKey,
+        jsonEncode(normalized),
+      );
+    }
   }
 
   Future<List<WorldBookEntry>> loadWorldBooks() async {
@@ -456,6 +504,21 @@ class ChatStore {
     required Iterable<String> characterIds,
   }) async {
     final ids = characterIds.where((id) => id.trim().isNotEmpty).toSet();
+
+    final preferenceSources = await loadStylePreferenceSources();
+    final preferencesToRemove = preferenceSources.entries
+        .where((entry) => entry.value.startsWith('$conversationId::'))
+        .map((entry) => entry.key)
+        .toSet();
+    if (preferencesToRemove.isNotEmpty) {
+      final preferences = await loadStylePreferences();
+      await saveStylePreferences(
+        preferences
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList(),
+      );
+    }
+
     if (ids.isEmpty) return;
     final characters = await loadCharacters();
     var charactersChanged = false;
@@ -494,6 +557,20 @@ class ChatStore {
   }
 
   Future<void> clearCharacterState(String characterId) async {
+    final preferenceSources = await loadStylePreferenceSources();
+    final preferencesToRemove = preferenceSources.entries
+        .where((entry) => entry.value.endsWith('::$characterId'))
+        .map((entry) => entry.key)
+        .toSet();
+    if (preferencesToRemove.isNotEmpty) {
+      final preferences = await loadStylePreferences();
+      await saveStylePreferences(
+        preferences
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList(),
+      );
+    }
+
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove('${_memoriesKey}_$characterId');
     await preferences.remove('${_memorySourcesKey}_$characterId');
