@@ -94,7 +94,10 @@ void main() {
     final restored = Conversation.fromJson(original.toJson());
 
     expect(restored.isGroup, isTrue);
-    expect(restored.participantIds, const ['character-lin', 'character-2']);
+    expect(
+      restored.participantIds,
+      const ['character-lin', 'character-2'],
+    );
   });
 
   test('provider profile builds a chat completions endpoint', () {
@@ -128,7 +131,10 @@ void main() {
       profile.messagesUri.toString(),
       'https://api.anthropic.com/v1/messages',
     );
-    expect(profile.modelsUri.toString(), 'https://api.anthropic.com/v1/models');
+    expect(
+      profile.modelsUri.toString(),
+      'https://api.anthropic.com/v1/models',
+    );
   });
 
   test('openai SSE chunks are joined into a reply', () async {

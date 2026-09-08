@@ -24,14 +24,14 @@ class ProviderProfile {
   }
 
   factory ProviderProfile.openAi() => const ProviderProfile(
-    id: 'openai-default',
-    name: 'OpenAI 兼容',
-    protocol: ProviderProtocol.openAiCompatible,
-    baseUrl: 'https://api.openai.com/v1',
-    models: [],
-    selectedModel: '',
-    modelSystemPrompts: {},
-  );
+        id: 'openai-default',
+        name: 'OpenAI 兼容',
+        protocol: ProviderProtocol.openAiCompatible,
+        baseUrl: 'https://api.openai.com/v1',
+        models: [],
+        selectedModel: '',
+        modelSystemPrompts: {},
+      );
 
   bool get isConfigured =>
       baseUrl.trim().isNotEmpty && selectedModel.trim().isNotEmpty;
@@ -81,14 +81,14 @@ class ProviderProfile {
   }
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'name': name,
-    'protocol': protocol.name,
-    'baseUrl': baseUrl,
-    'models': models,
-    'selectedModel': selectedModel,
-    'modelSystemPrompts': modelSystemPrompts,
-  };
+        'id': id,
+        'name': name,
+        'protocol': protocol.name,
+        'baseUrl': baseUrl,
+        'models': models,
+        'selectedModel': selectedModel,
+        'modelSystemPrompts': modelSystemPrompts,
+      };
 
   factory ProviderProfile.fromJson(Map<String, Object?> json) {
     return ProviderProfile(
@@ -103,8 +103,7 @@ class ProviderProfile {
           .map((item) => item.toString())
           .toList(),
       selectedModel: json['selectedModel'] as String? ?? '',
-      modelSystemPrompts:
-          (json['modelSystemPrompts'] as Map?)?.map(
+      modelSystemPrompts: (json['modelSystemPrompts'] as Map?)?.map(
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           const {},

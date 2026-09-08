@@ -39,16 +39,16 @@ class AiTokenUsage {
 
   AiTokenUsage merge(AiTokenUsage other) {
     return AiTokenUsage(
-      promptTokens: other.promptTokens > 0 ? other.promptTokens : promptTokens,
+      promptTokens:
+          other.promptTokens > 0 ? other.promptTokens : promptTokens,
       completionTokens: other.completionTokens > 0
           ? other.completionTokens
           : completionTokens,
       reasoningTokens: other.reasoningTokens > 0
           ? other.reasoningTokens
           : reasoningTokens,
-      cacheHitTokens: other.cacheHitTokens > 0
-          ? other.cacheHitTokens
-          : cacheHitTokens,
+      cacheHitTokens:
+          other.cacheHitTokens > 0 ? other.cacheHitTokens : cacheHitTokens,
       cacheMissTokens: other.cacheMissTokens > 0
           ? other.cacheMissTokens
           : cacheMissTokens,
@@ -60,7 +60,11 @@ class AiTokenUsage {
 }
 
 class AiStreamEvent {
-  const AiStreamEvent({required this.kind, this.text = '', this.usage});
+  const AiStreamEvent({
+    required this.kind,
+    this.text = '',
+    this.usage,
+  });
 
   final AiStreamEventKind kind;
   final String text;
@@ -144,10 +148,9 @@ class AiChatService {
       },
     );
 
-    await for (final line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       final data = _sseData(line);
       if (data == null) continue;
       if (data == '[DONE]') break;
@@ -163,8 +166,10 @@ class AiChatService {
               promptTokens: usage['prompt_tokens'] as int? ?? 0,
               completionTokens: usage['completion_tokens'] as int? ?? 0,
               reasoningTokens: details?['reasoning_tokens'] as int? ?? 0,
-              cacheHitTokens: usage['prompt_cache_hit_tokens'] as int? ?? 0,
-              cacheMissTokens: usage['prompt_cache_miss_tokens'] as int? ?? 0,
+              cacheHitTokens:
+                  usage['prompt_cache_hit_tokens'] as int? ?? 0,
+              cacheMissTokens:
+                  usage['prompt_cache_miss_tokens'] as int? ?? 0,
               reportedTotalTokens: usage['total_tokens'] as int? ?? 0,
             ),
           );
@@ -182,7 +187,10 @@ class AiChatService {
         }
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) {
-          yield AiStreamEvent(kind: AiStreamEventKind.content, text: content);
+          yield AiStreamEvent(
+            kind: AiStreamEventKind.content,
+            text: content,
+          );
         }
       } on Object {
         continue;
@@ -215,10 +223,9 @@ class AiChatService {
       },
     );
 
-    await for (final line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       final data = _sseData(line);
       if (data == null) continue;
       try {
@@ -268,7 +275,10 @@ class AiChatService {
         } else if (delta?['type'] == 'text_delta') {
           final text = delta?['text'];
           if (text is String && text.isNotEmpty) {
-            yield AiStreamEvent(kind: AiStreamEventKind.content, text: text);
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.content,
+              text: text,
+            );
           }
         }
       } on AiChatException {
@@ -307,7 +317,9 @@ class AiChatService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await response.stream.bytesToString();
-      throw AiChatException('接口返回 ${response.statusCode}：${_readError(body)}');
+      throw AiChatException(
+        '接口返回 ${response.statusCode}：${_readError(body)}',
+      );
     }
     return response;
   }
