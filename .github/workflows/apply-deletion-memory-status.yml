@@ -1,0 +1,44 @@
+name: Apply Deletion Memory Status Pass
+
+on:
+  push:
+    branches: ["agent/deletion-memory-status-pass"]
+    paths:
+      - "tool/apply_deletion_memory_status.py"
+      - ".github/workflows/apply-deletion-memory-status.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/deletion-memory-status-pass
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Apply patch
+        run: python3 tool/apply_deletion_memory_status.py
+      - name: Format
+        run: dart format lib test
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib test pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Make deletion forget derived state and confirm memories"
+            git push origin HEAD:agent/deletion-memory-status-pass
+          fi
