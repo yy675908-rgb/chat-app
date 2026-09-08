@@ -80,7 +80,7 @@ class _MemoryScreenState extends State<MemoryScreen>
             const SizedBox(height: 14),
             TextField(
               controller: controller,
-              autofocus: true,
+              autofocus: false,
               minLines: 3,
               maxLines: 8,
               decoration: InputDecoration(

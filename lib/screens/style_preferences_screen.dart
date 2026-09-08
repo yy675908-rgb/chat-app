@@ -54,7 +54,7 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              autofocus: true,
+              autofocus: false,
               minLines: 2,
               maxLines: 5,
               decoration: const InputDecoration(
