@@ -173,16 +173,45 @@ class _ChatScreenState extends State<ChatScreen> {
     bool isGroup = false,
   }) async {
     final messages = await _chatStore.loadMessages(conversationId);
-    if (messages.isEmpty) {
+    if (messages.isNotEmpty) return messages;
+
+    if (isGroup) {
       messages.add(
         ChatMessage(
           id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-          author: isGroup ? MessageAuthor.system : MessageAuthor.character,
-          text: isGroup ? '群聊已创建' : profile.greeting,
+          author: MessageAuthor.system,
+          text: '群聊已创建',
           sentAt: DateTime.now(),
-          speakerCharacterId: isGroup ? '' : profile.id,
         ),
       );
+    } else {
+      final conversations = await _chatStore.loadConversations(
+        characterId: profile.id,
+      );
+      var hasPriorConversation = false;
+      for (final conversation in conversations) {
+        if (conversation.id == conversationId) continue;
+        final priorMessages = await _chatStore.loadMessages(conversation.id);
+        if (priorMessages.any(
+          (message) => message.author != MessageAuthor.system,
+        )) {
+          hasPriorConversation = true;
+          break;
+        }
+      }
+      if (!hasPriorConversation && profile.greeting.trim().isNotEmpty) {
+        messages.add(
+          ChatMessage(
+            id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
+            author: MessageAuthor.character,
+            text: profile.greeting.trim(),
+            sentAt: DateTime.now(),
+            speakerCharacterId: profile.id,
+          ),
+        );
+      }
+    }
+    if (messages.isNotEmpty) {
       await _chatStore.saveMessages(conversationId, messages);
     }
     return messages;
@@ -191,7 +220,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _newConversation() async {
     if (_isBusy) {
       _stopGenerating();
-      return;
+      while (_isBusy && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      if (!mounted) return;
     }
     final now = DateTime.now();
     final conversation = Conversation(
@@ -222,7 +254,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _newGroupConversation() async {
     if (_isBusy) {
       _stopGenerating();
-      return;
+      while (_isBusy && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      if (!mounted) return;
     }
     if (_characters.length < 2) {
       _showMessage('至少添加两个角色后才能创建群聊');
@@ -372,7 +407,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (_isBusy) {
       _stopGenerating();
-      return;
+      while (_isBusy && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      if (!mounted) return;
     }
     final messages = await _messagesWithGreeting(
       conversation.id,
@@ -1393,15 +1431,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _toggleLike(int messageIndex) async {
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
     final original = _messages[messageIndex];
-    final shouldExtract = !original.isLiked;
     final updated = original.toggleLike();
     setState(() => _messages[messageIndex] = updated);
     await _persistMessages();
     if (!mounted) return;
-    _showMessage(updated.isLiked ? '已喜欢并加入收藏' : '已取消喜欢');
-    if (shouldExtract) {
-      unawaited(_extractStylePreference(messageIndex, original));
-    }
+    _showMessage(updated.isLiked ? '已加入收藏' : '已取消收藏');
   }
 
   Future<void> _editMessage(int messageIndex) async {
@@ -1525,14 +1559,17 @@ class _ChatScreenState extends State<ChatScreen> {
         sourceConversationId: sourceConversationId,
         sourceCharacterId: sourceCharacterId,
       );
-      if (!added) return;
+      if (!added) {
+        if (mounted) _showMessage('这条回复没有产生新的回应偏好');
+        return;
+      }
       final latest = await _chatStore.loadStylePreferences();
       if (!mounted) return;
       setState(() => _stylePreferences = latest);
       _showMessage('已提炼回应偏好，可在“记忆与世界”中编辑');
     } on Object {
       if (mounted) {
-        _showMessage('回复已收藏；偏好提炼失败，可在“记忆与世界”中添加');
+        _showMessage('偏好提炼失败，可在“记忆与世界”中手动添加');
       }
     } finally {
       service.close();
@@ -2901,6 +2938,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final headerTitle = isGroup
         ? (_currentConversation?.title ?? '群聊')
         : _profile.name;
+    final mood = _characterMood.trim();
+    final status = _profile.status.trim();
+    final stateParts = <String>[
+      if (mood.isNotEmpty) mood,
+      if (status.isNotEmpty && status != '在这里' && status != mood) status,
+    ];
+    final restingCharacterState = stateParts.join(' · ');
     final characterStatus = isGroup
         ? (_currentConversation == null
               ? '暂无群聊'
@@ -2910,10 +2954,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           ? '群聊中…'
                           : '${_groupParticipants.length} 位角色')))
         : (_isBusy
-              ? '正在回复…'
-              : (_characterMood.isNotEmpty
-                    ? _characterMood
-                    : (_profile.status == '在这里' ? '' : _profile.status)));
+              ? (restingCharacterState.isEmpty
+                    ? '正在回复…'
+                    : '$restingCharacterState · 正在回复…')
+              : restingCharacterState);
     final visibleMessageIndices = _visibleMessageIndices;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
@@ -3191,6 +3235,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                           : null,
                                       onLike: canUseCharacterActions
                                           ? () => _toggleLike(index)
+                                          : null,
+                                      onLearnStyle: canUseCharacterActions
+                                          ? () => _extractStylePreference(
+                                              index,
+                                              message,
+                                            )
                                           : null,
                                       retryModels: [
                                         for (final provider in _providers)
