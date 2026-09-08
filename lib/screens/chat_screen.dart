@@ -283,6 +283,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: titleController,
+                    autofocus: false,
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
                     decoration: const InputDecoration(
                       labelText: '群聊名称（可不填）',
                       filled: true,
@@ -523,6 +525,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('修改对话名称'),
         content: TextField(
           controller: controller,
+          onTapOutside: (_) => FocusScope.of(context).unfocus(),
           autofocus: false,
           maxLength: 30,
           decoration: const InputDecoration(labelText: '名称'),
@@ -1404,6 +1407,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _retryReply(int replyIndex, RetryModelOption option) async {
     if (_isBusy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     final source = _providers.firstWhere(
       (item) => item.id == option.providerId,
       orElse: () => _providers.first,
@@ -1466,6 +1470,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: controller,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
               autofocus: false,
               minLines: 3,
               maxLines: 12,
@@ -2101,6 +2106,7 @@ class _ChatScreenState extends State<ChatScreen> {
           title: const Text('写入共同记忆？'),
           content: TextField(
             controller: controller,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             autofocus: false,
             minLines: 2,
             maxLines: 5,
@@ -3768,6 +3774,7 @@ class _Composer extends StatelessWidget {
                 Expanded(
                   child: TextField(
                     controller: controller,
+                    autofocus: false,
                     enabled: enabled,
                     minLines: 1,
                     maxLines: 6,

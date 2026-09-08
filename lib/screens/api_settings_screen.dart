@@ -684,6 +684,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: _baseController,
+                    autofocus: false,
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
                     keyboardType: TextInputType.url,
                     autocorrect: false,
                     decoration: const InputDecoration(
@@ -708,6 +710,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 const SizedBox(height: 18),
                 TextField(
                   controller: _nameController,
+                  autofocus: false,
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: '名称',
                     filled: true,
@@ -717,6 +721,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 const SizedBox(height: 14),
                 TextField(
                   controller: _keyController,
+                  autofocus: false,
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   obscureText: _obscureKey,
                   autocorrect: false,
                   enableSuggestions: false,
@@ -761,6 +767,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                 const SizedBox(height: 6),
                 TextField(
                   controller: _modelsController,
+                  autofocus: false,
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   minLines: 3,
                   maxLines: 8,
                   autocorrect: false,
@@ -836,6 +844,8 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: _modelPromptController,
+                    autofocus: false,
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
                     minLines: 6,
                     maxLines: 14,
                     decoration: const InputDecoration(

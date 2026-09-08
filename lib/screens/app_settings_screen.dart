@@ -298,6 +298,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               Expanded(
                 child: TextField(
                   controller: _userNameController,
+                  autofocus: false,
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: '名字',
                     filled: true,
@@ -309,6 +311,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               Expanded(
                 child: TextField(
                   controller: _userGenderController,
+                  autofocus: false,
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: '性别',
                     filled: true,
@@ -321,6 +325,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           const SizedBox(height: 10),
           TextField(
             controller: _userDescriptionController,
+            autofocus: false,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             minLines: 3,
             maxLines: 7,
             decoration: const InputDecoration(

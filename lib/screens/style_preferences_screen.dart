@@ -54,6 +54,7 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: controller,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
               autofocus: false,
               minLines: 2,
               maxLines: 5,

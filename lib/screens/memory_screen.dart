@@ -80,6 +80,7 @@ class _MemoryScreenState extends State<MemoryScreen>
             const SizedBox(height: 14),
             TextField(
               controller: controller,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
               autofocus: false,
               minLines: 3,
               maxLines: 8,
@@ -210,6 +211,8 @@ class _MemoryScreenState extends State<MemoryScreen>
               const SizedBox(height: 14),
               TextField(
                 controller: titleController,
+                autofocus: false,
+                onTapOutside: (_) => FocusScope.of(context).unfocus(),
                 decoration: const InputDecoration(
                   labelText: '标题',
                   filled: true,
@@ -219,6 +222,8 @@ class _MemoryScreenState extends State<MemoryScreen>
               const SizedBox(height: 12),
               TextField(
                 controller: keywordsController,
+                autofocus: false,
+                onTapOutside: (_) => FocusScope.of(context).unfocus(),
                 decoration: const InputDecoration(
                   labelText: '触发关键词',
                   hintText: '例如：王都，银塔，北境',
@@ -230,6 +235,8 @@ class _MemoryScreenState extends State<MemoryScreen>
               const SizedBox(height: 12),
               TextField(
                 controller: contentController,
+                autofocus: false,
+                onTapOutside: (_) => FocusScope.of(context).unfocus(),
                 minLines: 7,
                 maxLines: 16,
                 decoration: const InputDecoration(

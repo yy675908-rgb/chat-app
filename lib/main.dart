@@ -7,6 +7,40 @@ void main() {
   runApp(const CharacterChatApp());
 }
 
+
+class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
+  void _clearFocus() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _clearFocus();
+    super.didPush(route, previousRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _clearFocus();
+    super.didPop(route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _clearFocus();
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _clearFocus();
+    super.didRemove(route, previousRoute);
+  }
+}
+
 class CharacterChatApp extends StatelessWidget {
   const CharacterChatApp({super.key});
 
@@ -75,6 +109,7 @@ class CharacterChatApp extends StatelessWidget {
         );
 
     return MaterialApp(
+      navigatorObservers: [_KeyboardDismissNavigatorObserver()],
       debugShowCheckedModeBanner: false,
       title: '林间',
       themeMode: ThemeMode.light,
