@@ -4,325 +4,141 @@ from pathlib import Path
 path = Path('lib/screens/chat_screen.dart')
 text = path.read_text()
 
-old_prompt = """    final stateInstruction =
-        '\\n\\n角色状态输出规则：读完用户最新消息并完成正文回复后，'
-        '由你自己判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
-        '上一轮状态是“$previousStatus”；都可以保持，也可以随实际对话自然变化。'
-        '心绪只写1—12个字；状态写2—16个字，描述此刻真实的态度、活动或关系状态，'
-        '不要写成对用户的说明。正文结束后另起两行，严格输出'
-        '“[[心绪:……]]”和“[[状态:……]]”。这两行只供系统读取，不要在正文解释。';
+old_fields = """  bool _compressionPromptActive = false;
+  int _compressionPromptedAtCount = 0;
+  bool _pointerHoldingMessages = false;
 """
-new_prompt = """    final stateInstruction =
-        '\\n\\n角色状态协议（强制）：读完用户最新消息并完成正文回复后，'
-        '必须由你自己重新判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
-        '上一轮状态是“$previousStatus”。不要为了显得有变化而强行变化，也不能偷懒机械沿用；'
-        '只有你判断本轮确实没有实质变化时，才延续上一轮内容。'
-        '心绪只写1—12个字；状态写2—16个字，描述此刻真实的态度、活动或关系状态。'
-        '无论变化与否，正文结束后都必须另起两行，严格输出'
-        '“[[心绪:……]]”和“[[状态:……]]”；即使不变也要原样输出，不得省略。'
-        '这两行只供系统读取，不要在正文解释。';
+new_fields = """  bool _compressionPromptActive = false;
+  final Map<String, int> _compressionPromptedAtCounts = {};
+  bool _memoryPromptActive = false;
+  bool _pointerHoldingMessages = false;
 """
-if old_prompt not in text:
-    raise SystemExit('state prompt anchor not found')
-text = text.replace(old_prompt, new_prompt, 1)
+if old_fields not in text:
+    raise SystemExit('prompt coordination fields anchor not found')
+text = text.replace(old_fields, new_fields, 1)
 
-old_main = """        setState(() {
-          if (isRetry) {
-            final current = _messages[replyIndex];
-            final variants = [...current.replyVariants];
-            variants[current.activeVariantIndex] = variant;
-            _messages[replyIndex] = current.copyWith(replyVariants: variants);
-          } else {
-            _messages[replyIndex] = newReply!.copyWith(
-              text: replyText,
-              reasoning: fullReasoning.trim(),
-              reasoningDurationMs: reasoningDurationMs,
-              promptTokens: usage.promptTokens,
-              completionTokens: usage.completionTokens,
-              reasoningTokens: usage.reasoningTokens,
-              totalTokens: usage.totalTokens,
-              replyVariants: [variant],
-              activeVariantIndex: 0,
-            );
-          }
-          final moods = Map<String, String>.from(_characterMoods);
-          if (parsedReply.mood.isNotEmpty) {
-            moods[speakingCharacter.id] = parsedReply.mood;
-          } else {
-            moods.remove(speakingCharacter.id);
-          }
-          _characterMoods = moods;
-          if (speakingCharacter.id == _profile.id) {
-            _characterMood = parsedReply.mood;
-          }
-        });
-        if (parsedReply.mood.isNotEmpty) {
-          unawaited(
-            _chatStore.saveCharacterMood(
-              parsedReply.mood,
-              speakingCharacter.id,
-            ),
-          );
-          if (replyConversationId.isNotEmpty) {
-            unawaited(
-              _chatStore.saveCharacterMoodSource(
-                speakingCharacter.id,
-                replyConversationId,
-              ),
-            );
-          }
-        } else {
-          unawaited(_chatStore.saveCharacterMood('', speakingCharacter.id));
-          unawaited(
-            _deriveMoodFromLatestTurn(
-              provider: provider,
-              apiKey: apiKey,
-              contextMessages: contextMessages,
-              replyText: replyText,
-              character: speakingCharacter,
-              conversationId: replyConversationId,
-            ),
-          );
-        }
-        if (parsedReply.status.isNotEmpty && replyConversationId.isNotEmpty) {
-          await _applyGeneratedStatus(
-            character: speakingCharacter,
-            status: parsedReply.status,
-            conversationId: replyConversationId,
-          );
-        }
+old_memory_guard = """    if (!_autoMemoryEnabled || apiKey.trim().isEmpty) return;
 """
-new_main = """        final previousMood = _characterMoods[speakingCharacter.id] ?? '';
-        final previousStatus = speakingCharacter.status.trim();
-        setState(() {
-          if (isRetry) {
-            final current = _messages[replyIndex];
-            final variants = [...current.replyVariants];
-            variants[current.activeVariantIndex] = variant;
-            _messages[replyIndex] = current.copyWith(replyVariants: variants);
-          } else {
-            _messages[replyIndex] = newReply!.copyWith(
-              text: replyText,
-              reasoning: fullReasoning.trim(),
-              reasoningDurationMs: reasoningDurationMs,
-              promptTokens: usage.promptTokens,
-              completionTokens: usage.completionTokens,
-              reasoningTokens: usage.reasoningTokens,
-              totalTokens: usage.totalTokens,
-              replyVariants: [variant],
-              activeVariantIndex: 0,
-            );
-          }
-          if (parsedReply.mood.isNotEmpty) {
-            _characterMoods = {
-              ..._characterMoods,
-              speakingCharacter.id: parsedReply.mood,
-            };
-            if (speakingCharacter.id == _profile.id) {
-              _characterMood = parsedReply.mood;
-            }
-          }
-        });
-        if (parsedReply.mood.isNotEmpty) {
-          unawaited(
-            _chatStore.saveCharacterMood(
-              parsedReply.mood,
-              speakingCharacter.id,
-            ),
-          );
-          if (replyConversationId.isNotEmpty) {
-            unawaited(
-              _chatStore.saveCharacterMoodSource(
-                speakingCharacter.id,
-                replyConversationId,
-              ),
-            );
-          }
-        }
-        if (parsedReply.status.isNotEmpty && replyConversationId.isNotEmpty) {
-          await _applyGeneratedStatus(
-            character: speakingCharacter,
-            status: parsedReply.status,
-            conversationId: replyConversationId,
-          );
-        }
-        if ((parsedReply.mood.isEmpty || parsedReply.status.isEmpty) &&
-            replyConversationId.isNotEmpty) {
-          unawaited(
-            _repairStateFromLatestTurn(
-              provider: provider,
-              apiKey: apiKey,
-              contextMessages: contextMessages,
-              replyText: replyText,
-              character: speakingCharacter,
-              conversationId: replyConversationId,
-              sourceReplyId: isRetry ? originalReply!.id : newReply!.id,
-              previousMood: previousMood,
-              previousStatus: previousStatus,
-              repairMood: parsedReply.mood.isEmpty,
-              repairStatus: parsedReply.status.isEmpty,
-            ),
-          );
-        }
-"""
-if old_main not in text:
-    raise SystemExit('main state handling anchor not found')
-text = text.replace(old_main, new_main, 1)
-
-start = text.index('  Future<void> _applyGeneratedStatus({')
-end = text.index('  Future<void> _maybeExtractRelationshipMemory({', start)
-new_methods = r'''  Future<void> _applyGeneratedStatus({
-    required CharacterProfile character,
-    required String status,
-    required String conversationId,
-  }) async {
-    final value = _normalizeStatus(status);
-    if (value.isEmpty || conversationId.isEmpty) return;
-    final index = _characters.indexWhere((item) => item.id == character.id);
-    if (index < 0) return;
-    final characters = [..._characters];
-    characters[index] = characters[index].copyWith(status: value);
-    if (mounted) {
-      final updated = characters[index];
-      setState(() {
-        _characters = characters;
-        if (_profile.id == character.id) _profile = updated;
-      });
+new_memory_guard = """    if (!_autoMemoryEnabled || apiKey.trim().isEmpty || _memoryPromptActive) {
+      return;
     }
-    await _chatStore.saveCharacters(characters);
-    await _chatStore.saveCharacterStatusSource(character.id, conversationId);
-  }
+"""
+if old_memory_guard not in text:
+    raise SystemExit('memory guard anchor not found')
+text = text.replace(old_memory_guard, new_memory_guard, 1)
 
-  Future<void> _repairStateFromLatestTurn({
-    required ProviderProfile provider,
-    required String apiKey,
-    required List<ChatMessage> contextMessages,
-    required String replyText,
-    required CharacterProfile character,
-    required String conversationId,
-    required String sourceReplyId,
-    required String previousMood,
-    required String previousStatus,
-    required bool repairMood,
-    required bool repairStatus,
-  }) async {
-    if ((!repairMood && !repairStatus) || replyText.trim().isEmpty) return;
-    ChatMessage? latestUser;
-    for (var index = contextMessages.length - 1; index >= 0; index--) {
-      if (contextMessages[index].author == MessageAuthor.user) {
-        latestUser = contextMessages[index];
-        break;
-      }
-    }
-    if (latestUser == null) return;
+old_marker = """    final marker = '$conversationId|$userTurns';
+    if (!_autoMemoryExtractionMarkers.add(marker)) return;
 
-    final requested = <String>[
-      if (repairMood) '心绪',
-      if (repairStatus) '状态',
-    ].join('、');
-    final outputFormat = <String>[
-      if (repairMood) '[[心绪:结果]]',
-      if (repairStatus) '[[状态:结果]]',
-    ].join('\n');
-    final service = AiChatService();
-    var raw = '';
-    try {
-      final request = ChatMessage(
-        id: 'state-repair-${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text:
-            '上一轮心绪：${previousMood.isEmpty ? '未记录' : previousMood}\n'
-            '上一轮状态：${previousStatus.isEmpty ? '未记录' : previousStatus}\n\n'
-            '用户最新消息：${latestUser.text}\n\n'
-            '${character.name}的本轮回复：$replyText',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
-        provider: provider,
-        apiKey: apiKey,
-        systemPrompt:
-            '主回复已经完成，你只补齐遗漏的角色$requested，不生成正文。'
-            '必须根据这一轮真实对话重新判断，不能为了变化而强行变化，也不能机械沿用。'
-            '${repairMood ? '心绪用1—12个字、emoji或颜文字；若上一轮已有心绪且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
-            '${repairStatus ? '状态用2—16个字描述此刻真实态度、活动或关系状态；若上一轮已有状态且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
-            '严格只输出以下标签，不解释，不添加其他文字：\n$outputFormat',
-        history: [request],
-        temperature: 0.1,
-      )) {
-        raw += chunk;
-      }
-      if (!mounted || _currentConversation?.id != conversationId) return;
-      ChatMessage? currentLatestUser;
-      for (var index = _messages.length - 1; index >= 0; index--) {
-        if (_messages[index].author == MessageAuthor.user) {
-          currentLatestUser = _messages[index];
-          break;
-        }
-      }
-      if (currentLatestUser?.id != latestUser.id) return;
-      ChatMessage? currentReply;
-      for (final message in _messages) {
-        if (message.id == sourceReplyId) {
-          currentReply = message;
-          break;
-        }
-      }
-      if (currentReply == null || currentReply.text.trim() != replyText.trim()) {
+    final start = visible.length > 40 ? visible.length - 40 : 0;
+"""
+new_marker = """    final marker = '$conversationId|$userTurns';
+    if (!_autoMemoryExtractionMarkers.add(marker)) return;
+    final sourceBranchKey = _currentBranchKey();
+    _memoryPromptActive = true;
+
+    final start = visible.length > 40 ? visible.length - 40 : 0;
+"""
+if old_marker not in text:
+    raise SystemExit('memory marker anchor not found')
+text = text.replace(old_marker, new_marker, 1)
+
+old_before_dialog = """      if (memory.isEmpty || !mounted) return;
+      if (_currentConversation?.id != conversationId) return;
+
+      final controller = TextEditingController(text: memory);
+"""
+new_before_dialog = """      if (memory.isEmpty || !mounted) return;
+      if (_currentConversation?.id != conversationId ||
+          _currentBranchKey() != sourceBranchKey) {
         return;
       }
+      final currentUserTurns = _messages
+          .where(_isMessageVisible)
+          .where((message) => message.author == MessageAuthor.user)
+          .length;
+      if (currentUserTurns != userTurns) return;
 
-      final repaired = _splitMoodFromReply(raw);
-      if (repairMood && repaired.mood.isNotEmpty) {
-        final mood = repaired.mood.toUpperCase() == 'SAME'
-            ? previousMood
-            : repaired.mood;
-        if (mood.isNotEmpty) {
-          setState(() {
-            _characterMoods = {..._characterMoods, character.id: mood};
-            if (_profile.id == character.id) _characterMood = mood;
-          });
-          await _chatStore.saveCharacterMood(mood, character.id);
-          await _chatStore.saveCharacterMoodSource(character.id, conversationId);
-        }
-      }
-      if (repairStatus && repaired.status.isNotEmpty) {
-        final status = repaired.status.toUpperCase() == 'SAME'
-            ? previousStatus
-            : repaired.status;
-        if (status.isNotEmpty) {
-          await _applyGeneratedStatus(
-            character: character,
-            status: status,
-            conversationId: conversationId,
-          );
-        }
-      }
-    } on Object {
-      // Keep the last valid state when an optional repair request fails.
-    } finally {
+      final controller = TextEditingController(text: memory);
+"""
+if old_before_dialog not in text:
+    raise SystemExit('memory freshness anchor not found')
+text = text.replace(old_before_dialog, new_before_dialog, 1)
+
+old_memory_finally = """    } finally {
       service.close();
     }
   }
 
-'''
-text = text[:start] + new_methods + text[end:]
-path.write_text(text)
+  List<ChatMessage> _messagesWithinBudget(
+"""
+new_memory_finally = """    } finally {
+      service.close();
+      _memoryPromptActive = false;
+    }
+  }
 
-character_path = Path('lib/screens/character_screen.dart')
-character_text = character_path.read_text()
-old_subtitle = "'角色会根据实际对话自然更新，不需要手动填写'"
-if old_subtitle in character_text:
-    character_text = character_text.replace(
-        old_subtitle,
-        "'角色会随实际对话自行判断；确实没变化时会延续上一轮状态'",
-        1,
-    )
-character_path.write_text(character_text)
+  List<ChatMessage> _messagesWithinBudget(
+"""
+if old_memory_finally not in text:
+    raise SystemExit('memory finally anchor not found')
+text = text.replace(old_memory_finally, new_memory_finally, 1)
+
+old_compression_start = """  Future<void> _maybeOfferCompression() async {
+    if (!mounted || _loading || _isBusy || _compressionPromptActive) {
+      return;
+    }
+    final visible = _messages.where(_isMessageVisible).toList();
+    if (visible.length < 20 ||
+        visible.length < _compressionPromptedAtCount + 10) {
+      return;
+    }
+    final current = _currentConversation;
+    if (current == null) return;
+    final markerId =
+        current.summarizedThroughMessageIds[_currentBranchKey()] ?? '';
+"""
+new_compression_start = """  Future<void> _maybeOfferCompression() async {
+    if (!mounted ||
+        _loading ||
+        _isBusy ||
+        _compressionPromptActive ||
+        _memoryPromptActive) {
+      return;
+    }
+    final current = _currentConversation;
+    if (current == null) return;
+    final visible = _messages.where(_isMessageVisible).toList();
+    final branchKey = _currentBranchKey();
+    final promptKey = '${current.id}|$branchKey';
+    final promptedAt = _compressionPromptedAtCounts[promptKey] ?? 0;
+    if (visible.length < 20 || visible.length < promptedAt + 10) {
+      return;
+    }
+    final markerId = current.summarizedThroughMessageIds[branchKey] ?? '';
+"""
+if old_compression_start not in text:
+    raise SystemExit('compression start anchor not found')
+text = text.replace(old_compression_start, new_compression_start, 1)
+
+old_compression_mark = """    _compressionPromptActive = true;
+    _compressionPromptedAtCount = visible.length;
+    try {
+"""
+new_compression_mark = """    _compressionPromptActive = true;
+    _compressionPromptedAtCounts[promptKey] = visible.length;
+    try {
+"""
+if old_compression_mark not in text:
+    raise SystemExit('compression prompt count anchor not found')
+text = text.replace(old_compression_mark, new_compression_mark, 1)
+
+path.write_text(text)
 
 pubspec = Path('pubspec.yaml')
 pubspec_text = pubspec.read_text()
-if 'version: 0.9.8+18' in pubspec_text:
-    pubspec_text = pubspec_text.replace('version: 0.9.8+18', 'version: 0.9.9+19', 1)
-elif 'version: 0.9.9+19' not in pubspec_text:
+if 'version: 0.9.9+19' in pubspec_text:
+    pubspec_text = pubspec_text.replace('version: 0.9.9+19', 'version: 0.9.10+20', 1)
+elif 'version: 0.9.10+20' not in pubspec_text:
     raise SystemExit('unexpected pubspec version')
 pubspec.write_text(pubspec_text)
