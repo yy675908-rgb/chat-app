@@ -12,11 +12,9 @@ import 'provider_store.dart';
 enum BackupScope { full, configuration }
 
 class BackupService {
-  BackupService({
-    ChatStore? chatStore,
-    ProviderStore? providerStore,
-  })  : _chatStore = chatStore ?? ChatStore(),
-        _providerStore = providerStore ?? ProviderStore();
+  BackupService({ChatStore? chatStore, ProviderStore? providerStore})
+    : _chatStore = chatStore ?? ChatStore(),
+      _providerStore = providerStore ?? ProviderStore();
 
   final ChatStore _chatStore;
   final ProviderStore _providerStore;
@@ -31,24 +29,43 @@ class BackupService {
     if (scope == BackupScope.full) {
       for (final conversation in conversations) {
         final items = await _chatStore.loadMessages(conversation.id);
-        messages[conversation.id] =
-            items.map((message) => message.toJson()).toList();
+        messages[conversation.id] = items
+            .map((message) => message.toJson())
+            .toList();
       }
     }
     final providers = await _providerStore.loadProviders();
     final characterMemories = <String, List<String>>{};
+    final characterMemorySources = <String, Map<String, String>>{};
     final characterMoods = <String, String>{};
+    final characterMoodSources = <String, String>{};
+    final characterStatusSources = <String, String>{};
     for (final character in characters) {
       final memories = await _chatStore.loadMemories(characterId: character.id);
       characterMemories[character.id] = memories;
+      characterMemorySources[character.id] = await _chatStore.loadMemorySources(
+        character.id,
+      );
+      final statusSource = await _chatStore.loadCharacterStatusSource(
+        character.id,
+      );
+      if (statusSource.isNotEmpty) {
+        characterStatusSources[character.id] = statusSource;
+      }
       if (scope == BackupScope.full) {
         final mood = await _chatStore.loadCharacterMood(character.id);
         characterMoods[character.id] = mood;
+        final moodSource = await _chatStore.loadCharacterMoodSource(
+          character.id,
+        );
+        if (moodSource.isNotEmpty) {
+          characterMoodSources[character.id] = moodSource;
+        }
       }
     }
     final data = <String, Object?>{
       'format': 'character-chat-backup',
-      'version': 3,
+      'version': 4,
       'scope': scope.name,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profile.toJson(),
@@ -56,7 +73,10 @@ class BackupService {
       'selectedCharacterId': await _chatStore.loadSelectedCharacterId(),
       'memories': characterMemories[profile.id] ?? const <String>[],
       'characterMemories': characterMemories,
+      'characterMemorySources': characterMemorySources,
       'stylePreferences': await _chatStore.loadStylePreferences(),
+      'stylePreferenceSources': await _chatStore.loadStylePreferenceSources(),
+      'characterStatusSources': characterStatusSources,
       'worldBooks': (await _chatStore.loadWorldBooks())
           .map((entry) => entry.toJson())
           .toList(),
@@ -77,6 +97,7 @@ class BackupService {
         'messages': messages,
         'characterMood': await _chatStore.loadCharacterMood(),
         'characterMoods': characterMoods,
+        'characterMoodSources': characterMoodSources,
       });
     }
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -88,16 +109,14 @@ class BackupService {
     final data = Map<String, Object?>.from(decoded);
     final version = data['version'];
     if (data['format'] != 'character-chat-backup' ||
-        (version != 1 && version != 2 && version != 3)) {
+        (version != 1 && version != 2 && version != 3 && version != 4)) {
       throw const FormatException('不是受支持的聊天备份文件');
     }
 
     final characters = (data['characters'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(
-          (item) => CharacterProfile.fromJson(
-            Map<String, Object?>.from(item),
-          ),
+          (item) => CharacterProfile.fromJson(Map<String, Object?>.from(item)),
         )
         .toList();
     if (characters.isNotEmpty) {
@@ -120,9 +139,7 @@ class BackupService {
     }
     final conversations = (data['conversations'] as List<dynamic>? ?? const [])
         .whereType<Map>()
-        .map(
-          (item) => Conversation.fromJson(Map<String, Object?>.from(item)),
-        )
+        .map((item) => Conversation.fromJson(Map<String, Object?>.from(item)))
         .toList();
     if (hasConversationData) {
       if (conversations.isEmpty) {
@@ -138,9 +155,7 @@ class BackupService {
           final messages = list
               .whereType<Map>()
               .map(
-                (item) => ChatMessage.fromJson(
-                  Map<String, Object?>.from(item),
-                ),
+                (item) => ChatMessage.fromJson(Map<String, Object?>.from(item)),
               )
               .toList();
           await _chatStore.saveMessages(conversation.id, messages);
@@ -177,13 +192,52 @@ class BackupService {
           .map((item) => item.toString())
           .toList(),
     );
+
+    final restoredCharacters = await _chatStore.loadCharacters();
+    for (final character in restoredCharacters) {
+      await _chatStore.saveMemorySources(character.id, <String, String>{});
+      await _chatStore.saveCharacterStatusSource(character.id, '');
+      if (data['scope'] == BackupScope.full.name) {
+        await _chatStore.saveCharacterMoodSource(character.id, '');
+      }
+    }
+    await _chatStore.saveStylePreferenceSources(<String, String>{});
+
+    final memorySourcesRaw = data['characterMemorySources'];
+    if (memorySourcesRaw is Map) {
+      for (final entry in memorySourcesRaw.entries) {
+        final values = entry.value;
+        if (values is! Map) continue;
+        await _chatStore.saveMemorySources(
+          entry.key.toString(),
+          values.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ),
+        );
+      }
+    }
+    final styleSourcesRaw = data['stylePreferenceSources'];
+    if (styleSourcesRaw is Map) {
+      await _chatStore.saveStylePreferenceSources(
+        styleSourcesRaw.map(
+          (key, value) => MapEntry(key.toString(), value.toString()),
+        ),
+      );
+    }
+    final statusSourcesRaw = data['characterStatusSources'];
+    if (statusSourcesRaw is Map) {
+      for (final entry in statusSourcesRaw.entries) {
+        await _chatStore.saveCharacterStatusSource(
+          entry.key.toString(),
+          entry.value?.toString() ?? '',
+        );
+      }
+    }
     await _chatStore.saveWorldBooks(
       (data['worldBooks'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map(
-            (item) => WorldBookEntry.fromJson(
-              Map<String, Object?>.from(item),
-            ),
+            (item) => WorldBookEntry.fromJson(Map<String, Object?>.from(item)),
           )
           .toList(),
     );
@@ -193,6 +247,15 @@ class BackupService {
         await _chatStore.saveCharacterMood(
           entry.value?.toString() ?? '',
           entry.key.toString(),
+        );
+      }
+    }
+    final moodSourcesRaw = data['characterMoodSources'];
+    if (moodSourcesRaw is Map) {
+      for (final entry in moodSourcesRaw.entries) {
+        await _chatStore.saveCharacterMoodSource(
+          entry.key.toString(),
+          entry.value?.toString() ?? '',
         );
       }
     }
@@ -222,9 +285,7 @@ class BackupService {
     final providers = (data['providers'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(
-          (item) => ProviderProfile.fromJson(
-            Map<String, Object?>.from(item),
-          ),
+          (item) => ProviderProfile.fromJson(Map<String, Object?>.from(item)),
         )
         .toList();
     if (providers.isNotEmpty) {

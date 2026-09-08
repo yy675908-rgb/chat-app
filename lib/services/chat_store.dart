@@ -13,8 +13,12 @@ class ChatStore {
   static const _conversationsKey = 'conversations_v2';
   static const _messagesPrefix = 'conversation_messages_v2_';
   static const _memoriesKey = 'relationship_memories_v1';
+  static const _memorySourcesKey = 'relationship_memory_sources_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
+  static const _stylePreferenceSourcesKey = 'style_preference_sources_v1';
   static const _characterMoodKey = 'character_mood_v1';
+  static const _characterMoodSourceKey = 'character_mood_source_v1';
+  static const _characterStatusSourceKey = 'character_status_source_v1';
   static const _worldBooksKey = 'world_books_v1';
   static const _firstMetAtKey = 'first_met_at_v1';
   static const _profileKey = 'character_profile_v1';
@@ -33,17 +37,14 @@ class ChatStore {
       try {
         final conversations = (jsonDecode(raw) as List<dynamic>)
             .map(
-              (item) => Conversation.fromJson(
-                Map<String, Object?>.from(item as Map),
-              ),
+              (item) =>
+                  Conversation.fromJson(Map<String, Object?>.from(item as Map)),
             )
             .toList();
         conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         if (characterId == null) return conversations;
         final matching = conversations
-            .where(
-              (item) => !item.isGroup && item.characterId == characterId,
-            )
+            .where((item) => !item.isGroup && item.characterId == characterId)
             .toList();
         if (matching.isNotEmpty) return matching;
       } on Object {
@@ -59,8 +60,8 @@ class ChatStore {
       createdAt: now,
       updatedAt: now,
     );
-    final legacyMessages = raw == null &&
-            (characterId == null || characterId == 'character-lin')
+    final legacyMessages =
+        raw == null && (characterId == null || characterId == 'character-lin')
         ? _decodeMessages(preferences.getString(_legacyMessagesKey))
         : <ChatMessage>[];
     await saveConversations([first], characterId: characterId);
@@ -75,15 +76,16 @@ class ChatStore {
     final raw = preferences.getString(_conversationsKey);
     if (raw == null || raw.isEmpty) return const [];
     try {
-      final conversations = (jsonDecode(raw) as List<dynamic>)
-          .map(
-            (item) => Conversation.fromJson(
-              Map<String, Object?>.from(item as Map),
-            ),
-          )
-          .where((item) => item.isGroup)
-          .toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final conversations =
+          (jsonDecode(raw) as List<dynamic>)
+              .map(
+                (item) => Conversation.fromJson(
+                  Map<String, Object?>.from(item as Map),
+                ),
+              )
+              .where((item) => item.isGroup)
+              .toList()
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       return conversations;
     } on Object {
       return const [];
@@ -103,9 +105,8 @@ class ChatStore {
         try {
           existing.addAll(
             (jsonDecode(raw) as List<dynamic>).map(
-              (item) => Conversation.fromJson(
-                Map<String, Object?>.from(item as Map),
-              ),
+              (item) =>
+                  Conversation.fromJson(Map<String, Object?>.from(item as Map)),
             ),
           );
         } on Object {
@@ -114,23 +115,18 @@ class ChatStore {
       }
       items = [
         ...existing.where(
-          (item) =>
-              item.isGroup || item.characterId != characterId,
+          (item) => item.isGroup || item.characterId != characterId,
         ),
         ...conversations,
       ];
     }
     await preferences.setString(
       _conversationsKey,
-      jsonEncode(
-        items.map((conversation) => conversation.toJson()).toList(),
-      ),
+      jsonEncode(items.map((conversation) => conversation.toJson()).toList()),
     );
   }
 
-  Future<void> saveGroupConversations(
-    List<Conversation> conversations,
-  ) async {
+  Future<void> saveGroupConversations(List<Conversation> conversations) async {
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getString(_conversationsKey);
     final existing = <Conversation>[];
@@ -138,9 +134,8 @@ class ChatStore {
       try {
         existing.addAll(
           (jsonDecode(raw) as List<dynamic>).map(
-            (item) => Conversation.fromJson(
-              Map<String, Object?>.from(item as Map),
-            ),
+            (item) =>
+                Conversation.fromJson(Map<String, Object?>.from(item as Map)),
           ),
         );
       } on Object {
@@ -185,9 +180,8 @@ class ChatStore {
     try {
       return (jsonDecode(raw) as List<dynamic>)
           .map(
-            (item) => ChatMessage.fromJson(
-              Map<String, Object?>.from(item as Map),
-            ),
+            (item) =>
+                ChatMessage.fromJson(Map<String, Object?>.from(item as Map)),
           )
           .toList();
     } on Object {
@@ -207,7 +201,8 @@ class ChatStore {
     // Migrate the pre-multi-character memory only into the built-in character.
     // Never copy that legacy relationship history into every new character.
     if (characterId == 'character-lin') {
-      final legacy = preferences.getStringList(_memoriesKey) ?? const <String>[];
+      final legacy =
+          preferences.getStringList(_memoriesKey) ?? const <String>[];
       if (legacy.isNotEmpty) {
         await preferences.setStringList(key, legacy);
         return legacy;
@@ -229,12 +224,19 @@ class ChatStore {
     final key = characterId == null
         ? _memoriesKey
         : '${_memoriesKey}_$characterId';
-    return preferences.setStringList(key, normalized);
+    final saved = await preferences.setStringList(key, normalized);
+    if (characterId != null) {
+      final sources = await loadMemorySources(characterId);
+      sources.removeWhere((memory, _) => !normalized.contains(memory));
+      await saveMemorySources(characterId, sources);
+    }
+    return saved;
   }
 
   Future<bool> addMemory(
     String memory, {
     String? characterId,
+    String? sourceConversationId,
   }) async {
     final value = memory.trim();
     if (value.isEmpty) return false;
@@ -245,7 +247,46 @@ class ChatStore {
     final memories = preferences.getStringList(key) ?? <String>[];
     if (memories.contains(value)) return false;
     memories.add(value);
-    return preferences.setStringList(key, memories);
+    final saved = await preferences.setStringList(key, memories);
+    if (saved &&
+        characterId != null &&
+        sourceConversationId != null &&
+        sourceConversationId.trim().isNotEmpty) {
+      final sources = await loadMemorySources(characterId);
+      sources[value] = sourceConversationId.trim();
+      await saveMemorySources(characterId, sources);
+    }
+    return saved;
+  }
+
+  Future<Map<String, String>> loadMemorySources(String characterId) async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString('${_memorySourcesKey}_$characterId');
+    if (raw == null || raw.isEmpty) return <String, String>{};
+    try {
+      final decoded = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      return decoded.map((key, value) => MapEntry(key, value?.toString() ?? ''))
+        ..removeWhere((_, value) => value.isEmpty);
+    } on Object {
+      return <String, String>{};
+    }
+  }
+
+  Future<void> saveMemorySources(
+    String characterId,
+    Map<String, String> sources,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final key = '${_memorySourcesKey}_$characterId';
+    final normalized = Map<String, String>.from(sources)
+      ..removeWhere(
+        (memory, source) => memory.trim().isEmpty || source.trim().isEmpty,
+      );
+    if (normalized.isEmpty) {
+      await preferences.remove(key);
+    } else {
+      await preferences.setString(key, jsonEncode(normalized));
+    }
   }
 
   Future<String> loadGlobalSystemPrompt() async {
@@ -298,18 +339,64 @@ class ChatStore {
         .toSet()
         .toList();
     await preferences.setStringList(_stylePreferencesKey, normalized);
+    final sources = await loadStylePreferenceSources();
+    sources.removeWhere((preference, _) => !normalized.contains(preference));
+    await saveStylePreferenceSources(sources);
   }
 
-  Future<bool> addStylePreference(String item) async {
+  Future<bool> addStylePreference(
+    String item, {
+    String? sourceConversationId,
+    String? sourceCharacterId,
+  }) async {
     final value = item.trim();
     if (value.isEmpty) return false;
     final preferences = await SharedPreferences.getInstance();
-    final items =
-        preferences.getStringList(_stylePreferencesKey) ?? <String>[];
+    final items = preferences.getStringList(_stylePreferencesKey) ?? <String>[];
     if (items.contains(value)) return false;
     items.add(value);
-    await preferences.setStringList(_stylePreferencesKey, items);
-    return true;
+    final saved = await preferences.setStringList(_stylePreferencesKey, items);
+    if (saved &&
+        sourceConversationId != null &&
+        sourceConversationId.trim().isNotEmpty &&
+        sourceCharacterId != null &&
+        sourceCharacterId.trim().isNotEmpty) {
+      final sources = await loadStylePreferenceSources();
+      sources[value] =
+          '${sourceConversationId.trim()}::${sourceCharacterId.trim()}';
+      await saveStylePreferenceSources(sources);
+    }
+    return saved;
+  }
+
+  Future<Map<String, String>> loadStylePreferenceSources() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_stylePreferenceSourcesKey);
+    if (raw == null || raw.isEmpty) return <String, String>{};
+    try {
+      final decoded = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      return decoded.map((key, value) => MapEntry(key, value?.toString() ?? ''))
+        ..removeWhere((_, value) => value.isEmpty);
+    } on Object {
+      return <String, String>{};
+    }
+  }
+
+  Future<void> saveStylePreferenceSources(Map<String, String> sources) async {
+    final preferences = await SharedPreferences.getInstance();
+    final normalized = Map<String, String>.from(sources)
+      ..removeWhere(
+        (preference, source) =>
+            preference.trim().isEmpty || source.trim().isEmpty,
+      );
+    if (normalized.isEmpty) {
+      await preferences.remove(_stylePreferenceSourcesKey);
+    } else {
+      await preferences.setString(
+        _stylePreferenceSourcesKey,
+        jsonEncode(normalized),
+      );
+    }
   }
 
   Future<List<WorldBookEntry>> loadWorldBooks() async {
@@ -319,9 +406,8 @@ class ChatStore {
     try {
       return (jsonDecode(raw) as List<dynamic>)
           .map(
-            (item) => WorldBookEntry.fromJson(
-              Map<String, Object?>.from(item as Map),
-            ),
+            (item) =>
+                WorldBookEntry.fromJson(Map<String, Object?>.from(item as Map)),
           )
           .where((item) => item.content.trim().isNotEmpty)
           .toList();
@@ -369,10 +455,132 @@ class ChatStore {
     }
   }
 
+  Future<String> loadCharacterMoodSource(String characterId) async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences
+            .getString('${_characterMoodSourceKey}_$characterId')
+            ?.trim() ??
+        '';
+  }
+
+  Future<void> saveCharacterMoodSource(
+    String characterId,
+    String conversationId,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final key = '${_characterMoodSourceKey}_$characterId';
+    final value = conversationId.trim();
+    if (value.isEmpty) {
+      await preferences.remove(key);
+    } else {
+      await preferences.setString(key, value);
+    }
+  }
+
+  Future<String> loadCharacterStatusSource(String characterId) async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences
+            .getString('${_characterStatusSourceKey}_$characterId')
+            ?.trim() ??
+        '';
+  }
+
+  Future<void> saveCharacterStatusSource(
+    String characterId,
+    String conversationId,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final key = '${_characterStatusSourceKey}_$characterId';
+    final value = conversationId.trim();
+    if (value.isEmpty) {
+      await preferences.remove(key);
+    } else {
+      await preferences.setString(key, value);
+    }
+  }
+
+  Future<void> clearConversationDerivedState({
+    required String conversationId,
+    required Iterable<String> characterIds,
+  }) async {
+    final ids = characterIds.where((id) => id.trim().isNotEmpty).toSet();
+
+    final preferenceSources = await loadStylePreferenceSources();
+    final preferencesToRemove = preferenceSources.entries
+        .where((entry) => entry.value.startsWith('$conversationId::'))
+        .map((entry) => entry.key)
+        .toSet();
+    if (preferencesToRemove.isNotEmpty) {
+      final preferences = await loadStylePreferences();
+      await saveStylePreferences(
+        preferences
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList(),
+      );
+    }
+
+    if (ids.isEmpty) return;
+    final characters = await loadCharacters();
+    var charactersChanged = false;
+
+    for (final characterId in ids) {
+      final sources = await loadMemorySources(characterId);
+      final memoriesToRemove = sources.entries
+          .where((entry) => entry.value == conversationId)
+          .map((entry) => entry.key)
+          .toSet();
+      if (memoriesToRemove.isNotEmpty) {
+        final memories = await loadMemories(characterId: characterId);
+        await saveMemories(
+          memories.where((item) => !memoriesToRemove.contains(item)).toList(),
+          characterId: characterId,
+        );
+        sources.removeWhere((_, source) => source == conversationId);
+        await saveMemorySources(characterId, sources);
+      }
+
+      if (await loadCharacterMoodSource(characterId) == conversationId) {
+        await saveCharacterMood('', characterId);
+        await saveCharacterMoodSource(characterId, '');
+      }
+      if (await loadCharacterStatusSource(characterId) == conversationId) {
+        final index = characters.indexWhere((item) => item.id == characterId);
+        if (index >= 0 && characters[index].status.isNotEmpty) {
+          characters[index] = characters[index].copyWith(status: '');
+          charactersChanged = true;
+        }
+        await saveCharacterStatusSource(characterId, '');
+      }
+    }
+
+    if (charactersChanged) await saveCharacters(characters);
+  }
+
   Future<void> clearCharacterState(String characterId) async {
+    final preferenceSources = await loadStylePreferenceSources();
+    final preferencesToRemove = preferenceSources.entries
+        .where((entry) => entry.value.endsWith('::$characterId'))
+        .map((entry) => entry.key)
+        .toSet();
+    if (preferencesToRemove.isNotEmpty) {
+      final preferences = await loadStylePreferences();
+      await saveStylePreferences(
+        preferences
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList(),
+      );
+    }
+
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove('${_memoriesKey}_$characterId');
+    await preferences.remove('${_memorySourcesKey}_$characterId');
     await preferences.remove('${_characterMoodKey}_$characterId');
+    await preferences.remove('${_characterMoodSourceKey}_$characterId');
+    await preferences.remove('${_characterStatusSourceKey}_$characterId');
+    if (characterId == 'character-lin') {
+      await preferences.remove(_memoriesKey);
+      await preferences.remove(_characterMoodKey);
+    }
   }
 
   Future<DateTime> loadFirstMetAt() async {
