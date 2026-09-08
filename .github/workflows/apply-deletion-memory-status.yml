@@ -23,6 +23,17 @@ jobs:
           channel: stable
       - name: Apply patch
         run: python3 tool/apply_deletion_memory_status.py
+      - name: Fix test import
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('test/chat_store_conversation_scope_test.dart')
+          text = p.read_text()
+          imp = "import 'package:character_chat_app/models/character_profile.dart';\n"
+          if imp not in text:
+              text = imp + text
+              p.write_text(text)
+          PY
       - name: Format
         run: dart format lib test
       - name: Install dependencies
