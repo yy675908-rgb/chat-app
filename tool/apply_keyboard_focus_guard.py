@@ -19,23 +19,15 @@ def ensure_textfields_manual_focus(path: Path) -> None:
         line = lines[i]
         out.append(line)
         if 'TextField(' in line:
-            # TextFields in this app all use a controller. Add explicit manual-focus
-            # behavior directly after that controller line unless already present.
             j = i + 1
-            while j < len(lines) and j <= i + 14:
+            while j < len(lines) and j <= i + 16:
                 out.append(lines[j])
                 if 'controller:' in lines[j]:
-                    lookahead = ''.join(lines[j + 1 : min(len(lines), j + 5)])
+                    lookahead = ''.join(lines[j + 1 : min(len(lines), j + 14)])
                     indent = re.match(r'(\s*)', lines[j]).group(1)
                     if 'autofocus:' not in lookahead:
                         out.append(f'{indent}autofocus: false,\n')
-                        out.append(
-                            f'{indent}onTapOutside: (_) => FocusScope.of(context).unfocus(),\n'
-                        )
-                    elif 'onTapOutside:' not in lookahead:
-                        # autofocus already exists; add only the explicit blur behavior.
-                        # Insert after existing autofocus line when it is immediate,
-                        # otherwise placing it here is still a valid named argument.
+                    if 'onTapOutside:' not in lookahead:
                         out.append(
                             f'{indent}onTapOutside: (_) => FocusScope.of(context).unfocus(),\n'
                         )
@@ -93,14 +85,13 @@ if count != 1:
     raise SystemExit('pubspec.yaml: version line not found')
 pubspec.write_text(text)
 
-# Audit every TextField in lib/screens: no autofocus true; explicit autofocus false.
 for path in Path('lib/screens').glob('*.dart'):
     text = path.read_text()
     if 'autofocus: true' in text or 'requestFocus(' in text:
         raise SystemExit(f'{path}: automatic focus call remains')
     starts = [m.start() for m in re.finditer(r'TextField\(', text)]
     for start in starts:
-        snippet = text[start : start + 900]
+        snippet = text[start : start + 1000]
         if 'autofocus: false' not in snippet:
             raise SystemExit(f'{path}: TextField lacks explicit autofocus false')
 
