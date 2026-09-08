@@ -40,10 +40,10 @@ class BackupService {
     final characterMoods = <String, String>{};
     for (final character in characters) {
       final memories = await _chatStore.loadMemories(characterId: character.id);
-      if (memories.isNotEmpty) characterMemories[character.id] = memories;
+      characterMemories[character.id] = memories;
       if (scope == BackupScope.full) {
         final mood = await _chatStore.loadCharacterMood(character.id);
-        if (mood.isNotEmpty) characterMoods[character.id] = mood;
+        characterMoods[character.id] = mood;
       }
     }
     final data = <String, Object?>{
