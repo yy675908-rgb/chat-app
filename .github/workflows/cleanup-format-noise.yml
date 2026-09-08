@@ -1,0 +1,50 @@
+name: Cleanup Formatter Noise
+
+on:
+  push:
+    branches: ["agent/deletion-memory-status-pass"]
+    paths:
+      - ".github/workflows/cleanup-format-noise.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/deletion-memory-status-pass
+          fetch-depth: 0
+      - name: Restore unrelated files from main
+        run: |
+          git fetch origin main
+          git checkout origin/main -- \
+            lib/main.dart \
+            lib/models/character_profile.dart \
+            lib/models/chat_message.dart \
+            lib/models/conversation.dart \
+            lib/models/provider_profile.dart \
+            lib/models/user_profile.dart \
+            lib/models/world_book_entry.dart \
+            lib/screens/api_settings_screen.dart \
+            lib/screens/favorites_screen.dart \
+            lib/screens/memory_screen.dart \
+            lib/screens/style_preferences_screen.dart \
+            lib/services/ai_chat_service.dart \
+            lib/services/group_reply_policy.dart \
+            lib/services/provider_service.dart \
+            lib/widgets/message_bubble.dart \
+            test/chat_message_test.dart
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib test
+          if git diff --cached --quiet; then
+            echo "No cleanup needed"
+          else
+            git commit -m "Restore unrelated files after targeted changes"
+            git push origin HEAD:agent/deletion-memory-status-pass
+          fi
