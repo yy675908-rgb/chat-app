@@ -148,7 +148,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
               title: const Text('当前状态由角色自行生成'),
               subtitle: Text(
                 widget.profile.status.trim().isEmpty
-                    ? '角色会根据实际对话自然更新，不需要手动填写'
+                    ? '角色会随实际对话自行判断；确实没变化时会延续上一轮状态'
                     : widget.profile.status.trim(),
               ),
             ),

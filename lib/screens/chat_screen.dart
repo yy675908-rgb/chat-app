@@ -1212,6 +1212,8 @@ class _ChatScreenState extends State<ChatScreen> {
           reasoningTokens: usage.reasoningTokens,
           totalTokens: usage.totalTokens,
         );
+        final previousMood = _characterMoods[speakingCharacter.id] ?? '';
+        final previousStatus = speakingCharacter.status.trim();
         setState(() {
           if (isRetry) {
             final current = _messages[replyIndex];
@@ -1231,15 +1233,14 @@ class _ChatScreenState extends State<ChatScreen> {
               activeVariantIndex: 0,
             );
           }
-          final moods = Map<String, String>.from(_characterMoods);
           if (parsedReply.mood.isNotEmpty) {
-            moods[speakingCharacter.id] = parsedReply.mood;
-          } else {
-            moods.remove(speakingCharacter.id);
-          }
-          _characterMoods = moods;
-          if (speakingCharacter.id == _profile.id) {
-            _characterMood = parsedReply.mood;
+            _characterMoods = {
+              ..._characterMoods,
+              speakingCharacter.id: parsedReply.mood,
+            };
+            if (speakingCharacter.id == _profile.id) {
+              _characterMood = parsedReply.mood;
+            }
           }
         });
         if (parsedReply.mood.isNotEmpty) {
@@ -1257,24 +1258,30 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             );
           }
-        } else {
-          unawaited(_chatStore.saveCharacterMood('', speakingCharacter.id));
-          unawaited(
-            _deriveMoodFromLatestTurn(
-              provider: provider,
-              apiKey: apiKey,
-              contextMessages: contextMessages,
-              replyText: replyText,
-              character: speakingCharacter,
-              conversationId: replyConversationId,
-            ),
-          );
         }
         if (parsedReply.status.isNotEmpty && replyConversationId.isNotEmpty) {
           await _applyGeneratedStatus(
             character: speakingCharacter,
             status: parsedReply.status,
             conversationId: replyConversationId,
+          );
+        }
+        if ((parsedReply.mood.isEmpty || parsedReply.status.isEmpty) &&
+            replyConversationId.isNotEmpty) {
+          unawaited(
+            _repairStateFromLatestTurn(
+              provider: provider,
+              apiKey: apiKey,
+              contextMessages: contextMessages,
+              replyText: replyText,
+              character: speakingCharacter,
+              conversationId: replyConversationId,
+              sourceReplyId: isRetry ? originalReply!.id : newReply!.id,
+              previousMood: previousMood,
+              previousStatus: previousStatus,
+              repairMood: parsedReply.mood.isEmpty,
+              repairStatus: parsedReply.status.isEmpty,
+            ),
           );
         }
         replyCompleted = true;
@@ -1691,12 +1698,14 @@ class _ChatScreenState extends State<ChatScreen> {
         ? '未记录'
         : activeCharacter.status.trim();
     final stateInstruction =
-        '\n\n角色状态输出规则：读完用户最新消息并完成正文回复后，'
-        '由你自己判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
-        '上一轮状态是“$previousStatus”；都可以保持，也可以随实际对话自然变化。'
-        '心绪只写1—12个字；状态写2—16个字，描述此刻真实的态度、活动或关系状态，'
-        '不要写成对用户的说明。正文结束后另起两行，严格输出'
-        '“[[心绪:……]]”和“[[状态:……]]”。这两行只供系统读取，不要在正文解释。';
+        '\n\n角色状态协议（强制）：读完用户最新消息并完成正文回复后，'
+        '必须由你自己重新判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
+        '上一轮状态是“$previousStatus”。不要为了显得有变化而强行变化，也不能偷懒机械沿用；'
+        '只有你判断本轮确实没有实质变化时，才延续上一轮内容。'
+        '心绪只写1—12个字；状态写2—16个字，描述此刻真实的态度、活动或关系状态。'
+        '无论变化与否，正文结束后都必须另起两行，严格输出'
+        '“[[心绪:……]]”和“[[状态:……]]”；即使不变也要原样输出，不得省略。'
+        '这两行只供系统读取，不要在正文解释。';
     final modelPrompt = _selectedProvider?.systemPromptForModel() ?? '';
     final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
@@ -1829,30 +1838,35 @@ class _ChatScreenState extends State<ChatScreen> {
   }) async {
     final value = _normalizeStatus(status);
     if (value.isEmpty || conversationId.isEmpty) return;
-    final characters = _characters
-        .map(
-          (item) =>
-              item.id == character.id ? item.copyWith(status: value) : item,
-        )
-        .toList();
+    final index = _characters.indexWhere((item) => item.id == character.id);
+    if (index < 0) return;
+    final characters = [..._characters];
+    characters[index] = characters[index].copyWith(status: value);
+    if (mounted) {
+      final updated = characters[index];
+      setState(() {
+        _characters = characters;
+        if (_profile.id == character.id) _profile = updated;
+      });
+    }
     await _chatStore.saveCharacters(characters);
     await _chatStore.saveCharacterStatusSource(character.id, conversationId);
-    if (!mounted) return;
-    final updated = characters.firstWhere((item) => item.id == character.id);
-    setState(() {
-      _characters = characters;
-      if (_profile.id == character.id) _profile = updated;
-    });
   }
 
-  Future<void> _deriveMoodFromLatestTurn({
+  Future<void> _repairStateFromLatestTurn({
     required ProviderProfile provider,
     required String apiKey,
     required List<ChatMessage> contextMessages,
     required String replyText,
     required CharacterProfile character,
     required String conversationId,
+    required String sourceReplyId,
+    required String previousMood,
+    required String previousStatus,
+    required bool repairMood,
+    required bool repairStatus,
   }) async {
+    if ((!repairMood && !repairStatus) || replyText.trim().isEmpty) return;
     ChatMessage? latestUser;
     for (var index = contextMessages.length - 1; index >= 0; index--) {
       if (contextMessages[index].author == MessageAuthor.user) {
@@ -1860,32 +1874,44 @@ class _ChatScreenState extends State<ChatScreen> {
         break;
       }
     }
-    if (latestUser == null || replyText.trim().isEmpty) return;
+    if (latestUser == null) return;
+
+    final requested = <String>[
+      if (repairMood) '心绪',
+      if (repairStatus) '状态',
+    ].join('、');
+    final outputFormat = <String>[
+      if (repairMood) '[[心绪:结果]]',
+      if (repairStatus) '[[状态:结果]]',
+    ].join('\n');
     final service = AiChatService();
     var raw = '';
     try {
       final request = ChatMessage(
-        id: 'mood-${DateTime.now().microsecondsSinceEpoch}',
+        id: 'state-repair-${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text:
+            '上一轮心绪：${previousMood.isEmpty ? '未记录' : previousMood}\n'
+            '上一轮状态：${previousStatus.isEmpty ? '未记录' : previousStatus}\n\n'
             '用户最新消息：${latestUser.text}\n\n'
-            '${character.name}的回复：$replyText',
+            '${character.name}的本轮回复：$replyText',
         sentAt: DateTime.now(),
       );
       await for (final chunk in service.streamReply(
         provider: provider,
         apiKey: apiKey,
         systemPrompt:
-            '根据最新一轮真实对话，判断角色回复之后的即时心绪。'
-            '必须与这轮内容直接相关；可以只用一个贴切的 emoji、颜文字或简短文字。'
-            '只输出心绪本身，1—12个字，不解释。',
+            '主回复已经完成，你只补齐遗漏的角色$requested，不生成正文。'
+            '必须根据这一轮真实对话重新判断，不能为了变化而强行变化，也不能机械沿用。'
+            '${repairMood ? '心绪用1—12个字、emoji或颜文字；若上一轮已有心绪且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
+            '${repairStatus ? '状态用2—16个字描述此刻真实态度、活动或关系状态；若上一轮已有状态且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
+            '严格只输出以下标签，不解释，不添加其他文字：\n$outputFormat',
         history: [request],
-        temperature: 0.3,
+        temperature: 0.1,
       )) {
         raw += chunk;
       }
-      final mood = _normalizeMood(raw);
-      if (mood.isEmpty || !mounted) return;
+      if (!mounted || _currentConversation?.id != conversationId) return;
       ChatMessage? currentLatestUser;
       for (var index = _messages.length - 1; index >= 0; index--) {
         if (_messages[index].author == MessageAuthor.user) {
@@ -1894,16 +1920,49 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
       if (currentLatestUser?.id != latestUser.id) return;
-      setState(() {
-        _characterMoods = {..._characterMoods, character.id: mood};
-        if (_profile.id == character.id) _characterMood = mood;
-      });
-      await _chatStore.saveCharacterMood(mood, character.id);
-      if (conversationId.isNotEmpty) {
-        await _chatStore.saveCharacterMoodSource(character.id, conversationId);
+      ChatMessage? currentReply;
+      for (final message in _messages) {
+        if (message.id == sourceReplyId) {
+          currentReply = message;
+          break;
+        }
+      }
+      if (currentReply == null ||
+          currentReply.text.trim() != replyText.trim()) {
+        return;
+      }
+
+      final repaired = _splitMoodFromReply(raw);
+      if (repairMood && repaired.mood.isNotEmpty) {
+        final mood = repaired.mood.toUpperCase() == 'SAME'
+            ? previousMood
+            : repaired.mood;
+        if (mood.isNotEmpty) {
+          setState(() {
+            _characterMoods = {..._characterMoods, character.id: mood};
+            if (_profile.id == character.id) _characterMood = mood;
+          });
+          await _chatStore.saveCharacterMood(mood, character.id);
+          await _chatStore.saveCharacterMoodSource(
+            character.id,
+            conversationId,
+          );
+        }
+      }
+      if (repairStatus && repaired.status.isNotEmpty) {
+        final status = repaired.status.toUpperCase() == 'SAME'
+            ? previousStatus
+            : repaired.status;
+        if (status.isNotEmpty) {
+          await _applyGeneratedStatus(
+            character: character,
+            status: status,
+            conversationId: conversationId,
+          );
+        }
       }
     } on Object {
-      // The chat reply remains valid even when the optional mood repair fails.
+      // Keep the last valid state when an optional repair request fails.
     } finally {
       service.close();
     }
