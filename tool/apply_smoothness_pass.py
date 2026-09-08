@@ -323,7 +323,7 @@ new = """                        AnimatedSwitcher(
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           child: characterStatus.isEmpty
-                              ? const SizedBox.shrink(
+                              ? const SizedBox.shrink()
                               : Text(
                                   characterStatus,
                                   key: ValueKey(characterStatus),
