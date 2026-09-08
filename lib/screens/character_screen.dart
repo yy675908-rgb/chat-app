@@ -68,8 +68,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     FocusScope.of(context).unfocus();
     final edited = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (_) =>
-            _PromptEditorScreen(initialText: _promptController.text),
+        builder: (_) => _PromptEditorScreen(initialText: _promptController.text),
       ),
     );
     if (edited == null || !mounted) return;
