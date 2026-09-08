@@ -40,12 +40,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Conversation? _currentConversation;
   List<ChatMessage> _messages = [];
   List<String> _memories = [];
+  Map<String, List<String>> _characterMemories = {};
   List<String> _stylePreferences = [];
   List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
+  Map<String, String> _characterMoods = {};
   UserProfile _userProfile = const UserProfile();
   bool _reasoningExpanded = true;
   int _contextTokenBudget = 32000;
+  bool _autoMemoryEnabled = true;
+  final Set<String> _autoMemoryExtractionMarkers = {};
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
@@ -93,12 +97,22 @@ class _ChatScreenState extends State<ChatScreen> {
       orElse: () => characters.first,
     );
     await _chatStore.saveSelectedCharacterId(profile.id);
-    final memories = await _chatStore.loadMemories();
+    final characterMemories = <String, List<String>>{};
+    final characterMoods = <String, String>{};
+    for (final character in characters) {
+      characterMemories[character.id] = await _chatStore.loadMemories(
+        characterId: character.id,
+      );
+      final mood = await _chatStore.loadCharacterMood(character.id);
+      if (mood.isNotEmpty) characterMoods[character.id] = mood;
+    }
+    final memories = characterMemories[profile.id] ?? const <String>[];
     final stylePreferences = await _chatStore.loadStylePreferences();
     final worldBooks = await _chatStore.loadWorldBooks();
-    final characterMood = await _chatStore.loadCharacterMood(profile.id);
+    final characterMood = characterMoods[profile.id] ?? '';
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
+    final autoMemoryEnabled = await _chatStore.loadAutoMemoryEnabled();
     final userProfile = await _chatStore.loadUserProfile();
     final conversations = await _chatStore.loadConversations(
       characterId: profile.id,
@@ -134,11 +148,14 @@ class _ChatScreenState extends State<ChatScreen> {
       _profile = profile;
       _characters = characters;
       _memories = memories;
+      _characterMemories = characterMemories;
       _stylePreferences = stylePreferences;
       _worldBooks = worldBooks;
       _characterMood = characterMood;
+      _characterMoods = characterMoods;
       _reasoningExpanded = reasoningExpanded;
       _contextTokenBudget = contextTokenBudget;
+      _autoMemoryEnabled = autoMemoryEnabled;
       _userProfile = userProfile;
       _conversations = conversations;
       _currentConversation = current;
@@ -934,6 +951,11 @@ class _ChatScreenState extends State<ChatScreen> {
     var raw = '';
     try {
       final modelPrompt = provider.systemPromptForModel().trim();
+      final memories = _characterMemories[character.id] ?? const <String>[];
+      final memoryPrompt = memories.isEmpty
+          ? ''
+          : '\n\n你和用户的共同记忆：\n'
+              '${memories.map((item) => '- $item').join('\n')}';
       final request = ChatMessage(
         id: 'group-intent-${character.id}-'
             '${DateTime.now().microsecondsSinceEpoch}',
@@ -949,7 +971,7 @@ class _ChatScreenState extends State<ChatScreen> {
         provider: provider,
         apiKey: apiKey,
         systemPrompt: '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
-            '${character.systemPrompt}\n\n'
+            '${character.systemPrompt}$memoryPrompt\n\n'
             '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
             '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
             '当前关系不是背景资料：${_intimacyBehavior(character.userIntimacy)}'
@@ -1080,6 +1102,7 @@ class _ChatScreenState extends State<ChatScreen> {
     var fullReply = '';
     var fullReasoning = '';
     var usage = const AiTokenUsage();
+    var replyCompleted = false;
     try {
       await for (final event in service.streamEvents(
         provider: provider,
@@ -1173,16 +1196,15 @@ class _ChatScreenState extends State<ChatScreen> {
               activeVariantIndex: 0,
             );
           }
+          final moods = Map<String, String>.from(_characterMoods);
           if (parsedReply.mood.isNotEmpty) {
-            if (_currentConversation?.isGroup != true ||
-                speakingCharacter.id == _profile.id) {
-              _characterMood = parsedReply.mood;
-            }
+            moods[speakingCharacter.id] = parsedReply.mood;
           } else {
-            if (_currentConversation?.isGroup != true ||
-                speakingCharacter.id == _profile.id) {
-              _characterMood = '';
-            }
+            moods.remove(speakingCharacter.id);
+          }
+          _characterMoods = moods;
+          if (speakingCharacter.id == _profile.id) {
+            _characterMood = parsedReply.mood;
           }
         });
         if (parsedReply.mood.isNotEmpty) {
@@ -1206,6 +1228,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           );
         }
+        replyCompleted = true;
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
@@ -1240,6 +1263,19 @@ class _ChatScreenState extends State<ChatScreen> {
           _activeRetrySnapshot = null;
         });
         await _persistMessages();
+        if (replyCompleted &&
+            !isRetry &&
+            !_cancelled &&
+            !_replyQueued &&
+            _currentConversation?.isGroup != true) {
+          unawaited(
+            _maybeExtractRelationshipMemory(
+              character: speakingCharacter,
+              provider: provider,
+              apiKey: apiKey,
+            ),
+          );
+        }
         if (!_cancelled && !_replyQueued) {
           unawaited(_maybeOfferCompression());
         }
@@ -1554,10 +1590,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '｜间隔：${_formatElapsed(now.difference(lastReply.sentAt))}';
     final context = '当前时间：${_formatPromptTime(now)}$interval';
-    final memoryText = _memories.isEmpty
+    final activeMemories =
+        _characterMemories[activeCharacter.id] ?? const <String>[];
+    final memoryText = activeMemories.isEmpty
         ? ''
-        : '\n\n你们共同确认的记忆：\n'
-            '${_memories.map((memory) => '- $memory').join('\n')}';
+        : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
+            '${activeMemories.map((memory) => '- $memory').join('\n')}';
     final preferenceText = _stylePreferences.isEmpty
         ? ''
         : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
@@ -1596,10 +1634,8 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n其他近期对话的简短摘要（仅在相关时参考）：\n'
             '${previousSummaries.join('\n')}';
-    final previousMood = activeCharacter.id == _profile.id &&
-            _characterMood.isNotEmpty
-        ? _characterMood
-        : '未记录';
+    final savedMood = _characterMoods[activeCharacter.id] ?? '';
+    final previousMood = savedMood.isEmpty ? '未记录' : savedMood;
     final moodInstruction = '\n\n心绪输出规则：心绪只描述角色读完用户最新消息、'
         '完成本轮回复后的即时内在状态，必须结合本轮内容重新判断，不能输出无关状态。'
         '上一轮心绪是“$previousMood”，可以保持，也可以自然变化。'
@@ -1757,13 +1793,103 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
       if (currentLatestUser?.id != latestUser.id) return;
-      if (_currentConversation?.isGroup != true ||
-          _profile.id == character.id) {
-        setState(() => _characterMood = mood);
-      }
+      setState(() {
+        _characterMoods = {
+          ..._characterMoods,
+          character.id: mood,
+        };
+        if (_profile.id == character.id) _characterMood = mood;
+      });
       await _chatStore.saveCharacterMood(mood, character.id);
     } on Object {
       // The chat reply remains valid even when the optional mood repair fails.
+    } finally {
+      service.close();
+    }
+  }
+
+  Future<void> _maybeExtractRelationshipMemory({
+    required CharacterProfile character,
+    required ProviderProfile provider,
+    required String apiKey,
+  }) async {
+    if (!_autoMemoryEnabled || apiKey.trim().isEmpty) return;
+    final current = _currentConversation;
+    if (current == null || current.isGroup || current.characterId != character.id) {
+      return;
+    }
+    final visible = _messages
+        .where(_isMessageVisible)
+        .where((message) => message.author != MessageAuthor.system)
+        .toList();
+    final userTurns = visible
+        .where((message) => message.author == MessageAuthor.user)
+        .length;
+    if (userTurns < 8 || userTurns % 8 != 0) return;
+    final marker = '${current.id}|$userTurns';
+    if (!_autoMemoryExtractionMarkers.add(marker)) return;
+
+    final start = visible.length > 12 ? visible.length - 12 : 0;
+    final recent = visible.sublist(start);
+    final transcript = recent.map((message) {
+      final speaker = message.author == MessageAuthor.user
+          ? '用户'
+          : character.name;
+      return '$speaker：${message.text}';
+    }).join('\n');
+    final existing = _characterMemories[character.id] ?? const <String>[];
+    final existingText = existing.isEmpty
+        ? '无'
+        : existing.take(20).map((item) => '- $item').join('\n');
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final request = ChatMessage(
+        id: 'memory-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text: '已有共同记忆：\n$existingText\n\n最近对话：\n$transcript',
+        sentAt: DateTime.now(),
+      );
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: '从最近对话中判断是否有一条值得长期保留的共同记忆。'
+            '只记录用户明确表达或双方明确发生的事实，例如持续偏好、重要事件、约定、关系变化或未完成事项。'
+            '不要记录临时情绪、普通寒暄、模型推测或已经存在的同义记忆。'
+            '没有合适内容时只输出 NONE；有则只输出一条简洁事实，不编号、不解释，最多60个汉字。',
+        history: [request],
+        temperature: 0.1,
+      )) {
+        raw += chunk;
+      }
+      var memory = raw
+          .replaceAll(RegExp(r'[\r\n]+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (memory.isEmpty || memory.toUpperCase() == 'NONE') return;
+      if (memory.startsWith('“') && memory.endsWith('”') && memory.length > 2) {
+        memory = memory.substring(1, memory.length - 1).trim();
+      }
+      if (memory.characters.length > 60) {
+        memory = memory.characters.take(60).join();
+      }
+      if (memory.isEmpty) return;
+      final added = await _chatStore.addMemory(
+        memory,
+        characterId: character.id,
+      );
+      if (!added) return;
+      final latest = await _chatStore.loadMemories(characterId: character.id);
+      if (!mounted) return;
+      setState(() {
+        _characterMemories = {
+          ..._characterMemories,
+          character.id: latest,
+        };
+        if (_profile.id == character.id) _memories = latest;
+      });
+    } on Object {
+      // Memory extraction is optional; never invalidate a successful reply.
     } finally {
       service.close();
     }
@@ -2023,19 +2149,23 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (_) => AppSettingsScreen(
           reasoningExpanded: _reasoningExpanded,
           contextTokenBudget: _contextTokenBudget,
+          autoMemoryEnabled: _autoMemoryEnabled,
           userProfile: _userProfile,
           onSave: (
             reasoningExpanded,
             contextTokenBudget,
+            autoMemoryEnabled,
             userProfile,
           ) async {
             await _chatStore.saveReasoningExpanded(reasoningExpanded);
             await _chatStore.saveContextTokenBudget(contextTokenBudget);
+            await _chatStore.saveAutoMemoryEnabled(autoMemoryEnabled);
             await _chatStore.saveUserProfile(userProfile);
             if (!mounted) return;
             setState(() {
               _reasoningExpanded = reasoningExpanded;
               _contextTokenBudget = contextTokenBudget;
+              _autoMemoryEnabled = autoMemoryEnabled;
               _userProfile = userProfile;
             });
           },
@@ -2047,14 +2177,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _openMemories() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const MemoryScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => MemoryScreen(
+          characterId: _profile.id,
+          characterName: _profile.name,
+        ),
+      ),
     );
-    final memories = await _chatStore.loadMemories();
+    final memories = await _chatStore.loadMemories(characterId: _profile.id);
     final preferences = await _chatStore.loadStylePreferences();
     final worldBooks = await _chatStore.loadWorldBooks();
     if (!mounted) return;
     setState(() {
       _memories = memories;
+      _characterMemories = {
+        ..._characterMemories,
+        _profile.id: memories,
+      };
       _stylePreferences = preferences;
       _worldBooks = worldBooks;
     });
@@ -2306,14 +2445,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     await _chatStore.saveConversations(keptConversations);
     await _chatStore.saveCharacters(remainingCharacters);
-    await _chatStore.saveCharacterMood('', character.id);
+    await _chatStore.clearCharacterState(character.id);
 
+    final remainingMemoryMap =
+        Map<String, List<String>>.from(_characterMemories)
+          ..remove(character.id);
+    final remainingMoodMap = Map<String, String>.from(_characterMoods)
+      ..remove(character.id);
     var nextProfile = _profile;
     var nextMood = _characterMood;
+    var nextMemories = _memories;
     if (_profile.id == character.id) {
       nextProfile = remainingCharacters.first;
       await _chatStore.saveSelectedCharacterId(nextProfile.id);
       nextMood = await _chatStore.loadCharacterMood(nextProfile.id);
+      nextMemories = await _chatStore.loadMemories(characterId: nextProfile.id);
+      remainingMemoryMap[nextProfile.id] = nextMemories;
+      if (nextMood.isNotEmpty) remainingMoodMap[nextProfile.id] = nextMood;
     }
     if (!mounted) return;
 
@@ -2340,7 +2488,10 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _characters = remainingCharacters;
         _profile = nextProfile;
+        _memories = nextMemories;
+        _characterMemories = remainingMemoryMap;
         _characterMood = nextMood;
+        _characterMoods = remainingMoodMap;
         _conversations = groups;
         _currentConversation = current;
         _messages = messages;
@@ -2350,11 +2501,18 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _characters = remainingCharacters;
         _profile = nextProfile;
+        _memories = nextMemories;
+        _characterMemories = remainingMemoryMap;
         _characterMood = nextMood;
+        _characterMoods = remainingMoodMap;
       });
       await _switchCharacter(nextProfile);
     } else {
-      setState(() => _characters = remainingCharacters);
+      setState(() {
+        _characters = remainingCharacters;
+        _characterMemories = remainingMemoryMap;
+        _characterMoods = remainingMoodMap;
+      });
     }
     if (mounted) _showMessage('已删除角色“${character.name}”');
   }
@@ -2376,14 +2534,27 @@ class _ChatScreenState extends State<ChatScreen> {
       profile,
       isGroup: current.isGroup,
     );
+    final memories = await _chatStore.loadMemories(characterId: profile.id);
     final mood = await _chatStore.loadCharacterMood(profile.id);
     if (!mounted) return;
     setState(() {
       _profile = profile;
+      _memories = memories;
+      _characterMemories = {
+        ..._characterMemories,
+        profile.id: memories,
+      };
       _conversations = conversations;
       _currentConversation = current;
       _messages = messages;
       _characterMood = mood;
+      final moods = Map<String, String>.from(_characterMoods);
+      if (mood.isEmpty) {
+        moods.remove(profile.id);
+      } else {
+        moods[profile.id] = mood;
+      }
+      _characterMoods = moods;
       _groupScope = false;
     });
     _scrollToBottom(jump: true);

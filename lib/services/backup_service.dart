@@ -36,28 +36,33 @@ class BackupService {
       }
     }
     final providers = await _providerStore.loadProviders();
+    final characterMemories = <String, List<String>>{};
     final characterMoods = <String, String>{};
-    if (scope == BackupScope.full) {
-      for (final character in characters) {
+    for (final character in characters) {
+      final memories = await _chatStore.loadMemories(characterId: character.id);
+      if (memories.isNotEmpty) characterMemories[character.id] = memories;
+      if (scope == BackupScope.full) {
         final mood = await _chatStore.loadCharacterMood(character.id);
         if (mood.isNotEmpty) characterMoods[character.id] = mood;
       }
     }
     final data = <String, Object?>{
       'format': 'character-chat-backup',
-      'version': 2,
+      'version': 3,
       'scope': scope.name,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profile.toJson(),
       'characters': characters.map((item) => item.toJson()).toList(),
       'selectedCharacterId': await _chatStore.loadSelectedCharacterId(),
-      'memories': await _chatStore.loadMemories(),
+      'memories': characterMemories[profile.id] ?? const <String>[],
+      'characterMemories': characterMemories,
       'stylePreferences': await _chatStore.loadStylePreferences(),
       'worldBooks': (await _chatStore.loadWorldBooks())
           .map((entry) => entry.toJson())
           .toList(),
       'reasoningExpanded': await _chatStore.loadReasoningExpanded(),
       'contextTokenBudget': await _chatStore.loadContextTokenBudget(),
+      'autoMemoryEnabled': await _chatStore.loadAutoMemoryEnabled(),
       'globalSystemPrompt': await _chatStore.loadGlobalSystemPrompt(),
       'userProfile': (await _chatStore.loadUserProfile()).toJson(),
       'providers': providers.map((provider) => provider.toJson()).toList(),
@@ -83,7 +88,7 @@ class BackupService {
     final data = Map<String, Object?>.from(decoded);
     final version = data['version'];
     if (data['format'] != 'character-chat-backup' ||
-        (version != 1 && version != 2)) {
+        (version != 1 && version != 2 && version != 3)) {
       throw const FormatException('不是受支持的聊天备份文件');
     }
 
@@ -143,11 +148,30 @@ class BackupService {
       }
     }
 
-    await _chatStore.saveMemories(
-      (data['memories'] as List<dynamic>? ?? const [])
+    final characterMemoriesRaw = data['characterMemories'];
+    if (characterMemoriesRaw is Map) {
+      for (final entry in characterMemoriesRaw.entries) {
+        final values = entry.value;
+        if (values is! List) continue;
+        await _chatStore.saveMemories(
+          values.map((item) => item.toString()).toList(),
+          characterId: entry.key.toString(),
+        );
+      }
+    } else {
+      final selectedCharacterId = await _chatStore.loadSelectedCharacterId();
+      final legacyMemories = (data['memories'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
-          .toList(),
-    );
+          .toList();
+      if (selectedCharacterId == null) {
+        await _chatStore.saveMemories(legacyMemories);
+      } else {
+        await _chatStore.saveMemories(
+          legacyMemories,
+          characterId: selectedCharacterId,
+        );
+      }
+    }
     await _chatStore.saveStylePreferences(
       (data['stylePreferences'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
@@ -182,6 +206,9 @@ class BackupService {
     );
     await _chatStore.saveContextTokenBudget(
       data['contextTokenBudget'] as int? ?? 32000,
+    );
+    await _chatStore.saveAutoMemoryEnabled(
+      data['autoMemoryEnabled'] as bool? ?? true,
     );
     await _chatStore.saveGlobalSystemPrompt(
       data['globalSystemPrompt']?.toString() ?? '',

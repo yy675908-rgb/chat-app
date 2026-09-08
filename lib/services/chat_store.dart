@@ -22,6 +22,7 @@ class ChatStore {
   static const _selectedCharacterKey = 'selected_character_v2';
   static const _reasoningExpandedKey = 'reasoning_expanded_v1';
   static const _contextTokenBudgetKey = 'context_token_budget_v1';
+  static const _autoMemoryEnabledKey = 'auto_memory_enabled_v1';
   static const _globalSystemPromptKey = 'global_system_prompt_v1';
   static const _userProfileKey = 'user_profile_v1';
 
@@ -194,28 +195,57 @@ class ChatStore {
     }
   }
 
-  Future<List<String>> loadMemories() async {
+  Future<List<String>> loadMemories({String? characterId}) async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getStringList(_memoriesKey) ?? const [];
+    if (characterId == null) {
+      return preferences.getStringList(_memoriesKey) ?? const [];
+    }
+    final key = '${_memoriesKey}_$characterId';
+    final scoped = preferences.getStringList(key);
+    if (scoped != null) return scoped;
+
+    // Migrate the pre-multi-character memory only into the built-in character.
+    // Never copy that legacy relationship history into every new character.
+    if (characterId == 'character-lin') {
+      final legacy = preferences.getStringList(_memoriesKey) ?? const <String>[];
+      if (legacy.isNotEmpty) {
+        await preferences.setStringList(key, legacy);
+        return legacy;
+      }
+    }
+    return const [];
   }
 
-  Future<bool> saveMemories(List<String> memories) async {
+  Future<bool> saveMemories(
+    List<String> memories, {
+    String? characterId,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
     final normalized = memories
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toSet()
         .toList();
-    return preferences.setStringList(_memoriesKey, normalized);
+    final key = characterId == null
+        ? _memoriesKey
+        : '${_memoriesKey}_$characterId';
+    return preferences.setStringList(key, normalized);
   }
 
-  Future<void> addMemory(String memory) async {
-    final preferences = await SharedPreferences.getInstance();
-    final memories = preferences.getStringList(_memoriesKey) ?? <String>[];
+  Future<bool> addMemory(
+    String memory, {
+    String? characterId,
+  }) async {
     final value = memory.trim();
-    if (value.isEmpty) return;
-    if (!memories.contains(value)) memories.add(value);
-    await preferences.setStringList(_memoriesKey, memories);
+    if (value.isEmpty) return false;
+    final preferences = await SharedPreferences.getInstance();
+    final key = characterId == null
+        ? _memoriesKey
+        : '${_memoriesKey}_$characterId';
+    final memories = preferences.getStringList(key) ?? <String>[];
+    if (memories.contains(value)) return false;
+    memories.add(value);
+    return preferences.setStringList(key, memories);
   }
 
   Future<String> loadGlobalSystemPrompt() async {
@@ -311,10 +341,17 @@ class ChatStore {
   Future<String> loadCharacterMood([String? characterId]) async {
     final preferences = await SharedPreferences.getInstance();
     if (characterId != null) {
-      final value = preferences
-          .getString('${_characterMoodKey}_$characterId')
-          ?.trim();
+      final key = '${_characterMoodKey}_$characterId';
+      final value = preferences.getString(key)?.trim();
       if (value != null && value.isNotEmpty) return value;
+      if (characterId == 'character-lin') {
+        final legacy = preferences.getString(_characterMoodKey)?.trim() ?? '';
+        if (legacy.isNotEmpty) {
+          await preferences.setString(key, legacy);
+          return legacy;
+        }
+      }
+      return '';
     }
     return preferences.getString(_characterMoodKey)?.trim() ?? '';
   }
@@ -330,6 +367,12 @@ class ChatStore {
     } else {
       await preferences.setString(key, value);
     }
+  }
+
+  Future<void> clearCharacterState(String characterId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove('${_memoriesKey}_$characterId');
+    await preferences.remove('${_characterMoodKey}_$characterId');
   }
 
   Future<DateTime> loadFirstMetAt() async {
@@ -362,6 +405,16 @@ class ChatStore {
   Future<void> saveContextTokenBudget(int value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt(_contextTokenBudgetKey, value);
+  }
+
+  Future<bool> loadAutoMemoryEnabled() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_autoMemoryEnabledKey) ?? true;
+  }
+
+  Future<void> saveAutoMemoryEnabled(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_autoMemoryEnabledKey, value);
   }
 
   Future<List<CharacterProfile>> loadCharacters() async {

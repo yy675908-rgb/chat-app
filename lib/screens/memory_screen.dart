@@ -7,7 +7,14 @@ import '../models/world_book_entry.dart';
 import '../services/chat_store.dart';
 
 class MemoryScreen extends StatefulWidget {
-  const MemoryScreen({super.key});
+  const MemoryScreen({
+    required this.characterId,
+    required this.characterName,
+    super.key,
+  });
+
+  final String characterId;
+  final String characterName;
 
   @override
   State<MemoryScreen> createState() => _MemoryScreenState();
@@ -33,7 +40,7 @@ class _MemoryScreenState extends State<MemoryScreen>
   }
 
   Future<void> _load() async {
-    final memories = await _store.loadMemories();
+    final memories = await _store.loadMemories(characterId: widget.characterId);
     final preferences = await _store.loadStylePreferences();
     final worldBooks = await _store.loadWorldBooks();
     if (!mounted) return;
@@ -116,9 +123,14 @@ class _MemoryScreenState extends State<MemoryScreen>
 
   Future<void> _saveAndReloadMemories(List<String> next) async {
     try {
-      final saved = await _store.saveMemories(next);
+      final saved = await _store.saveMemories(
+        next,
+        characterId: widget.characterId,
+      );
       if (!saved) throw StateError('本地存储未确认写入');
-      final latest = await _store.loadMemories();
+      final latest = await _store.loadMemories(
+        characterId: widget.characterId,
+      );
       if (!mounted) return;
       setState(() => _memories = latest);
     } on Object catch (error) {
@@ -341,7 +353,7 @@ class _MemoryScreenState extends State<MemoryScreen>
             : Icons.favorite_border_rounded,
         title: memory ? '还没有共同记忆' : '还没有回应偏好',
         description: memory
-            ? '把重要的人、事和约定慢慢留在这里'
+            ? '这里只保存你和${widget.characterName}之间的关系记忆；开启自动记忆后也会从明确事实中慢慢沉淀'
             : '喜欢一条回复后，应用也会自动提炼',
       );
     }
@@ -489,10 +501,10 @@ class _MemoryScreenState extends State<MemoryScreen>
         ],
         bottom: TabBar(
           controller: _tabs,
-          tabs: const [
-            Tab(text: '共同记忆'),
-            Tab(text: '回应偏好'),
-            Tab(text: '世界书'),
+          tabs: [
+            Tab(text: '共同记忆·${widget.characterName}'),
+            const Tab(text: '回应偏好'),
+            const Tab(text: '世界书'),
           ],
         ),
       ),

@@ -94,6 +94,45 @@ void main() {
     );
   });
 
+  test('relationship memory and mood stay isolated by character', () async {
+    final store = ChatStore();
+    await store.saveMemories(['A 的共同记忆'], characterId: 'character-a');
+    await store.saveMemories(['B 的共同记忆'], characterId: 'character-b');
+    await store.saveCharacterMood('开心', 'character-a');
+
+    expect(
+      await store.loadMemories(characterId: 'character-a'),
+      ['A 的共同记忆'],
+    );
+    expect(
+      await store.loadMemories(characterId: 'character-b'),
+      ['B 的共同记忆'],
+    );
+    expect(await store.loadCharacterMood('character-a'), '开心');
+    expect(await store.loadCharacterMood('character-b'), isEmpty);
+
+    expect(await store.loadAutoMemoryEnabled(), isTrue);
+    await store.saveAutoMemoryEnabled(false);
+    expect(await store.loadAutoMemoryEnabled(), isFalse);
+  });
+
+  test('legacy relationship memory migrates only to the built-in character',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'relationship_memories_v1': ['旧的共同记忆'],
+    });
+    final store = ChatStore();
+
+    expect(
+      await store.loadMemories(characterId: 'character-lin'),
+      ['旧的共同记忆'],
+    );
+    expect(
+      await store.loadMemories(characterId: 'character-new'),
+      isEmpty,
+    );
+  });
+
   test('the latest user message always requires one character reply', () {
     final now = DateTime.utc(2026, 8, 20);
     ChatMessage message(String id, MessageAuthor author) => ChatMessage(

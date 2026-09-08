@@ -100,6 +100,12 @@ void main() {
     ]);
     await providerStore.saveSelectedProviderId('deepseek');
     final existing = await chatStore.loadConversations();
+    final selectedCharacter = await chatStore.loadProfile();
+    await chatStore.saveMemories(
+      ['只属于当前角色的记忆'],
+      characterId: selectedCharacter.id,
+    );
+    await chatStore.saveAutoMemoryEnabled(false);
 
     final raw = await BackupService(
       chatStore: chatStore,
@@ -107,22 +113,37 @@ void main() {
     ).createBackup(scope: BackupScope.configuration);
     final data = jsonDecode(raw) as Map<String, dynamic>;
 
-    expect(data['version'], 2);
+    expect(data['version'], 3);
     expect(data['scope'], 'configuration');
     expect(data.containsKey('conversations'), isFalse);
     expect(data.containsKey('messages'), isFalse);
     expect(data.containsKey('characterMoods'), isFalse);
     expect(data['userProfile']['name'], '小满');
+    expect(data['autoMemoryEnabled'], isFalse);
+    expect(
+      data['characterMemories'][selectedCharacter.id],
+      ['只属于当前角色的记忆'],
+    );
     expect(
       data['providers'][0]['modelSystemPrompts']['deepseek-chat'],
       '控制在三句话内。',
     );
 
+    await chatStore.saveMemories(
+      ['临时覆盖'],
+      characterId: selectedCharacter.id,
+    );
+    await chatStore.saveAutoMemoryEnabled(true);
     await BackupService(
       chatStore: chatStore,
       providerStore: providerStore,
     ).restoreBackup(raw);
     final afterRestore = await chatStore.loadConversations();
     expect(afterRestore.map((item) => item.id), existing.map((item) => item.id));
+    expect(
+      await chatStore.loadMemories(characterId: selectedCharacter.id),
+      ['只属于当前角色的记忆'],
+    );
+    expect(await chatStore.loadAutoMemoryEnabled(), isFalse);
   });
 }

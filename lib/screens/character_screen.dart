@@ -13,6 +13,7 @@ class CharacterScreen extends StatefulWidget {
 
 class _CharacterScreenState extends State<CharacterScreen> {
   late final TextEditingController _nameController;
+  late final TextEditingController _statusController;
   late final TextEditingController _greetingController;
   late final TextEditingController _promptController;
 
@@ -21,6 +22,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.profile.name)
       ..addListener(_refreshName);
+    _statusController = TextEditingController(text: widget.profile.status);
     _greetingController = TextEditingController(text: widget.profile.greeting);
     _promptController = TextEditingController(text: widget.profile.systemPrompt);
   }
@@ -40,6 +42,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     Navigator.of(context).pop(
       widget.profile.copyWith(
         name: name,
+        status: _statusController.text.trim(),
         greeting: _greetingController.text.trim(),
         systemPrompt: _promptController.text.trim(),
       ),
@@ -50,6 +53,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
   void dispose() {
     _nameController.removeListener(_refreshName);
     _nameController.dispose();
+    _statusController.dispose();
     _greetingController.dispose();
     _promptController.dispose();
     super.dispose();
@@ -135,6 +139,16 @@ class _CharacterScreenState extends State<CharacterScreen> {
             decoration: const InputDecoration(
               labelText: '名字',
               hintText: '角色在对话中使用的名字',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _statusController,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: '当前状态',
+              hintText: '例如：刚下班、在生闷气、今晚很闲',
+              helperText: '显示在角色名字下方，也会影响群聊中的接话判断',
             ),
           ),
           const SizedBox(height: 24),

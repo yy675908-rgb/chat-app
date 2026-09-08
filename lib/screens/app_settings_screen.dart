@@ -11,6 +11,7 @@ class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({
     required this.reasoningExpanded,
     required this.contextTokenBudget,
+    required this.autoMemoryEnabled,
     required this.userProfile,
     required this.onSave,
     super.key,
@@ -18,10 +19,12 @@ class AppSettingsScreen extends StatefulWidget {
 
   final bool reasoningExpanded;
   final int contextTokenBudget;
+  final bool autoMemoryEnabled;
   final UserProfile userProfile;
   final Future<void> Function(
     bool reasoningExpanded,
     int contextTokenBudget,
+    bool autoMemoryEnabled,
     UserProfile userProfile,
   ) onSave;
 
@@ -32,6 +35,7 @@ class AppSettingsScreen extends StatefulWidget {
 class _AppSettingsScreenState extends State<AppSettingsScreen> {
   late bool _reasoningExpanded;
   late int _contextTokenBudget;
+  late bool _autoMemoryEnabled;
   bool _saving = false;
   bool _backupBusy = false;
   final _backupService = BackupService();
@@ -53,6 +57,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _contextTokenBudget = _budgets.containsKey(widget.contextTokenBudget)
         ? widget.contextTokenBudget
         : 32000;
+    _autoMemoryEnabled = widget.autoMemoryEnabled;
     _userNameController = TextEditingController(text: widget.userProfile.name);
     _userGenderController =
         TextEditingController(text: widget.userProfile.gender);
@@ -70,6 +75,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     await widget.onSave(
       _reasoningExpanded,
       _contextTokenBudget,
+      _autoMemoryEnabled,
       _userProfileDraft,
     );
   }
@@ -265,6 +271,20 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 0,
+            child: SwitchListTile(
+              title: const Text('自动沉淀共同记忆'),
+              subtitle: const Text(
+                '每约 8 个用户回合检查一次明确的长期信息，并按角色分别保存；会产生少量额外模型调用。',
+              ),
+              value: _autoMemoryEnabled,
+              onChanged: (value) {
+                setState(() => _autoMemoryEnabled = value);
+              },
             ),
           ),
           const SizedBox(height: 24),
