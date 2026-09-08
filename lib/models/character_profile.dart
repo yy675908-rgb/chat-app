@@ -58,23 +58,23 @@ class CharacterProfile {
       firstMetAt: firstMetAt,
       greeting: greeting ?? this.greeting,
       systemPrompt: systemPrompt ?? this.systemPrompt,
-      userIntimacy: (userIntimacy ?? this.userIntimacy).clamp(0, 100).toInt(),
+      userIntimacy:
+          (userIntimacy ?? this.userIntimacy).clamp(0, 100).toInt(),
     );
   }
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'name': name,
-    'status': status,
-    'firstMetAt': firstMetAt.toIso8601String(),
-    'greeting': greeting,
-    'systemPrompt': systemPrompt,
-    'userIntimacy': userIntimacy,
-  };
+        'id': id,
+        'name': name,
+        'status': status,
+        'firstMetAt': firstMetAt.toIso8601String(),
+        'greeting': greeting,
+        'systemPrompt': systemPrompt,
+        'userIntimacy': userIntimacy,
+      };
 
   factory CharacterProfile.fromJson(Map<String, Object?> json) {
-    final firstMetAt =
-        DateTime.tryParse(json['firstMetAt'] as String? ?? '') ??
+    final firstMetAt = DateTime.tryParse(json['firstMetAt'] as String? ?? '') ??
         DateTime.now();
     final fallback = CharacterProfile.lin(firstMetAt);
     return CharacterProfile(

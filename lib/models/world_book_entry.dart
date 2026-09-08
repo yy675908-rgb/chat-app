@@ -29,12 +29,12 @@ class WorldBookEntry {
   }
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'title': title,
-    'keywords': keywords,
-    'content': content,
-    'enabled': enabled,
-  };
+        'id': id,
+        'title': title,
+        'keywords': keywords,
+        'content': content,
+        'enabled': enabled,
+      };
 
   factory WorldBookEntry.fromJson(Map<String, Object?> json) {
     return WorldBookEntry(

@@ -1,5 +1,9 @@
 class UserProfile {
-  const UserProfile({this.name = '', this.gender = '', this.description = ''});
+  const UserProfile({
+    this.name = '',
+    this.gender = '',
+    this.description = '',
+  });
 
   final String name;
   final String gender;
@@ -11,10 +15,10 @@ class UserProfile {
       description.trim().isEmpty;
 
   Map<String, Object?> toJson() => {
-    'name': name,
-    'gender': gender,
-    'description': description,
-  };
+        'name': name,
+        'gender': gender,
+        'description': description,
+      };
 
   factory UserProfile.fromJson(Map<String, Object?> json) {
     return UserProfile(

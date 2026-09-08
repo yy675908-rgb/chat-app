@@ -56,19 +56,19 @@ class ReplyVariant {
   }
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'text': text,
-    'generatedAt': generatedAt.toIso8601String(),
-    'providerId': providerId,
-    'modelId': modelId,
-    'reasoning': reasoning,
-    'reasoningDurationMs': reasoningDurationMs,
-    'promptTokens': promptTokens,
-    'completionTokens': completionTokens,
-    'reasoningTokens': reasoningTokens,
-    'totalTokens': totalTokens,
-    'isLiked': isLiked,
-  };
+        'id': id,
+        'text': text,
+        'generatedAt': generatedAt.toIso8601String(),
+        'providerId': providerId,
+        'modelId': modelId,
+        'reasoning': reasoning,
+        'reasoningDurationMs': reasoningDurationMs,
+        'promptTokens': promptTokens,
+        'completionTokens': completionTokens,
+        'reasoningTokens': reasoningTokens,
+        'totalTokens': totalTokens,
+        'isLiked': isLiked,
+      };
 
   factory ReplyVariant.fromJson(Map<String, Object?> json) {
     return ReplyVariant(
@@ -76,7 +76,7 @@ class ReplyVariant {
       text: json['text'] as String? ?? '',
       generatedAt:
           DateTime.tryParse(json['generatedAt'] as String? ?? '') ??
-          DateTime.now(),
+              DateTime.now(),
       providerId: json['providerId'] as String? ?? '',
       modelId: json['modelId'] as String? ?? '',
       reasoning: json['reasoning'] as String? ?? '',
@@ -107,8 +107,8 @@ class ChatMessage {
     this.activeVariantIndex = 0,
     this.branchBindings = const {},
     this.speakerCharacterId = '',
-  }) : _text = text,
-       _reasoning = reasoning;
+  })  : _text = text,
+        _reasoning = reasoning;
 
   final String id;
   final MessageAuthor author;
@@ -253,28 +253,30 @@ class ChatMessage {
   }
 
   Map<String, Object?> toJson() => {
-    'id': id,
-    'author': author.name,
-    'text': text,
-    'reasoning': reasoning,
-    'reasoningDurationMs': usedReasoningDurationMs,
-    'promptTokens': usedPromptTokens,
-    'completionTokens': usedCompletionTokens,
-    'reasoningTokens': usedReasoningTokens,
-    'totalTokens': usedTotalTokens,
-    'sentAt': sentAt.toIso8601String(),
-    'isRetracted': isRetracted,
-    'replyVariants': replyVariants.map((variant) => variant.toJson()).toList(),
-    'activeVariantIndex': activeVariantIndex,
-    'branchBindings': branchBindings,
-    'speakerCharacterId': speakerCharacterId,
-  };
+        'id': id,
+        'author': author.name,
+        'text': text,
+        'reasoning': reasoning,
+        'reasoningDurationMs': usedReasoningDurationMs,
+        'promptTokens': usedPromptTokens,
+        'completionTokens': usedCompletionTokens,
+        'reasoningTokens': usedReasoningTokens,
+        'totalTokens': usedTotalTokens,
+        'sentAt': sentAt.toIso8601String(),
+        'isRetracted': isRetracted,
+        'replyVariants':
+            replyVariants.map((variant) => variant.toJson()).toList(),
+        'activeVariantIndex': activeVariantIndex,
+        'branchBindings': branchBindings,
+        'speakerCharacterId': speakerCharacterId,
+      };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) {
     final variants = (json['replyVariants'] as List<dynamic>? ?? const [])
         .map(
-          (item) =>
-              ReplyVariant.fromJson(Map<String, Object?>.from(item as Map)),
+          (item) => ReplyVariant.fromJson(
+            Map<String, Object?>.from(item as Map),
+          ),
         )
         .toList();
     return ChatMessage(
@@ -294,8 +296,7 @@ class ChatMessage {
       isRetracted: json['isRetracted'] as bool? ?? false,
       replyVariants: variants,
       activeVariantIndex: json['activeVariantIndex'] as int? ?? 0,
-      branchBindings:
-          (json['branchBindings'] as Map?)?.map(
+      branchBindings: (json['branchBindings'] as Map?)?.map(
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           const {},
