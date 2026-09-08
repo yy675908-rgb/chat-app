@@ -184,32 +184,16 @@ class _ChatScreenState extends State<ChatScreen> {
           sentAt: DateTime.now(),
         ),
       );
-    } else {
-      final conversations = await _chatStore.loadConversations(
-        characterId: profile.id,
+    } else if (profile.greeting.trim().isNotEmpty) {
+      messages.add(
+        ChatMessage(
+          id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
+          author: MessageAuthor.character,
+          text: profile.greeting.trim(),
+          sentAt: DateTime.now(),
+          speakerCharacterId: profile.id,
+        ),
       );
-      var hasPriorConversation = false;
-      for (final conversation in conversations) {
-        if (conversation.id == conversationId) continue;
-        final priorMessages = await _chatStore.loadMessages(conversation.id);
-        if (priorMessages.any(
-          (message) => message.author != MessageAuthor.system,
-        )) {
-          hasPriorConversation = true;
-          break;
-        }
-      }
-      if (!hasPriorConversation && profile.greeting.trim().isNotEmpty) {
-        messages.add(
-          ChatMessage(
-            id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-            author: MessageAuthor.character,
-            text: profile.greeting.trim(),
-            sentAt: DateTime.now(),
-            speakerCharacterId: profile.id,
-          ),
-        );
-      }
     }
     if (messages.isNotEmpty) {
       await _chatStore.saveMessages(conversationId, messages);
@@ -218,6 +202,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _newConversation() async {
+    _scaffoldKey.currentState?.closeDrawer();
     if (_isBusy) {
       _stopGenerating();
       while (_isBusy && mounted) {
@@ -241,7 +226,6 @@ class _ChatScreenState extends State<ChatScreen> {
       isGroup: conversation.isGroup,
     );
     if (!mounted) return;
-    Navigator.of(context).maybePop();
     setState(() {
       _conversations = conversations;
       _currentConversation = conversation;
@@ -263,9 +247,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _showMessage('至少添加两个角色后才能创建群聊');
       return;
     }
-    _scaffoldKey.currentState?.closeDrawer();
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (!mounted) return;
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+    }
     final selectedIds = _characters.map((item) => item.id).toSet();
     final titleController = TextEditingController();
     final draft = await showModalBottomSheet<_GroupDraft>(
@@ -402,9 +389,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _selectConversation(Conversation conversation) async {
     if (_currentConversation?.id == conversation.id) {
-      Navigator.of(context).maybePop();
+      _scaffoldKey.currentState?.closeDrawer();
       return;
     }
+    _scaffoldKey.currentState?.closeDrawer();
     if (_isBusy) {
       _stopGenerating();
       while (_isBusy && mounted) {
@@ -418,7 +406,6 @@ class _ChatScreenState extends State<ChatScreen> {
       isGroup: conversation.isGroup,
     );
     if (!mounted) return;
-    Navigator.of(context).maybePop();
     setState(() {
       _currentConversation = conversation;
       _messages = messages;
@@ -430,7 +417,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _deleteConversation(Conversation conversation) async {
     if (_isBusy) {
       _stopGenerating();
-      return;
+      while (_isBusy && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      if (!mounted) return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
@@ -597,6 +587,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openProviderSettings() async {
+    _scaffoldKey.currentState?.closeDrawer();
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const ApiSettingsScreen()),
     );
@@ -1600,6 +1591,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openFavorites() async {
+    _scaffoldKey.currentState?.closeDrawer();
     final entries = <FavoriteReplyEntry>[];
     for (final conversation in _conversations) {
       final messages = await _chatStore.loadMessages(conversation.id);
@@ -2108,7 +2100,7 @@ class _ChatScreenState extends State<ChatScreen> {
           title: const Text('写入共同记忆？'),
           content: TextField(
             controller: controller,
-            autofocus: true,
+            autofocus: false,
             minLines: 2,
             maxLines: 5,
             maxLength: 80,
@@ -2386,17 +2378,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(milliseconds: 1600),
       ),
     );
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
@@ -2406,6 +2402,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openAppSettings() async {
+    _scaffoldKey.currentState?.closeDrawer();
     final restored = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => AppSettingsScreen(
@@ -2439,6 +2436,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openMemories() async {
+    _scaffoldKey.currentState?.closeDrawer();
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => MemoryScreen(
@@ -2460,9 +2458,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _showCharacterPicker() async {
-    _scaffoldKey.currentState?.closeDrawer();
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (!mounted) return;
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+    }
     final selectedId = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -2859,6 +2860,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _editCharacter() async {
+    _scaffoldKey.currentState?.closeDrawer();
     final updated = await Navigator.of(context).push<CharacterProfile>(
       MaterialPageRoute<CharacterProfile>(
         builder: (_) => CharacterScreen(profile: _profile),
@@ -2897,13 +2899,13 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       final position = _scrollController.position.maxScrollExtent;
-      if (jump) {
+      if (jump || (_generating && !force)) {
         _scrollController.jumpTo(position);
       } else {
         _scrollController.animateTo(
           position,
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
         );
       }
     });
@@ -3021,19 +3023,26 @@ class _ChatScreenState extends State<ChatScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (characterStatus.isNotEmpty)
-                          Text(
-                            characterStatus,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 160),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: characterStatus.isEmpty
+                              ? const SizedBox.shrink()
+                              : Text(
+                                  characterStatus,
+                                  key: ValueKey(characterStatus),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                        ),
                       ],
                     ),
                   ),
@@ -3772,6 +3781,7 @@ class _Composer extends StatelessWidget {
                     minLines: 1,
                     maxLines: 6,
                     textInputAction: TextInputAction.newline,
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
                     decoration: InputDecoration(
                       hintText: generating ? '可以继续说…' : '说点什么…',
                       hintStyle: TextStyle(
@@ -3793,20 +3803,34 @@ class _Composer extends StatelessWidget {
                         backgroundColor: scheme.surfaceContainerHighest,
                         minimumSize: const Size(42, 42),
                       ),
-                      onPressed: onStop,
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        onStop();
+                      },
                       icon: const Icon(Icons.stop_rounded, size: 20),
                     ),
                   ),
                 const SizedBox(width: 4),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
-                  child: IconButton.filled(
-                    tooltip: '发送',
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(42, 42),
-                    ),
-                    onPressed: enabled ? onSend : null,
-                    icon: const Icon(Icons.arrow_upward_rounded, size: 21),
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: controller,
+                    builder: (context, value, _) {
+                      final canSend = enabled && value.text.trim().isNotEmpty;
+                      return IconButton.filled(
+                        tooltip: '发送',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(42, 42),
+                        ),
+                        onPressed: canSend
+                            ? () {
+                                HapticFeedback.selectionClick();
+                                onSend();
+                              }
+                            : null,
+                        icon: const Icon(Icons.arrow_upward_rounded, size: 21),
+                      );
+                    },
                   ),
                 ),
               ],
