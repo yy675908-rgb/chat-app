@@ -1,331 +1,82 @@
 from pathlib import Path
 
+path = Path('lib/screens/chat_screen.dart')
+text = path.read_text()
 
-def replace_once(path: str, old: str, new: str, label: str) -> None:
-    p = Path(path)
-    text = p.read_text()
-    if old not in text:
-        raise SystemExit(f'missing anchor: {label}')
-    p.write_text(text.replace(old, new, 1))
+old = """    final roster = participants
+        .map((character) {
+          final status = character.status.trim().isEmpty
+              ? ''
+              : '；当前状态：${character.status.trim()}';
+          return '- ${character.name}$status；'
+              '关系亲密度：${character.userIntimacy}/100'
+              '（${_intimacyLabel(character.userIntimacy)}）';
+        })
+        .join('\\n');
+"""
+new = """    final roster = participants
+        .map((character) {
+          final moodValue = (_characterMoods[character.id] ?? '').trim();
+          final mood = moodValue.isEmpty ? '' : '；当前心绪：$moodValue';
+          final status = character.status.trim().isEmpty
+              ? ''
+              : '；当前状态：${character.status.trim()}';
+          return '- ${character.name}$mood$status；'
+              '关系亲密度：${character.userIntimacy}/100'
+              '（${_intimacyLabel(character.userIntimacy)}）';
+        })
+        .join('\\n');
+"""
+if old not in text:
+    raise SystemExit('group roster state anchor missing')
+text = text.replace(old, new, 1)
 
+old = """      final memories = _characterMemories[character.id] ?? const <String>[];
+      final memoryPrompt = memories.isEmpty
+          ? ''
+          : '\\n\\n你和用户的共同记忆：\\n'
+                '${memories.map((item) => '- $item').join('\\n')}';
+"""
+new = """      final memories = _characterMemories[character.id] ?? const <String>[];
+      final memoryPrompt = memories.isEmpty
+          ? ''
+          : '\\n\\n你和用户的共同记忆：\\n'
+                '${memories.map((item) => '- $item').join('\\n')}';
+      final currentMood = (_characterMoods[character.id] ?? '').trim();
+      final currentStatus = character.status.trim();
+      final statePrompt = '\\n\\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}；'
+          '当前状态：${currentStatus.isEmpty ? '未记录' : currentStatus}。';
+"""
+if old not in text:
+    raise SystemExit('group intent memory anchor missing')
+text = text.replace(old, new, 1)
 
-chat = Path('lib/screens/chat_screen.dart')
-text = chat.read_text()
+old = """            '${character.systemPrompt}$memoryPrompt\\n\\n'
+            '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
+"""
+new = """            '${character.systemPrompt}$memoryPrompt$statePrompt\\n\\n'
+            '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
+"""
+if old not in text:
+    raise SystemExit('group intent state prompt anchor missing')
+text = text.replace(old, new, 1)
 
-old = """  Future<List<ChatMessage>> _messagesWithGreeting(
-    String conversationId,
-    CharacterProfile profile, {
-    bool isGroup = false,
-  }) async {
-    final messages = await _chatStore.loadMessages(conversationId);
-    if (messages.isEmpty) {
-      messages.add(
-        ChatMessage(
-          id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-          author: isGroup ? MessageAuthor.system : MessageAuthor.character,
-          text: isGroup ? '群聊已创建' : profile.greeting,
-          sentAt: DateTime.now(),
-          speakerCharacterId: isGroup ? '' : profile.id,
+old = """        content: Text('“${conversation.title}”会从这台设备删除。'),
+"""
+new = """        content: Text(
+          '“${conversation.title}”会从这台设备删除。由这段对话产生的共同记忆、回应偏好、心绪和状态也会一并清除。',
         ),
-      );
-      await _chatStore.saveMessages(conversationId, messages);
-    }
-    return messages;
-  }
-"""
-new = """  Future<List<ChatMessage>> _messagesWithGreeting(
-    String conversationId,
-    CharacterProfile profile, {
-    bool isGroup = false,
-  }) async {
-    final messages = await _chatStore.loadMessages(conversationId);
-    if (messages.isNotEmpty) return messages;
-
-    if (isGroup) {
-      messages.add(
-        ChatMessage(
-          id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-          author: MessageAuthor.system,
-          text: '群聊已创建',
-          sentAt: DateTime.now(),
-        ),
-      );
-    } else {
-      final conversations = await _chatStore.loadConversations(
-        characterId: profile.id,
-      );
-      var hasPriorConversation = false;
-      for (final conversation in conversations) {
-        if (conversation.id == conversationId) continue;
-        final priorMessages = await _chatStore.loadMessages(conversation.id);
-        if (priorMessages.any(
-          (message) => message.author != MessageAuthor.system,
-        )) {
-          hasPriorConversation = true;
-          break;
-        }
-      }
-      if (!hasPriorConversation && profile.greeting.trim().isNotEmpty) {
-        messages.add(
-          ChatMessage(
-            id: 'greeting-${DateTime.now().microsecondsSinceEpoch}',
-            author: MessageAuthor.character,
-            text: profile.greeting.trim(),
-            sentAt: DateTime.now(),
-            speakerCharacterId: profile.id,
-          ),
-        );
-      }
-    }
-    if (messages.isNotEmpty) {
-      await _chatStore.saveMessages(conversationId, messages);
-    }
-    return messages;
-  }
 """
 if old not in text:
-    raise SystemExit('greeting function anchor missing')
+    raise SystemExit('delete conversation copy anchor missing')
 text = text.replace(old, new, 1)
 
-for label, signature in [
-    ('new conversation', '  Future<void> _newConversation() async {'),
-    ('new group conversation', '  Future<void> _newGroupConversation() async {'),
-]:
-    start = text.index(signature)
-    window = text[start:start + 300]
-    old_busy = """    if (_isBusy) {
-      _stopGenerating();
-      return;
-    }
-"""
-    new_busy = """    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
-"""
-    if old_busy not in window:
-        raise SystemExit(f'{label} busy anchor missing')
-    absolute = start + window.index(old_busy)
-    text = text[:absolute] + new_busy + text[absolute + len(old_busy):]
-
-old = """    if (_isBusy) {
-      _stopGenerating();
-      return;
-    }
-    final messages = await _messagesWithGreeting(
-      conversation.id,
-"""
-new = """    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
-    final messages = await _messagesWithGreeting(
-      conversation.id,
-"""
-if old not in text:
-    raise SystemExit('select conversation busy anchor missing')
-text = text.replace(old, new, 1)
-
-old = """    final characterStatus = isGroup
-        ? (_currentConversation == null
-              ? '暂无群聊'
-              : (_evaluatingGroupIntents
-                    ? '角色正在判断是否接话…'
-                    : (_generating
-                          ? '群聊中…'
-                          : '${_groupParticipants.length} 位角色')))
-        : (_isBusy
-              ? '正在回复…'
-              : (_characterMood.isNotEmpty
-                    ? _characterMood
-                    : (_profile.status == '在这里' ? '' : _profile.status)));
-"""
-new = """    final mood = _characterMood.trim();
-    final status = _profile.status.trim();
-    final stateParts = <String>[
-      if (mood.isNotEmpty) mood,
-      if (status.isNotEmpty && status != '在这里' && status != mood) status,
-    ];
-    final restingCharacterState = stateParts.join(' · ');
-    final characterStatus = isGroup
-        ? (_currentConversation == null
-              ? '暂无群聊'
-              : (_evaluatingGroupIntents
-                    ? '角色正在判断是否接话…'
-                    : (_generating
-                          ? '群聊中…'
-                          : '${_groupParticipants.length} 位角色')))
-        : (_isBusy
-              ? (restingCharacterState.isEmpty
-                    ? '正在回复…'
-                    : '$restingCharacterState · 正在回复…')
-              : restingCharacterState);
-"""
-if old not in text:
-    raise SystemExit('header state anchor missing')
-text = text.replace(old, new, 1)
-
-old = """                                      onLike: canUseCharacterActions
-                                          ? () => _toggleLike(index)
-                                          : null,
-                                      retryModels: [
-"""
-new = """                                      onLike: canUseCharacterActions
-                                          ? () => _toggleLike(index)
-                                          : null,
-                                      onLearnStyle: canUseCharacterActions
-                                          ? () => _extractStylePreference(
-                                              index,
-                                              message,
-                                            )
-                                          : null,
-                                      retryModels: [
-"""
-if old not in text:
-    raise SystemExit('message action wiring anchor missing')
-text = text.replace(old, new, 1)
-
-old = """  Future<void> _toggleLike(int messageIndex) async {
-    if (messageIndex < 0 || messageIndex >= _messages.length) return;
-    final original = _messages[messageIndex];
-    final shouldExtract = !original.isLiked;
-    final updated = original.toggleLike();
-    setState(() => _messages[messageIndex] = updated);
-    await _persistMessages();
-    if (!mounted) return;
-    _showMessage(updated.isLiked ? '已喜欢并加入收藏' : '已取消喜欢');
-    if (shouldExtract) {
-      unawaited(_extractStylePreference(messageIndex, original));
-    }
-  }
-"""
-new = """  Future<void> _toggleLike(int messageIndex) async {
-    if (messageIndex < 0 || messageIndex >= _messages.length) return;
-    final original = _messages[messageIndex];
-    final updated = original.toggleLike();
-    setState(() => _messages[messageIndex] = updated);
-    await _persistMessages();
-    if (!mounted) return;
-    _showMessage(updated.isLiked ? '已加入收藏' : '已取消收藏');
-  }
-"""
-if old not in text:
-    raise SystemExit('toggle like anchor missing')
-text = text.replace(old, new, 1)
-
-old = """      final added = await _chatStore.addStylePreference(
-        rule,
-        sourceConversationId: sourceConversationId,
-        sourceCharacterId: sourceCharacterId,
-      );
-      if (!added) return;
-"""
-new = """      final added = await _chatStore.addStylePreference(
-        rule,
-        sourceConversationId: sourceConversationId,
-        sourceCharacterId: sourceCharacterId,
-      );
-      if (!added) {
-        if (mounted) _showMessage('这条回复没有产生新的回应偏好');
-        return;
-      }
-"""
-if old not in text:
-    raise SystemExit('style preference added anchor missing')
-text = text.replace(old, new, 1)
-text = text.replace(
-    "_showMessage('回复已收藏；偏好提炼失败，可在“记忆与世界”中添加');",
-    "_showMessage('偏好提炼失败，可在“记忆与世界”中手动添加');",
-    1,
-)
-chat.write_text(text)
-
-bubble = Path('lib/widgets/message_bubble.dart')
-b = bubble.read_text()
-old = """    this.onLike,
-    this.onEdit,
-"""
-new = """    this.onLike,
-    this.onLearnStyle,
-    this.onEdit,
-"""
-if old not in b:
-    raise SystemExit('bubble constructor anchor missing')
-b = b.replace(old, new, 1)
-old = """  final VoidCallback? onLike;
-  final VoidCallback? onEdit;
-"""
-new = """  final VoidCallback? onLike;
-  final VoidCallback? onLearnStyle;
-  final VoidCallback? onEdit;
-"""
-if old not in b:
-    raise SystemExit('bubble field anchor missing')
-b = b.replace(old, new, 1)
-old = """                        _BubbleAction(
-                          tooltip: message.isLiked ? '取消喜欢' : '喜欢并收藏',
-                          icon: message.isLiked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          selected: message.isLiked,
-                          onPressed: onLike,
-                        ),
-                        _RetryPicker(
-"""
-new = """                        _BubbleAction(
-                          tooltip: message.isLiked ? '取消收藏' : '收藏',
-                          icon: message.isLiked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          selected: message.isLiked,
-                          onPressed: onLike,
-                        ),
-                        _BubbleAction(
-                          tooltip: '学习这条回复风格',
-                          icon: Icons.auto_awesome_outlined,
-                          onPressed: onLearnStyle,
-                        ),
-                        _RetryPicker(
-"""
-if old not in b:
-    raise SystemExit('bubble like action anchor missing')
-b = b.replace(old, new, 1)
-bubble.write_text(b)
-
-character = Path('lib/screens/character_screen.dart')
-c = character.read_text()
-c = c.replace("const _SectionLabel('初次见面')", "const _SectionLabel('第一次对话')", 1)
-c = c.replace("hintText: '创建新对话时，角色先说的话'", "hintText: '角色第一次开始聊天时先说的话'", 1)
-old = """          const SizedBox(height: 24),
-          const _SectionLabel('个性与行为'),
-"""
-new = """          const SizedBox(height: 7),
-          Text(
-            '只在这个角色第一次开始聊天时使用；之后新建对话不会反复重播开场白。',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 12,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 24),
-          const _SectionLabel('个性与行为'),
-"""
-if old not in c:
-    raise SystemExit('character greeting help anchor missing')
-c = c.replace(old, new, 1)
-character.write_text(c)
+path.write_text(text)
 
 pubspec = Path('pubspec.yaml')
 p = pubspec.read_text()
-if 'version: 0.9.10+20' in p:
-    p = p.replace('version: 0.9.10+20', 'version: 0.9.11+21', 1)
-elif 'version: 0.9.11+21' not in p:
+if 'version: 0.9.11+21' in p:
+    p = p.replace('version: 0.9.11+21', 'version: 0.9.12+22', 1)
+elif 'version: 0.9.12+22' not in p:
     raise SystemExit('unexpected version')
 pubspec.write_text(p)
