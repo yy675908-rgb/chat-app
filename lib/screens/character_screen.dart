@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/character_profile.dart';
 
@@ -47,6 +48,36 @@ class _CharacterScreenState extends State<CharacterScreen> {
     );
   }
 
+  Future<void> _copyPrompt() async {
+    final text = _promptController.text;
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('已复制全部角色设定'),
+        duration: Duration(milliseconds: 1200),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _openPromptEditor() async {
+    FocusScope.of(context).unfocus();
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => _PromptEditorScreen(initialText: _promptController.text),
+      ),
+    );
+    if (edited == null || !mounted) return;
+    _promptController.value = TextEditingValue(
+      text: edited,
+      selection: TextSelection.collapsed(offset: edited.length),
+    );
+  }
+
   @override
   void dispose() {
     _nameController.removeListener(_refreshName);
@@ -69,7 +100,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
         ],
       ),
       body: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 34),
         children: [
           Card(
@@ -135,6 +166,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const SizedBox(height: 9),
           TextField(
             controller: _nameController,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             decoration: const InputDecoration(
               labelText: '名字',
               hintText: '角色在对话中使用的名字',
@@ -160,6 +192,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
             controller: _greetingController,
             minLines: 2,
             maxLines: 4,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             decoration: const InputDecoration(
               labelText: '开场白',
               hintText: '每次新建对话时，角色先说的话',
@@ -176,12 +209,30 @@ class _CharacterScreenState extends State<CharacterScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const _SectionLabel('个性与行为'),
-          const SizedBox(height: 9),
+          Row(
+            children: [
+              const _SectionLabel('个性与行为'),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _copyPrompt,
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('复制全部'),
+              ),
+              const SizedBox(width: 2),
+              TextButton.icon(
+                onPressed: _openPromptEditor,
+                icon: const Icon(Icons.open_in_full_rounded, size: 16),
+                label: const Text('全屏编辑'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
           TextField(
             controller: _promptController,
             minLines: 8,
             maxLines: 16,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
+            scrollPadding: const EdgeInsets.only(bottom: 24),
             decoration: const InputDecoration(
               labelText: '角色设定',
               hintText: '写清角色的性格、关系、语气和边界',
@@ -200,7 +251,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  '角色设定会作为系统提示交给模型；写得明确，比单纯堆很多字更有效。',
+                  '长设定建议用“全屏编辑”；全屏模式不会自动弹键盘，也不会和页面滚动抢选择操作。',
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
                     fontSize: 12,
@@ -211,6 +262,100 @@ class _CharacterScreenState extends State<CharacterScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PromptEditorScreen extends StatefulWidget {
+  const _PromptEditorScreen({required this.initialText});
+
+  final String initialText;
+
+  @override
+  State<_PromptEditorScreen> createState() => _PromptEditorScreenState();
+}
+
+class _PromptEditorScreenState extends State<_PromptEditorScreen> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  void _finish() {
+    Navigator.of(context).pop(_controller.text);
+  }
+
+  Future<void> _copyAll() async {
+    if (_controller.text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _controller.text));
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('已复制全部角色设定'),
+        duration: Duration(milliseconds: 1000),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _finish();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: '返回并保留修改',
+            onPressed: _finish,
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          title: const Text('编辑角色设定'),
+          actions: [
+            IconButton(
+              tooltip: '复制全部',
+              onPressed: _copyAll,
+              icon: const Icon(Icons.copy_rounded),
+            ),
+            TextButton(onPressed: _finish, child: const Text('完成')),
+            const SizedBox(width: 6),
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: TextField(
+              controller: _controller,
+              autofocus: false,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              textAlignVertical: TextAlignVertical.top,
+              scrollPadding: const EdgeInsets.only(bottom: 20),
+              decoration: const InputDecoration(
+                hintText: '写清角色的性格、关系、语气和边界',
+                alignLabelWithHint: true,
+                filled: true,
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.all(14),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
