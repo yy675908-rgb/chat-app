@@ -436,7 +436,9 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除这段对话？'),
-        content: Text('“${conversation.title}”会从这台设备删除。'),
+        content: Text(
+          '“${conversation.title}”会从这台设备删除。由这段对话产生的共同记忆、回应偏好、心绪和状态也会一并清除。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -957,10 +959,12 @@ class _ChatScreenState extends State<ChatScreen> {
         .join('\n');
     final roster = participants
         .map((character) {
+          final moodValue = (_characterMoods[character.id] ?? '').trim();
+          final mood = moodValue.isEmpty ? '' : '；当前心绪：$moodValue';
           final status = character.status.trim().isEmpty
               ? ''
               : '；当前状态：${character.status.trim()}';
-          return '- ${character.name}$status；'
+          return '- ${character.name}$mood$status；'
               '关系亲密度：${character.userIntimacy}/100'
               '（${_intimacyLabel(character.userIntimacy)}）';
         })
@@ -1029,6 +1033,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ? ''
           : '\n\n你和用户的共同记忆：\n'
                 '${memories.map((item) => '- $item').join('\n')}';
+      final currentMood = (_characterMoods[character.id] ?? '').trim();
+      final currentStatus = character.status.trim();
+      final statePrompt =
+          '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}；'
+          '当前状态：${currentStatus.isEmpty ? '未记录' : currentStatus}。';
       final request = ChatMessage(
         id:
             'group-intent-${character.id}-'
@@ -1047,7 +1056,7 @@ class _ChatScreenState extends State<ChatScreen> {
         apiKey: apiKey,
         systemPrompt:
             '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
-            '${character.systemPrompt}$memoryPrompt\n\n'
+            '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
             '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
             '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
             '当前关系不是背景资料：${_intimacyBehavior(character.userIntimacy)}'
