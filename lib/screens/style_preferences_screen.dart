@@ -11,8 +11,7 @@ class StylePreferencesScreen extends StatefulWidget {
   final Future<void> Function(List<String> preferences) onChanged;
 
   @override
-  State<StylePreferencesScreen> createState() =>
-      _StylePreferencesScreenState();
+  State<StylePreferencesScreen> createState() => _StylePreferencesScreenState();
 }
 
 class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
@@ -47,13 +46,11 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '写清楚情境和希望角色怎么回应。',
-              style: TextStyle(fontSize: 12),
-            ),
+            const Text('写清楚情境和希望角色怎么回应。', style: TextStyle(fontSize: 12)),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
               autofocus: false,
               minLines: 2,
               maxLines: 5,
@@ -144,7 +141,10 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
                       IconButton(
                         tooltip: '删除',
                         onPressed: () => _delete(index),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 19,
+                        ),
                       ),
                     ],
                   ),

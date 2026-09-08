@@ -68,7 +68,8 @@ class _CharacterScreenState extends State<CharacterScreen> {
     FocusScope.of(context).unfocus();
     final edited = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (_) => _PromptEditorScreen(initialText: _promptController.text),
+        builder: (_) =>
+            _PromptEditorScreen(initialText: _promptController.text),
       ),
     );
     if (edited == null || !mounted) return;
@@ -166,6 +167,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const SizedBox(height: 9),
           TextField(
             controller: _nameController,
+            autofocus: false,
             onTapOutside: (_) => FocusScope.of(context).unfocus(),
             decoration: const InputDecoration(
               labelText: '名字',
@@ -190,6 +192,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const SizedBox(height: 9),
           TextField(
             controller: _greetingController,
+            autofocus: false,
             minLines: 2,
             maxLines: 4,
             onTapOutside: (_) => FocusScope.of(context).unfocus(),
@@ -229,6 +232,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           const SizedBox(height: 7),
           TextField(
             controller: _promptController,
+            autofocus: false,
             minLines: 8,
             maxLines: 16,
             onTapOutside: (_) => FocusScope.of(context).unfocus(),
@@ -340,6 +344,7 @@ class _PromptEditorScreenState extends State<_PromptEditorScreen> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: TextField(
               controller: _controller,
+              onTapOutside: (_) => FocusScope.of(context).unfocus(),
               autofocus: false,
               expands: true,
               minLines: null,
