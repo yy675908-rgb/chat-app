@@ -1,0 +1,44 @@
+name: Run Smoothness Pass
+
+on:
+  push:
+    branches: ["agent/ux-smoothness-pass"]
+    paths:
+      - "tool/apply_smoothness_pass.py"
+      - ".github/workflows/run-smoothness-pass.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ux-smoothness-pass
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Apply polish
+        run: python3 tool/apply_smoothness_pass.py
+      - name: Format
+        run: dart format lib/screens/chat_screen.dart lib/screens/character_screen.dart
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Commit polish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/screens/chat_screen.dart lib/screens/character_screen.dart pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Smooth chat interactions and restore per-chat opener"
+            git push origin HEAD:agent/ux-smoothness-pass
+          fi
