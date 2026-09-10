@@ -1,0 +1,46 @@
+name: Apply Date Time Anchor
+
+on:
+  push:
+    branches: ["agent/date-time-anchor"]
+    paths:
+      - "tool/apply_date_time_anchor.py"
+      - ".github/workflows/apply-date-time-anchor.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/date-time-anchor
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Reset product source to main
+        run: git checkout origin/main -- lib pubspec.yaml
+      - name: Apply date-time anchor
+        run: python3 tool/apply_date_time_anchor.py
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze lib test/chat_message_test.dart test/chat_store_conversation_scope_test.dart test/settings_backup_test.dart
+      - name: Test
+        run: flutter test test/chat_message_test.dart test/chat_store_conversation_scope_test.dart test/settings_backup_test.dart
+      - name: Audit diff
+        run: |
+          git diff --check
+          git diff --name-only origin/main -- lib pubspec.yaml
+          git diff --stat origin/main -- lib pubspec.yaml
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
+          git add lib/screens/chat_screen.dart pubspec.yaml
+          git commit -m "Use authoritative local date and time in character context" || true
+          git pull --rebase origin agent/date-time-anchor
+          git push origin HEAD:agent/date-time-anchor
