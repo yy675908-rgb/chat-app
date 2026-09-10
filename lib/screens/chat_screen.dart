@@ -1734,7 +1734,7 @@ class _ChatScreenState extends State<ChatScreen> {
         '必须由你自己重新判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
         '上一轮状态是“$previousStatus”。不要为了显得有变化而强行变化，也不能偷懒机械沿用；'
         '只有你判断本轮确实没有实质变化时，才延续上一轮内容。'
-        '心绪只写1—12个字；状态写2—16个字，描述此刻真实的态度、活动或关系状态。'
+        '心绪只写1—12个字；状态由你自己决定写什么，只要真实反映你此刻的状态即可。状态最多10个字符，可用文字、emoji、符号或混合表达，但不要使用颜文字。'
         '无论变化与否，正文结束后都必须另起两行，严格输出'
         '“[[心绪:……]]”和“[[状态:……]]”；即使不变也要原样输出，不得省略。'
         '这两行只供系统读取，不要在正文解释。';
@@ -1858,8 +1858,8 @@ class _ChatScreenState extends State<ChatScreen> {
         .replaceAll(RegExp(r'[\[\]\r\n]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (value.characters.length > 16) {
-      value = value.characters.take(16).join();
+    if (value.characters.length > 10) {
+      value = value.characters.take(10).join();
     }
     return value;
   }
@@ -1937,7 +1937,7 @@ class _ChatScreenState extends State<ChatScreen> {
             '主回复已经完成，你只补齐遗漏的角色$requested，不生成正文。'
             '必须根据这一轮真实对话重新判断，不能为了变化而强行变化，也不能机械沿用。'
             '${repairMood ? '心绪用1—12个字、emoji或颜文字；若上一轮已有心绪且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
-            '${repairStatus ? '状态用2—16个字描述此刻真实态度、活动或关系状态；若上一轮已有状态且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
+            '${repairStatus ? '状态由角色自己决定写什么，只要真实反映此刻状态即可；最多10个字符，可用文字、emoji、符号或混合表达，但不要使用颜文字。若上一轮已有状态且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
             '严格只输出以下标签，不解释，不添加其他文字：\n$outputFormat',
         history: [request],
         temperature: 0.1,
