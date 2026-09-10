@@ -1678,20 +1678,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }) {
     final activeCharacter = character ?? _profile;
     final now = DateTime.now().toLocal();
-    ChatMessage? lastReply;
-    for (var index = _messages.length - 1; index >= 0; index--) {
-      final message = _messages[index];
-      if (!_isMessageVisible(message)) continue;
-      if (message.author == MessageAuthor.character &&
-          message.text.trim().isNotEmpty) {
-        lastReply = message;
-        break;
-      }
-    }
-    final interval = lastReply == null
-        ? ''
-        : '｜间隔：${_formatElapsed(now.difference(lastReply.sentAt))}';
-    final context = '当前时间：${_formatPromptTime(now)}$interval';
+    final context =
+        '\n\n当前本地日期和时间（以此为准）：${_formatPromptTime(now)}';
     final activeMemories =
         _characterMemories[activeCharacter.id] ?? const <String>[];
     final memoryText = activeMemories.isEmpty
@@ -1793,9 +1781,9 @@ class _ChatScreenState extends State<ChatScreen> {
         : '';
     return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
         '$intimacyInstruction'
-        '$groupInstruction$userProfileText\n\n'
-        '$context$memoryText$preferenceText$worldBookText'
-        '$summaryText$previousSummaryText$stateInstruction';
+        '$groupInstruction$userProfileText'
+        '$memoryText$preferenceText$worldBookText'
+        '$summaryText$previousSummaryText$context$stateInstruction';
   }
 
   String _matchedWorldBookPrompt() {
@@ -2368,20 +2356,6 @@ class _ChatScreenState extends State<ChatScreen> {
     String two(int number) => number.toString().padLeft(2, '0');
     return '${value.year}-${two(value.month)}-${two(value.day)} '
         '${two(value.hour)}:${two(value.minute)}';
-  }
-
-  String _formatElapsed(Duration duration) {
-    if (duration.isNegative || duration.inMinutes <= 0) return '刚刚';
-    final days = duration.inDays;
-    final hours = duration.inHours.remainder(24);
-    final minutes = duration.inMinutes.remainder(60);
-    if (days > 0) return hours == 0 ? '$days天' : '$days天$hours小时';
-    if (duration.inHours > 0) {
-      return minutes == 0
-          ? '${duration.inHours}小时'
-          : '${duration.inHours}小时$minutes分钟';
-    }
-    return '${duration.inMinutes}分钟';
   }
 
   void _showMessage(String message) {
