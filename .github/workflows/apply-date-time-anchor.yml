@@ -38,9 +38,9 @@ jobs:
           git diff --stat origin/main -- lib pubspec.yaml
       - name: Commit source changes
         run: |
+          git restore analysis_options.yaml pubspec.lock 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
           git add lib/screens/chat_screen.dart pubspec.yaml
           git commit -m "Use authoritative local date and time in character context" || true
-          git pull --rebase origin agent/date-time-anchor
           git push origin HEAD:agent/date-time-anchor
