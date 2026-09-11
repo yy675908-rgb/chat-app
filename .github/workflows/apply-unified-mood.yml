@@ -24,7 +24,19 @@ jobs:
       - name: Reset product source to main
         run: git checkout origin/main -- lib pubspec.yaml
       - name: Apply unified mood patch
-        run: python3 tool/apply_unified_mood.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tool/apply_unified_mood.py')
+          text = path.read_text()
+          text = text.replace(
+              'pattern.subn(replacement, text, count=1)',
+              'pattern.subn(lambda _: replacement, text, count=1)',
+              1,
+          )
+          path.write_text(text)
+          PY
+          python3 tool/apply_unified_mood.py
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
@@ -39,6 +51,7 @@ jobs:
           git diff --stat origin/main -- lib pubspec.yaml
       - name: Commit source changes
         run: |
+          git restore tool/apply_unified_mood.py 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
           git add lib/screens/chat_screen.dart lib/screens/character_screen.dart pubspec.yaml
