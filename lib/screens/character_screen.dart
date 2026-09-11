@@ -178,10 +178,10 @@ class _CharacterScreenState extends State<CharacterScreen> {
             elevation: 0,
             child: ListTile(
               leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('当前状态由角色自行生成'),
+              title: const Text('当前心绪由角色自行生成'),
               subtitle: Text(
                 widget.profile.status.trim().isEmpty
-                    ? '角色会随实际对话自行判断；确实没变化时会延续上一轮状态'
+                    ? '角色会随实际对话自行判断；确实没变化时会延续上一轮心绪'
                     : widget.profile.status.trim(),
               ),
             ),
