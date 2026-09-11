@@ -102,7 +102,10 @@ class _ChatScreenState extends State<ChatScreen> {
       characterMemories[character.id] = await _chatStore.loadMemories(
         characterId: character.id,
       );
-      final mood = await _chatStore.loadCharacterMood(character.id);
+      final storedMood = await _chatStore.loadCharacterMood(character.id);
+      final mood = _normalizeMood(
+        storedMood.trim().isEmpty ? character.status.trim() : storedMood,
+      );
       if (mood.isNotEmpty) characterMoods[character.id] = mood;
     }
     final memories = characterMemories[profile.id] ?? const <String>[];
@@ -429,7 +432,7 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context) => AlertDialog(
         title: const Text('删除这段对话？'),
         content: Text(
-          '“${conversation.title}”会从这台设备删除。由这段对话产生的共同记忆、回应偏好、心绪和状态也会一并清除。',
+          '“${conversation.title}”会从这台设备删除。由这段对话产生的共同记忆、回应偏好和心绪也会一并清除。',
         ),
         actions: [
           TextButton(
@@ -499,7 +502,10 @@ class _ChatScreenState extends State<ChatScreen> {
       memories[character.id] = await _chatStore.loadMemories(
         characterId: character.id,
       );
-      final mood = await _chatStore.loadCharacterMood(character.id);
+      final storedMood = await _chatStore.loadCharacterMood(character.id);
+      final mood = _normalizeMood(
+        storedMood.trim().isEmpty ? character.status.trim() : storedMood,
+      );
       if (mood.isNotEmpty) moods[character.id] = mood;
     }
     if (!mounted) return;
@@ -953,12 +959,12 @@ class _ChatScreenState extends State<ChatScreen> {
         .join('\n');
     final roster = participants
         .map((character) {
-          final moodValue = (_characterMoods[character.id] ?? '').trim();
+          final storedMood = (_characterMoods[character.id] ?? '').trim();
+          final moodValue = _normalizeMood(
+            storedMood.isEmpty ? character.status.trim() : storedMood,
+          );
           final mood = moodValue.isEmpty ? '' : '；当前心绪：$moodValue';
-          final status = character.status.trim().isEmpty
-              ? ''
-              : '；当前状态：${character.status.trim()}';
-          return '- ${character.name}$mood$status；'
+          return '- ${character.name}$mood；'
               '用户好感度：${character.userIntimacy}/100'
               '（${_intimacyLabel(character.userIntimacy)}）';
         })
@@ -1027,11 +1033,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ? ''
           : '\n\n你和用户的共同记忆：\n'
                 '${memories.map((item) => '- $item').join('\n')}';
-      final currentMood = (_characterMoods[character.id] ?? '').trim();
-      final currentStatus = character.status.trim();
+      final storedMood = (_characterMoods[character.id] ?? '').trim();
+      final currentMood = _normalizeMood(
+        storedMood.isEmpty ? character.status.trim() : storedMood,
+      );
       final statePrompt =
-          '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}；'
-          '当前状态：${currentStatus.isEmpty ? '未记录' : currentStatus}。';
+          '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}。';
       final request = ChatMessage(
         id:
             'group-intent-${character.id}-'
@@ -1254,8 +1261,13 @@ class _ChatScreenState extends State<ChatScreen> {
           reasoningTokens: usage.reasoningTokens,
           totalTokens: usage.totalTokens,
         );
-        final previousMood = _characterMoods[speakingCharacter.id] ?? '';
-        final previousStatus = speakingCharacter.status.trim();
+        final storedPreviousMood =
+            (_characterMoods[speakingCharacter.id] ?? '').trim();
+        final previousMood = _normalizeMood(
+          storedPreviousMood.isEmpty
+              ? speakingCharacter.status.trim()
+              : storedPreviousMood,
+        );
         setState(() {
           if (isRetry) {
             final current = _messages[replyIndex];
@@ -1299,19 +1311,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 replyConversationId,
               ),
             );
+            await _mirrorMoodToLegacyStatus(
+              character: speakingCharacter,
+              mood: parsedReply.mood,
+              conversationId: replyConversationId,
+            );
           }
         }
-        if (parsedReply.status.isNotEmpty && replyConversationId.isNotEmpty) {
-          await _applyGeneratedStatus(
-            character: speakingCharacter,
-            status: parsedReply.status,
-            conversationId: replyConversationId,
-          );
-        }
-        if ((parsedReply.mood.isEmpty || parsedReply.status.isEmpty) &&
-            replyConversationId.isNotEmpty) {
+        if (parsedReply.mood.isEmpty && replyConversationId.isNotEmpty) {
           unawaited(
-            _repairStateFromLatestTurn(
+            _repairMoodFromLatestTurn(
               provider: provider,
               apiKey: apiKey,
               contextMessages: contextMessages,
@@ -1320,9 +1329,6 @@ class _ChatScreenState extends State<ChatScreen> {
               conversationId: replyConversationId,
               sourceReplyId: isRetry ? originalReply!.id : newReply!.id,
               previousMood: previousMood,
-              previousStatus: previousStatus,
-              repairMood: parsedReply.mood.isEmpty,
-              repairStatus: parsedReply.status.isEmpty,
             ),
           );
         }
@@ -1724,20 +1730,20 @@ class _ChatScreenState extends State<ChatScreen> {
         ? ''
         : '\n\n其他近期对话的简短摘要（仅在相关时参考）：\n'
               '${previousSummaries.join('\n')}';
-    final savedMood = _characterMoods[activeCharacter.id] ?? '';
+    final storedMood = (_characterMoods[activeCharacter.id] ?? '').trim();
+    final savedMood = _normalizeMood(
+      storedMood.isEmpty ? activeCharacter.status.trim() : storedMood,
+    );
     final previousMood = savedMood.isEmpty ? '未记录' : savedMood;
-    final previousStatus = activeCharacter.status.trim().isEmpty
-        ? '未记录'
-        : activeCharacter.status.trim();
     final stateInstruction =
-        '\n\n角色状态协议（强制）：读完用户最新消息并完成正文回复后，'
-        '必须由你自己重新判断即时心绪和当前状态。上一轮心绪是“$previousMood”，'
-        '上一轮状态是“$previousStatus”。不要为了显得有变化而强行变化，也不能偷懒机械沿用；'
+        '\n\n角色心绪协议（强制）：读完用户最新消息并完成正文回复后，'
+        '必须由你自己重新判断此刻心绪。上一轮心绪是“$previousMood”。'
+        '不要为了显得有变化而强行变化，也不能偷懒机械沿用；'
         '只有你判断本轮确实没有实质变化时，才延续上一轮内容。'
-        '心绪只写1—12个字；状态由你自己决定写什么，只要真实反映你此刻的状态即可。状态最多10个字符，可用文字、emoji、符号或混合表达，但不要使用颜文字。'
-        '无论变化与否，正文结束后都必须另起两行，严格输出'
-        '“[[心绪:……]]”和“[[状态:……]]”；即使不变也要原样输出，不得省略。'
-        '这两行只供系统读取，不要在正文解释。';
+        '心绪由你自己决定写什么，只要真实反映你此刻即可；最多10个字符，'
+        '可用文字、emoji、符号或混合表达，但不要使用颜文字。'
+        '无论变化与否，正文结束后都必须另起一行，严格输出“[[心绪:……]]”；'
+        '即使不变也要原样输出，不得省略。这一行只供系统读取，不要在正文解释。';
     final modelPrompt = _selectedProvider?.systemPromptForModel() ?? '';
     final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
@@ -1837,8 +1843,10 @@ class _ChatScreenState extends State<ChatScreen> {
         .trim();
     return _TaggedReply(
       text: text,
-      mood: _normalizeMood(moodMatch?.group(1) ?? ''),
-      status: _normalizeStatus(statusMatch?.group(1) ?? ''),
+      mood: _normalizeMood(
+        moodMatch?.group(1) ?? statusMatch?.group(1) ?? '',
+      ),
+      status: '',
     );
   }
 
@@ -1847,8 +1855,8 @@ class _ChatScreenState extends State<ChatScreen> {
         .replaceAll(RegExp(r'[\[\]\r\n]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (value.characters.length > 12) {
-      value = value.characters.take(12).join();
+    if (value.characters.length > 10) {
+      value = value.characters.take(10).join();
     }
     return value;
   }
@@ -1864,12 +1872,12 @@ class _ChatScreenState extends State<ChatScreen> {
     return value;
   }
 
-  Future<void> _applyGeneratedStatus({
+  Future<void> _mirrorMoodToLegacyStatus({
     required CharacterProfile character,
-    required String status,
+    required String mood,
     required String conversationId,
   }) async {
-    final value = _normalizeStatus(status);
+    final value = _normalizeStatus(mood);
     if (value.isEmpty || conversationId.isEmpty) return;
     final index = _characters.indexWhere((item) => item.id == character.id);
     if (index < 0) return;
@@ -1886,7 +1894,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _chatStore.saveCharacterStatusSource(character.id, conversationId);
   }
 
-  Future<void> _repairStateFromLatestTurn({
+  Future<void> _repairMoodFromLatestTurn({
     required ProviderProfile provider,
     required String apiKey,
     required List<ChatMessage> contextMessages,
@@ -1895,11 +1903,8 @@ class _ChatScreenState extends State<ChatScreen> {
     required String conversationId,
     required String sourceReplyId,
     required String previousMood,
-    required String previousStatus,
-    required bool repairMood,
-    required bool repairStatus,
   }) async {
-    if ((!repairMood && !repairStatus) || replyText.trim().isEmpty) return;
+    if (replyText.trim().isEmpty) return;
     ChatMessage? latestUser;
     for (var index = contextMessages.length - 1; index >= 0; index--) {
       if (contextMessages[index].author == MessageAuthor.user) {
@@ -1909,23 +1914,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (latestUser == null) return;
 
-    final requested = <String>[
-      if (repairMood) '心绪',
-      if (repairStatus) '状态',
-    ].join('、');
-    final outputFormat = <String>[
-      if (repairMood) '[[心绪:结果]]',
-      if (repairStatus) '[[状态:结果]]',
-    ].join('\n');
     final service = AiChatService();
     var raw = '';
     try {
       final request = ChatMessage(
-        id: 'state-repair-${DateTime.now().microsecondsSinceEpoch}',
+        id: 'mood-repair-${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text:
-            '上一轮心绪：${previousMood.isEmpty ? '未记录' : previousMood}\n'
-            '上一轮状态：${previousStatus.isEmpty ? '未记录' : previousStatus}\n\n'
+            '上一轮心绪：${previousMood.isEmpty ? '未记录' : previousMood}\n\n'
             '用户最新消息：${latestUser.text}\n\n'
             '${character.name}的本轮回复：$replyText',
         sentAt: DateTime.now(),
@@ -1934,11 +1930,12 @@ class _ChatScreenState extends State<ChatScreen> {
         provider: provider,
         apiKey: apiKey,
         systemPrompt:
-            '主回复已经完成，你只补齐遗漏的角色$requested，不生成正文。'
+            '主回复已经完成，你只补齐遗漏的角色心绪，不生成正文。'
             '必须根据这一轮真实对话重新判断，不能为了变化而强行变化，也不能机械沿用。'
-            '${repairMood ? '心绪用1—12个字、emoji或颜文字；若上一轮已有心绪且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
-            '${repairStatus ? '状态由角色自己决定写什么，只要真实反映此刻状态即可；最多10个字符，可用文字、emoji、符号或混合表达，但不要使用颜文字。若上一轮已有状态且你判断本轮没有实质变化，输出 SAME。上一轮未记录时不得输出 SAME。' : ''}'
-            '严格只输出以下标签，不解释，不添加其他文字：\n$outputFormat',
+            '心绪由角色自己决定写什么，只要真实反映此刻即可；最多10个字符，'
+            '可用文字、emoji、符号或混合表达，但不要使用颜文字。'
+            '若上一轮已有心绪且你判断本轮没有实质变化，输出 SAME；上一轮未记录时不得输出 SAME。'
+            '严格只输出“[[心绪:结果]]”，不解释，不添加其他文字。',
         history: [request],
         temperature: 0.1,
       )) {
@@ -1960,42 +1957,29 @@ class _ChatScreenState extends State<ChatScreen> {
           break;
         }
       }
-      if (currentReply == null ||
-          currentReply.text.trim() != replyText.trim()) {
+      if (currentReply == null || currentReply.text.trim() != replyText.trim()) {
         return;
       }
 
       final repaired = _splitMoodFromReply(raw);
-      if (repairMood && repaired.mood.isNotEmpty) {
-        final mood = repaired.mood.toUpperCase() == 'SAME'
-            ? previousMood
-            : repaired.mood;
-        if (mood.isNotEmpty) {
-          setState(() {
-            _characterMoods = {..._characterMoods, character.id: mood};
-            if (_profile.id == character.id) _characterMood = mood;
-          });
-          await _chatStore.saveCharacterMood(mood, character.id);
-          await _chatStore.saveCharacterMoodSource(
-            character.id,
-            conversationId,
-          );
-        }
-      }
-      if (repairStatus && repaired.status.isNotEmpty) {
-        final status = repaired.status.toUpperCase() == 'SAME'
-            ? previousStatus
-            : repaired.status;
-        if (status.isNotEmpty) {
-          await _applyGeneratedStatus(
-            character: character,
-            status: status,
-            conversationId: conversationId,
-          );
-        }
-      }
+      if (repaired.mood.isEmpty) return;
+      final mood = repaired.mood.toUpperCase() == 'SAME'
+          ? previousMood
+          : repaired.mood;
+      if (mood.isEmpty) return;
+      setState(() {
+        _characterMoods = {..._characterMoods, character.id: mood};
+        if (_profile.id == character.id) _characterMood = mood;
+      });
+      await _chatStore.saveCharacterMood(mood, character.id);
+      await _chatStore.saveCharacterMoodSource(character.id, conversationId);
+      await _mirrorMoodToLegacyStatus(
+        character: character,
+        mood: mood,
+        conversationId: conversationId,
+      );
     } on Object {
-      // Keep the last valid state when an optional repair request fails.
+      // Keep the last valid mood when the optional repair request fails.
     } finally {
       service.close();
     }
@@ -2722,7 +2706,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_profile.id == character.id) {
       nextProfile = remainingCharacters.first;
       await _chatStore.saveSelectedCharacterId(nextProfile.id);
-      nextMood = await _chatStore.loadCharacterMood(nextProfile.id);
+      final storedMood = await _chatStore.loadCharacterMood(nextProfile.id);
+      nextMood = _normalizeMood(
+        storedMood.trim().isEmpty ? nextProfile.status.trim() : storedMood,
+      );
       nextMemories = await _chatStore.loadMemories(characterId: nextProfile.id);
       remainingMemoryMap[nextProfile.id] = nextMemories;
       if (nextMood.isNotEmpty) remainingMoodMap[nextProfile.id] = nextMood;
@@ -2795,7 +2782,10 @@ class _ChatScreenState extends State<ChatScreen> {
       isGroup: current.isGroup,
     );
     final memories = await _chatStore.loadMemories(characterId: profile.id);
-    final mood = await _chatStore.loadCharacterMood(profile.id);
+    final storedMood = await _chatStore.loadCharacterMood(profile.id);
+    final mood = _normalizeMood(
+      storedMood.trim().isEmpty ? profile.status.trim() : storedMood,
+    );
     if (!mounted) return;
     setState(() {
       _profile = profile;
@@ -2844,7 +2834,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _scaffoldKey.currentState?.closeDrawer();
     final updated = await Navigator.of(context).push<CharacterProfile>(
       MaterialPageRoute<CharacterProfile>(
-        builder: (_) => CharacterScreen(profile: _profile),
+        builder: (_) => CharacterScreen(
+          profile: _profile.copyWith(
+            status: _characterMood.trim().isEmpty
+                ? _profile.status
+                : _normalizeMood(_characterMood),
+          ),
+        ),
       ),
     );
     if (updated == null) return;
@@ -2930,13 +2926,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final headerTitle = isGroup
         ? (_currentConversation?.title ?? '群聊')
         : _profile.name;
-    final mood = _characterMood.trim();
-    final status = _profile.status.trim();
-    final stateParts = <String>[
-      if (mood.isNotEmpty) mood,
-      if (status.isNotEmpty && status != '在这里' && status != mood) status,
-    ];
-    final restingCharacterState = stateParts.join(' · ');
+    final mood = _normalizeMood(
+      _characterMood.trim().isEmpty ? _profile.status.trim() : _characterMood,
+    );
     final characterStatus = isGroup
         ? (_currentConversation == null
               ? '暂无群聊'
@@ -2945,11 +2937,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     : (_generating
                           ? '群聊中…'
                           : '${_groupParticipants.length} 位角色')))
-        : (_isBusy
-              ? (restingCharacterState.isEmpty
-                    ? '正在回复…'
-                    : '$restingCharacterState · 正在回复…')
-              : restingCharacterState);
+        : (_isBusy ? '正在回复…' : mood);
     final visibleMessageIndices = _visibleMessageIndices;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
@@ -2960,6 +2948,7 @@ class _ChatScreenState extends State<ChatScreen> {
         key: _scaffoldKey,
         drawer: _ConversationDrawer(
           profile: _profile,
+          currentMood: mood,
           groupScope: _groupScope,
           conversations: _conversations,
           selectedId: _currentConversation?.id,
@@ -3293,6 +3282,7 @@ class _ChatScreenState extends State<ChatScreen> {
 class _ConversationDrawer extends StatelessWidget {
   const _ConversationDrawer({
     required this.profile,
+    required this.currentMood,
     required this.groupScope,
     required this.conversations,
     required this.selectedId,
@@ -3311,6 +3301,7 @@ class _ConversationDrawer extends StatelessWidget {
   });
 
   final CharacterProfile profile;
+  final String currentMood;
   final bool groupScope;
   final List<Conversation> conversations;
   final String? selectedId;
@@ -3330,6 +3321,12 @@ class _ConversationDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final drawerMoodRaw = currentMood.trim().isEmpty
+        ? profile.status.trim()
+        : currentMood.trim();
+    final drawerMood = drawerMoodRaw.characters.length > 10
+        ? drawerMoodRaw.characters.take(10).join()
+        : drawerMoodRaw;
     return Drawer(
       child: SafeArea(
         child: Column(
@@ -3376,9 +3373,9 @@ class _ConversationDrawer extends StatelessWidget {
                             Text(
                               groupScope
                                   ? '点击切换到角色或其他分组'
-                                  : (profile.status.trim().isEmpty
+                                  : (drawerMood.isEmpty
                                         ? '点击切换角色或进入群聊'
-                                        : profile.status.trim()),
+                                        : drawerMood),
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 11.5,
