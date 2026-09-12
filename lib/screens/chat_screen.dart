@@ -175,8 +175,22 @@ class _ChatScreenState extends State<ChatScreen> {
     CharacterProfile profile, {
     bool isGroup = false,
   }) async {
-    final messages = await _chatStore.loadMessages(conversationId);
-    if (messages.isNotEmpty) return messages;
+    final loadedMessages = await _chatStore.loadMessages(conversationId);
+    var cleanedStoredMetadata = false;
+    final messages = <ChatMessage>[];
+    for (final message in loadedMessages) {
+      final cleaned = _sanitizeMoodMetadataInMessage(message);
+      if (_messageMoodMetadataChanged(message, cleaned)) {
+        cleanedStoredMetadata = true;
+      }
+      messages.add(cleaned);
+    }
+    if (messages.isNotEmpty) {
+      if (cleanedStoredMetadata) {
+        await _chatStore.saveMessages(conversationId, messages);
+      }
+      return messages;
+    }
 
     if (isGroup) {
       messages.add(
@@ -1743,7 +1757,8 @@ class _ChatScreenState extends State<ChatScreen> {
         '心绪由你自己决定写什么，只要真实反映你此刻即可；最多10个字符，'
         '可用文字、emoji、符号或混合表达，但不要使用颜文字。'
         '无论变化与否，正文结束后都必须另起一行，严格输出“[[心绪:……]]”；'
-        '即使不变也要原样输出，不得省略。这一行只供系统读取，不要在正文解释。';
+        '即使不变也要原样输出，不得省略。这是系统隐藏元数据，绝不能把“心绪”或该标记写进可见正文，'
+        '也不要给标记额外加引号、前缀或解释。';
     final modelPrompt = _selectedProvider?.systemPromptForModel() ?? '';
     final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
@@ -1821,31 +1836,83 @@ class _ChatScreenState extends State<ChatScreen> {
         : '\n\n当前对话命中的世界书设定：\n${sections.join('\n\n')}';
   }
 
+  RegExp _moodMetadataTailPattern() => RegExp(
+    r'[\s\[\]【】（）()「」『』\"“”‘’*_]*'
+    r'(心绪|状态)\s*[:：]\s*(.{1,40}?)'
+    r'[\s\[\]【】（）()「」『』\"“”‘’*_。！!]*\$',
+    dotAll: true,
+  );
+
+  String _extractMoodMetadata(String raw) {
+    var remaining = raw;
+    var mood = '';
+    for (var i = 0; i < 3; i++) {
+      final match = _moodMetadataTailPattern().firstMatch(remaining);
+      if (match == null) break;
+      final label = match.group(1) ?? '';
+      final value = _normalizeMood(match.group(2) ?? '');
+      if (label == '心绪' || mood.isEmpty) mood = value;
+      remaining = remaining.substring(0, match.start).trimRight();
+    }
+    return mood;
+  }
+
+  String _stripMoodMetadata(String raw) {
+    var remaining = raw;
+    for (var i = 0; i < 3; i++) {
+      final match = _moodMetadataTailPattern().firstMatch(remaining);
+      if (match == null) break;
+      remaining = remaining.substring(0, match.start).trimRight();
+    }
+    return remaining.trimRight();
+  }
+
+  ChatMessage _sanitizeMoodMetadataInMessage(ChatMessage message) {
+    if (message.author != MessageAuthor.character) return message;
+    final cleanedText = _stripMoodMetadata(message.text);
+    if (message.replyVariants.isEmpty) {
+      return cleanedText == message.text
+          ? message
+          : message.copyWith(text: cleanedText);
+    }
+    final variants = [
+      for (final variant in message.replyVariants)
+        variant.copyWith(text: _stripMoodMetadata(variant.text)),
+    ];
+    return message.copyWith(text: cleanedText, replyVariants: variants);
+  }
+
+  bool _messageMoodMetadataChanged(
+    ChatMessage original,
+    ChatMessage cleaned,
+  ) {
+    if (original.text != cleaned.text) return true;
+    if (original.replyVariants.length != cleaned.replyVariants.length) {
+      return true;
+    }
+    for (var i = 0; i < original.replyVariants.length; i++) {
+      if (original.replyVariants[i].text != cleaned.replyVariants[i].text) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   String _visibleReplyWhileStreaming(String raw) {
-    final marker = RegExp(r'\n?\[\[(?:心绪|状态)\s*[:：]').firstMatch(raw);
+    RegExpMatch? marker;
+    final markerPattern = RegExp(
+      r'[\[【（(「『\"“”‘’*_]{0,4}\s*(?:心绪|状态)\s*[:：]',
+    );
+    for (final match in markerPattern.allMatches(raw)) {
+      if (raw.length - match.start <= 80) marker = match;
+    }
     return (marker == null ? raw : raw.substring(0, marker.start)).trimRight();
   }
 
   _TaggedReply _splitMoodFromReply(String raw) {
-    final moodMatch = RegExp(
-      r'\[\[心绪\s*[:：]\s*(.*?)\s*\]\]',
-      dotAll: true,
-    ).firstMatch(raw);
-    final statusMatch = RegExp(
-      r'\[\[状态\s*[:：]\s*(.*?)\s*\]\]',
-      dotAll: true,
-    ).firstMatch(raw);
-    final text = raw
-        .replaceAll(
-          RegExp(r'\[\[(?:心绪|状态)\s*[:：]\s*.*?\s*\]\]', dotAll: true),
-          '',
-        )
-        .trim();
     return _TaggedReply(
-      text: text,
-      mood: _normalizeMood(
-        moodMatch?.group(1) ?? statusMatch?.group(1) ?? '',
-      ),
+      text: _stripMoodMetadata(raw).trim(),
+      mood: _extractMoodMetadata(raw),
       status: '',
     );
   }
