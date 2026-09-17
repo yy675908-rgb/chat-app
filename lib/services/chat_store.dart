@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/character_profile.dart';
@@ -7,11 +8,15 @@ import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
+import 'chat_database.dart';
 
 class ChatStore {
+  ChatStore({ChatDatabase? database}) : _database = database ?? ChatDatabase();
+
   static const _legacyMessagesKey = 'chat_messages_v1';
   static const _conversationsKey = 'conversations_v2';
   static const _messagesPrefix = 'conversation_messages_v2_';
+  static const _sqliteMigrationKey = 'chat_sqlite_migration_v1';
   static const _memoriesKey = 'relationship_memories_v1';
   static const _memorySourcesKey = 'relationship_memory_sources_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
@@ -30,7 +35,98 @@ class ChatStore {
   static const _globalSystemPromptKey = 'global_system_prompt_v1';
   static const _userProfileKey = 'user_profile_v1';
 
+  final ChatDatabase _database;
+  bool _sqliteUnavailable = false;
+  Future<void>? _migrationFuture;
+
+  Future<ChatDatabase?> _databaseOrNull() async {
+    if (_sqliteUnavailable) return null;
+    try {
+      await _database.open();
+      _migrationFuture ??= _migrateLegacyChatData();
+      await _migrationFuture;
+      return _database;
+    } on MissingPluginException {
+      _sqliteUnavailable = true;
+      return null;
+    }
+  }
+
+  Future<void> _migrateLegacyChatData() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (preferences.getBool(_sqliteMigrationKey) == true) return;
+
+    if (await _database.conversationCount() > 0) {
+      await preferences.setBool(_sqliteMigrationKey, true);
+      return;
+    }
+
+    final raw = preferences.getString(_conversationsKey);
+    final conversations = <Conversation>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        conversations.addAll(
+          (jsonDecode(raw) as List<dynamic>).map(
+            (item) =>
+                Conversation.fromJson(Map<String, Object?>.from(item as Map)),
+          ),
+        );
+      } on Object {
+        // Leave malformed legacy data untouched. A fresh conversation will be
+        // created below when the app asks for one.
+      }
+    }
+
+    if (conversations.isNotEmpty) {
+      await _database.replaceConversations(conversations);
+      for (final conversation in conversations) {
+        final key = '$_messagesPrefix${conversation.id}';
+        final messages = _decodeMessages(preferences.getString(key));
+        if (messages.isNotEmpty) {
+          await _database.saveMessages(conversation.id, messages);
+        }
+      }
+
+      // Remove the bulky duplicate JSON only after every SQLite write above
+      // has succeeded. Lightweight settings remain in SharedPreferences.
+      await preferences.remove(_conversationsKey);
+      for (final conversation in conversations) {
+        await preferences.remove('$_messagesPrefix${conversation.id}');
+      }
+      await preferences.remove(_legacyMessagesKey);
+    }
+    await preferences.setBool(_sqliteMigrationKey, true);
+  }
+
   Future<List<Conversation>> loadConversations({String? characterId}) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      final conversations = await database.loadConversations(
+        characterId: characterId,
+      );
+      if (conversations.isNotEmpty) return conversations;
+
+      final now = DateTime.now();
+      final first = Conversation(
+        id: 'conversation-${now.microsecondsSinceEpoch}',
+        characterId: characterId ?? 'character-lin',
+        title: '第一次见面',
+        createdAt: now,
+        updatedAt: now,
+      );
+      final preferences = await SharedPreferences.getInstance();
+      final legacyMessages =
+          characterId == null || characterId == 'character-lin'
+          ? _decodeMessages(preferences.getString(_legacyMessagesKey))
+          : <ChatMessage>[];
+      await database.replaceConversations([first], characterId: characterId);
+      if (legacyMessages.isNotEmpty) {
+        await database.saveMessages(first.id, legacyMessages);
+        await preferences.remove(_legacyMessagesKey);
+      }
+      return [first];
+    }
+
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getString(_conversationsKey);
     if (raw != null && raw.isNotEmpty) {
@@ -72,6 +168,11 @@ class ChatStore {
   }
 
   Future<List<Conversation>> loadGroupConversations() async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      return database.loadConversations(groupsOnly: true);
+    }
+
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getString(_conversationsKey);
     if (raw == null || raw.isEmpty) return const [];
@@ -96,6 +197,15 @@ class ChatStore {
     List<Conversation> conversations, {
     String? characterId,
   }) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.replaceConversations(
+        conversations,
+        characterId: characterId,
+      );
+      return;
+    }
+
     final preferences = await SharedPreferences.getInstance();
     var items = conversations;
     if (characterId != null) {
@@ -127,6 +237,12 @@ class ChatStore {
   }
 
   Future<void> saveGroupConversations(List<Conversation> conversations) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.replaceConversations(conversations, groupsOnly: true);
+      return;
+    }
+
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getString(_conversationsKey);
     final existing = <Conversation>[];
@@ -153,6 +269,9 @@ class ChatStore {
   }
 
   Future<List<ChatMessage>> loadMessages(String conversationId) async {
+    final database = await _databaseOrNull();
+    if (database != null) return database.loadMessages(conversationId);
+
     final preferences = await SharedPreferences.getInstance();
     return _decodeMessages(
       preferences.getString('$_messagesPrefix$conversationId'),
@@ -163,6 +282,12 @@ class ChatStore {
     String conversationId,
     List<ChatMessage> messages,
   ) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.saveMessages(conversationId, messages);
+      return;
+    }
+
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       '$_messagesPrefix$conversationId',
@@ -171,6 +296,12 @@ class ChatStore {
   }
 
   Future<void> deleteConversation(String conversationId) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.deleteMessages(conversationId);
+      return;
+    }
+
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove('$_messagesPrefix$conversationId');
   }
