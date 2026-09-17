@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/user_profile.dart';
+import 'package:character_chat_app/services/backup_migrator.dart';
 import 'package:character_chat_app/services/backup_service.dart';
 import 'package:character_chat_app/services/chat_store.dart';
 import 'package:character_chat_app/services/provider_store.dart';
@@ -76,6 +77,56 @@ void main() {
     expect(restored.name, original.name);
     expect(restored.gender, original.gender);
     expect(restored.description, original.description);
+  });
+
+  test('legacy v1 backup migrates to the current structure', () {
+    final profile = CharacterProfile.newCharacter(DateTime.utc(2026, 1, 2));
+    final migrated = BackupMigrator.migrate({
+      'format': 'character-chat-backup',
+      'version': 1,
+      'profile': profile.toJson(),
+      'memories': ['记得雨夜的约定'],
+      'stylePreferences': ['回复简短'],
+    });
+
+    expect(migrated['version'], BackupMigrator.currentVersion);
+    expect(migrated['scope'], 'configuration');
+    expect(migrated['selectedCharacterId'], profile.id);
+    expect((migrated['characters'] as List).length, 1);
+    expect(
+      (migrated['characterMemories'] as Map)[profile.id],
+      ['记得雨夜的约定'],
+    );
+    expect(migrated['characterMemorySources'], isEmpty);
+    expect(migrated['stylePreferenceSources'], isEmpty);
+    expect(migrated['characterStatusSources'], isEmpty);
+    expect(migrated['apiKeysIncluded'], isFalse);
+    expect(migrated.containsKey('userProfile'), isFalse);
+    expect(migrated.containsKey('providers'), isFalse);
+  });
+
+  test('full backup with zero conversations is accepted', () async {
+    final chatStore = ChatStore();
+    final providerStore = ProviderStore();
+    final profile = await chatStore.loadProfile();
+    final raw = jsonEncode({
+      'format': 'character-chat-backup',
+      'version': 4,
+      'scope': 'full',
+      'profile': profile.toJson(),
+      'characters': [profile.toJson()],
+      'selectedCharacterId': profile.id,
+      'conversations': <Object?>[],
+      'messages': <String, Object?>{},
+    });
+
+    await expectLater(
+      BackupService(
+        chatStore: chatStore,
+        providerStore: providerStore,
+      ).restoreBackup(raw),
+      completes,
+    );
   });
 
   test('configuration backup excludes chat history', () async {
