@@ -6,6 +6,7 @@ import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
+import 'backup_migrator.dart';
 import 'chat_store.dart';
 import 'provider_store.dart';
 
@@ -65,7 +66,7 @@ class BackupService {
     }
     final data = <String, Object?>{
       'format': 'character-chat-backup',
-      'version': 4,
+      'version': BackupMigrator.currentVersion,
       'scope': scope.name,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'profile': profile.toJson(),
@@ -127,12 +128,11 @@ class BackupService {
   Map<String, Object?> _parseAndValidate(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) throw const FormatException('备份文件格式不正确');
-    final data = Map<String, Object?>.from(decoded);
-    final version = data['version'];
-    if (data['format'] != 'character-chat-backup' ||
-        (version != 1 && version != 2 && version != 3 && version != 4)) {
+    final source = Map<String, Object?>.from(decoded);
+    if (source['format'] != 'character-chat-backup') {
       throw const FormatException('不是受支持的聊天备份文件');
     }
+    final data = BackupMigrator.migrate(source);
 
     final charactersRaw = data['characters'];
     if (charactersRaw != null && charactersRaw is! List) {
@@ -155,7 +155,7 @@ class BackupService {
     }
     if (hasConversationData) {
       final rawConversations = data['conversations'];
-      if (rawConversations is! List || rawConversations.isEmpty) {
+      if (rawConversations is! List) {
         throw const FormatException('备份中的对话数据无效');
       }
       final ids = <String>{};
