@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,30 +19,33 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.4'
           channel: stable
           cache: true
 
       - name: Generate Android platform files
         run: |
-          flutter create --platforms=android --org com.yy675908 .
+          flutter create --no-pub --platforms=android --org com.yy675908 .
           git clean -f -- test/widget_test.dart
+          git restore pubspec.lock
+          git diff --exit-code -- pubspec.yaml analysis_options.yaml
 
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
 
       - name: Analyze
-        run: flutter analyze lib test
+        run: flutter analyze --no-pub lib test
 
       - name: Test
-        run: flutter test test
+        run: flutter test --no-pub test
 
       - name: Restore stable Android signing key
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /home/runner/.android/debug.keystore
           key: linjian-android-signing-v1
@@ -60,6 +67,7 @@ jobs:
       - name: Build optimized ABI-specific release APKs
         run: >-
           flutter build apk
+          --no-pub
           --release
           --split-per-abi
 
@@ -99,7 +107,7 @@ jobs:
           ls -lh "$output_apk"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linjian-arm64-release
           path: build/distribution/linjian-arm64-v*.apk
