@@ -29,7 +29,11 @@ jobs:
           git clean -f -- test/widget_test.dart
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          echo '---PUBSPEC_LOCK_BEGIN---'
+          cat pubspec.lock
+          echo '---PUBSPEC_LOCK_END---'
 
       - name: Analyze
         run: flutter analyze lib test
