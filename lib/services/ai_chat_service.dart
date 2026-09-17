@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -74,6 +75,12 @@ class AiStreamEvent {
 class AiChatService {
   AiChatService({http.Client? client}) : _client = client ?? http.Client();
 
+  static const _connectTimeout = Duration(seconds: 20);
+  static const _streamIdleTimeout = Duration(seconds: 60);
+  static const _retryDelay = Duration(milliseconds: 700);
+  static const _uiFlushInterval = Duration(milliseconds: 35);
+  static const _retryableStatusCodes = <int>{429, 502, 503};
+
   final http.Client _client;
 
   Stream<String> streamReply({
@@ -103,7 +110,7 @@ class AiChatService {
     required List<ChatMessage> history,
     double temperature = 0.85,
   }) {
-    return provider.protocol == ProviderProtocol.anthropic
+    final source = provider.protocol == ProviderProtocol.anthropic
         ? _streamAnthropic(
             provider: provider,
             apiKey: apiKey,
@@ -118,6 +125,7 @@ class AiChatService {
             history: history,
             temperature: temperature,
           );
+    return _coalesceFastTextEvents(source);
   }
 
   Stream<AiStreamEvent> _streamOpenAi({
@@ -148,9 +156,7 @@ class AiChatService {
       },
     );
 
-    await for (final line in response.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line in _streamLines(response)) {
       final data = _sseData(line);
       if (data == null) continue;
       if (data == '[DONE]') break;
@@ -223,9 +229,7 @@ class AiChatService {
       },
     );
 
-    await for (final line in response.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line in _streamLines(response)) {
       final data = _sseData(line);
       if (data == null) continue;
       try {
@@ -289,6 +293,64 @@ class AiChatService {
     }
   }
 
+  Stream<String> _streamLines(http.StreamedResponse response) {
+    return response.stream
+        .timeout(
+          _streamIdleTimeout,
+          onTimeout: (sink) {
+            sink.addError(
+              const AiChatException('模型长时间没有返回数据，已停止本次生成'),
+            );
+            sink.close();
+          },
+        )
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+  }
+
+  Stream<AiStreamEvent> _coalesceFastTextEvents(
+    Stream<AiStreamEvent> source,
+  ) async* {
+    AiStreamEventKind? bufferedKind;
+    final buffer = StringBuffer();
+    var lastFlush = DateTime.fromMillisecondsSinceEpoch(0);
+
+    AiStreamEvent? takeBuffered() {
+      if (bufferedKind == null || buffer.isEmpty) return null;
+      final event = AiStreamEvent(kind: bufferedKind!, text: buffer.toString());
+      buffer.clear();
+      bufferedKind = null;
+      lastFlush = DateTime.now();
+      return event;
+    }
+
+    await for (final event in source) {
+      if (event.kind == AiStreamEventKind.usage || event.text.isEmpty) {
+        final pending = takeBuffered();
+        if (pending != null) yield pending;
+        yield event;
+        continue;
+      }
+
+      if (bufferedKind != null && bufferedKind != event.kind) {
+        final pending = takeBuffered();
+        if (pending != null) yield pending;
+      }
+      bufferedKind = event.kind;
+      buffer.write(event.text);
+
+      final now = DateTime.now();
+      if (lastFlush.millisecondsSinceEpoch == 0 ||
+          now.difference(lastFlush) >= _uiFlushInterval) {
+        final pending = takeBuffered();
+        if (pending != null) yield pending;
+      }
+    }
+
+    final pending = takeBuffered();
+    if (pending != null) yield pending;
+  }
+
   List<Map<String, String>> _historyPayload(List<ChatMessage> history) {
     return history
         .where((message) => message.author != MessageAuthor.system)
@@ -306,22 +368,48 @@ class AiChatService {
     required Map<String, String> headers,
     required Map<String, Object?> body,
   }) async {
-    final request = http.Request('POST', uri)
-      ..headers.addAll(headers)
-      ..body = jsonEncode(body);
-    late http.StreamedResponse response;
-    try {
-      response = await _client.send(request);
-    } on Exception catch (error) {
-      throw AiChatException('无法连接模型服务：$error');
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final request = http.Request('POST', uri)
+        ..headers.addAll(headers)
+        ..body = jsonEncode(body);
+      late http.StreamedResponse response;
+      try {
+        response = await _client.send(request).timeout(_connectTimeout);
+      } on TimeoutException {
+        if (attempt == 0) {
+          await Future<void>.delayed(_retryDelay);
+          continue;
+        }
+        throw const AiChatException('连接模型服务超时，请检查网络或接口状态');
+      } on Exception catch (error) {
+        if (attempt == 0) {
+          await Future<void>.delayed(_retryDelay);
+          continue;
+        }
+        throw AiChatException('无法连接模型服务：$error');
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return response;
+      }
+
+      final responseBody = await response.stream.bytesToString();
+      if (attempt == 0 && _retryableStatusCodes.contains(response.statusCode)) {
+        await Future<void>.delayed(_retryDelayFor(response));
+        continue;
+      }
       throw AiChatException(
-        '接口返回 ${response.statusCode}：${_readError(body)}',
+        '接口返回 ${response.statusCode}：${_readError(responseBody)}',
       );
     }
-    return response;
+    throw const AiChatException('模型服务暂时不可用，请稍后重试');
+  }
+
+  Duration _retryDelayFor(http.StreamedResponse response) {
+    final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+    if (retryAfter == null || retryAfter <= 0) return _retryDelay;
+    final seconds = retryAfter > 3 ? 3 : retryAfter;
+    return Duration(seconds: seconds);
   }
 
   String? _sseData(String line) {
