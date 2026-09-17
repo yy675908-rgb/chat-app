@@ -135,6 +135,47 @@ void main() {
       profile.modelsUri.toString(),
       'https://api.anthropic.com/v1/models',
     );
+    expect(
+      profile.maxOutputTokensForModel(),
+      ProviderProfile.defaultAnthropicMaxOutputTokens,
+    );
+  });
+
+  test('provider output limits survive JSON round trip', () {
+    const original = ProviderProfile(
+      id: 'anthropic',
+      name: 'Anthropic',
+      protocol: ProviderProtocol.anthropic,
+      baseUrl: 'https://api.anthropic.com/v1',
+      models: ['claude-a', 'claude-b'],
+      selectedModel: 'claude-a',
+      modelMaxOutputTokens: {
+        'claude-a': 8192,
+        'claude-b': 4096,
+      },
+    );
+
+    final restored = ProviderProfile.fromJson(original.toJson());
+
+    expect(restored.maxOutputTokensForModel('claude-a'), 8192);
+    expect(restored.maxOutputTokensForModel('claude-b'), 4096);
+  });
+
+  test('legacy provider JSON uses the new default output limit', () {
+    final restored = ProviderProfile.fromJson({
+      'id': 'legacy',
+      'name': 'Legacy',
+      'protocol': 'anthropic',
+      'baseUrl': 'https://api.anthropic.com/v1',
+      'models': ['claude-test'],
+      'selectedModel': 'claude-test',
+    });
+
+    expect(
+      restored.maxOutputTokensForModel(),
+      ProviderProfile.defaultAnthropicMaxOutputTokens,
+    );
+    expect(restored.modelMaxOutputTokens, isEmpty);
   });
 
   test('openai SSE chunks are joined into a reply', () async {
@@ -142,6 +183,7 @@ void main() {
       expect(request.headers['authorization'], 'Bearer secret');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['stream'], isTrue);
+      expect(body.containsKey('max_tokens'), isFalse);
       return http.Response.bytes(
         utf8.encode(
           'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'
@@ -182,12 +224,13 @@ void main() {
     service.close();
   });
 
-  test('anthropic SSE chunks are joined into a reply', () async {
+  test('anthropic SSE uses configured max output and joins reply', () async {
     final client = MockClient((request) async {
       expect(request.headers['x-api-key'], 'secret');
       expect(request.headers['anthropic-version'], '2023-06-01');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['system'], '你是林。');
+      expect(body['max_tokens'], 8192);
       return http.Response.bytes(
         utf8.encode(
           'event: content_block_delta\n'
@@ -207,6 +250,7 @@ void main() {
       baseUrl: 'https://api.anthropic.com/v1',
       models: ['claude-test'],
       selectedModel: 'claude-test',
+      modelMaxOutputTokens: {'claude-test': 8192},
     );
 
     final reply = await service

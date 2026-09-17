@@ -9,7 +9,12 @@ class ProviderProfile {
     required this.models,
     required this.selectedModel,
     this.modelSystemPrompts = const {},
+    this.modelMaxOutputTokens = const {},
   });
+
+  static const int defaultAnthropicMaxOutputTokens = 4096;
+  static const int minMaxOutputTokens = 256;
+  static const int maxMaxOutputTokens = 65536;
 
   final String id;
   final String name;
@@ -18,9 +23,16 @@ class ProviderProfile {
   final List<String> models;
   final String selectedModel;
   final Map<String, String> modelSystemPrompts;
+  final Map<String, int> modelMaxOutputTokens;
 
   String systemPromptForModel([String? model]) {
     return modelSystemPrompts[model ?? selectedModel]?.trim() ?? '';
+  }
+
+  int maxOutputTokensForModel([String? model]) {
+    final configured = modelMaxOutputTokens[model ?? selectedModel];
+    if (configured == null) return defaultAnthropicMaxOutputTokens;
+    return configured.clamp(minMaxOutputTokens, maxMaxOutputTokens).toInt();
   }
 
   factory ProviderProfile.openAi() => const ProviderProfile(
@@ -31,6 +43,7 @@ class ProviderProfile {
         models: [],
         selectedModel: '',
         modelSystemPrompts: {},
+        modelMaxOutputTokens: {},
       );
 
   bool get isConfigured =>
@@ -68,6 +81,7 @@ class ProviderProfile {
     List<String>? models,
     String? selectedModel,
     Map<String, String>? modelSystemPrompts,
+    Map<String, int>? modelMaxOutputTokens,
   }) {
     return ProviderProfile(
       id: id,
@@ -77,6 +91,8 @@ class ProviderProfile {
       models: models ?? this.models,
       selectedModel: selectedModel ?? this.selectedModel,
       modelSystemPrompts: modelSystemPrompts ?? this.modelSystemPrompts,
+      modelMaxOutputTokens:
+          modelMaxOutputTokens ?? this.modelMaxOutputTokens,
     );
   }
 
@@ -88,9 +104,22 @@ class ProviderProfile {
         'models': models,
         'selectedModel': selectedModel,
         'modelSystemPrompts': modelSystemPrompts,
+        'modelMaxOutputTokens': modelMaxOutputTokens,
       };
 
   factory ProviderProfile.fromJson(Map<String, Object?> json) {
+    final rawMaxOutputTokens = json['modelMaxOutputTokens'] as Map?;
+    final parsedMaxOutputTokens = <String, int>{};
+    if (rawMaxOutputTokens != null) {
+      for (final entry in rawMaxOutputTokens.entries) {
+        final value = entry.value;
+        final parsed = value is int ? value : int.tryParse(value.toString());
+        if (parsed == null) continue;
+        parsedMaxOutputTokens[entry.key.toString()] = parsed
+            .clamp(minMaxOutputTokens, maxMaxOutputTokens)
+            .toInt();
+      }
+    }
     return ProviderProfile(
       id: json['id'] as String,
       name: json['name'] as String? ?? '自定义供应商',
@@ -107,6 +136,7 @@ class ProviderProfile {
             (key, value) => MapEntry(key.toString(), value.toString()),
           ) ??
           const {},
+      modelMaxOutputTokens: parsedMaxOutputTokens,
     );
   }
 }
