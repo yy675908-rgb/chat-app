@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
@@ -80,6 +81,9 @@ class AiChatService {
   static const _retryDelay = Duration(milliseconds: 700);
   static const _uiFlushInterval = Duration(milliseconds: 35);
   static const _retryableStatusCodes = <int>{429, 502, 503};
+  static const _contextTokenBudgetKey = 'context_token_budget_v1';
+  static const _defaultContextBudget = 32000;
+  static const _outputReserveTokens = 2048;
 
   final http.Client _client;
 
@@ -135,9 +139,10 @@ class AiChatService {
     required List<ChatMessage> history,
     required double temperature,
   }) async* {
+    final safeHistory = await _historyWithinSafeBudget(systemPrompt, history);
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': systemPrompt},
-      ..._historyPayload(history),
+      ..._historyPayload(safeHistory),
     ];
     final response = await _send(
       uri: provider.messagesUri,
@@ -211,6 +216,7 @@ class AiChatService {
     required List<ChatMessage> history,
     required double temperature,
   }) async* {
+    final safeHistory = await _historyWithinSafeBudget(systemPrompt, history);
     final response = await _send(
       uri: provider.messagesUri,
       headers: {
@@ -222,7 +228,7 @@ class AiChatService {
       body: {
         'model': provider.selectedModel.trim(),
         'system': systemPrompt,
-        'messages': _historyPayload(history),
+        'messages': _historyPayload(safeHistory),
         'max_tokens': 2048,
         'stream': true,
         'temperature': temperature,
@@ -351,6 +357,44 @@ class AiChatService {
     if (pending != null) yield pending;
   }
 
+  Future<List<ChatMessage>> _historyWithinSafeBudget(
+    String systemPrompt,
+    List<ChatMessage> history,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final configured =
+        preferences.getInt(_contextTokenBudgetKey) ?? _defaultContextBudget;
+    final safeInputLimit = ((configured * 9) ~/ 10 - _outputReserveTokens)
+        .clamp(2048, configured)
+        .toInt();
+    var remaining = safeInputLimit - _estimateTokens(systemPrompt);
+    final candidates = history
+        .where((message) => message.author != MessageAuthor.system)
+        .toList();
+    final selected = <ChatMessage>[];
+    for (var index = candidates.length - 1; index >= 0; index--) {
+      final message = candidates[index];
+      final cost = _estimateTokens(message.text) + 12;
+      if (selected.isNotEmpty && cost > remaining) break;
+      selected.add(message);
+      remaining -= cost;
+      if (remaining <= 0) break;
+    }
+    return selected.reversed.toList();
+  }
+
+  int _estimateTokens(String text) {
+    var estimate = 0.0;
+    for (final rune in text.runes) {
+      if (rune <= 0x7f) {
+        estimate += rune == 0x20 || rune == 0x0a ? 0.1 : 0.28;
+      } else {
+        estimate += 1;
+      }
+    }
+    return estimate.ceil();
+  }
+
   List<Map<String, String>> _historyPayload(List<ChatMessage> history) {
     return history
         .where((message) => message.author != MessageAuthor.system)
@@ -382,10 +426,6 @@ class AiChatService {
         }
         throw const AiChatException('连接模型服务超时，请检查网络或接口状态');
       } on Exception catch (error) {
-        if (attempt == 0) {
-          await Future<void>.delayed(_retryDelay);
-          continue;
-        }
         throw AiChatException('无法连接模型服务：$error');
       }
 
