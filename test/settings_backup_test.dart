@@ -108,6 +108,16 @@ void main() {
   test('full backup with zero conversations is accepted', () async {
     final chatStore = ChatStore();
     final providerStore = ProviderStore();
+    await providerStore.saveProviders([
+      const ProviderProfile(
+        id: 'test',
+        name: 'Test',
+        protocol: ProviderProtocol.openAiCompatible,
+        baseUrl: 'https://example.com/v1',
+        models: ['demo-model'],
+        selectedModel: 'demo-model',
+      ),
+    ]);
     final profile = await chatStore.loadProfile();
     final raw = jsonEncode({
       'format': 'character-chat-backup',
