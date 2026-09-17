@@ -84,7 +84,7 @@ class AiChatService {
   static const _retryableStatusCodes = <int>{429, 502, 503};
   static const _contextTokenBudgetKey = 'context_token_budget_v1';
   static const _defaultContextBudget = 32000;
-  static const _outputReserveTokens = 2048;
+  static const _defaultOutputReserveTokens = 2048;
 
   final http.Client _client;
 
@@ -238,10 +238,21 @@ class AiChatService {
       history,
     );
     final budget = await _resolveContextBudget(contextTokenBudget);
+    final availableOutputBudget = (budget - 2048)
+        .clamp(
+          ProviderProfile.minMaxOutputTokens,
+          ProviderProfile.maxMaxOutputTokens,
+        )
+        .toInt();
+    final maxOutputTokens = provider
+        .maxOutputTokensForModel()
+        .clamp(ProviderProfile.minMaxOutputTokens, availableOutputBudget)
+        .toInt();
     final safeHistory = _historyWithinSafeBudget(
       requestSystemPrompt,
       history,
       budget,
+      outputReserveTokens: maxOutputTokens,
     );
     final response = await _send(
       uri: provider.messagesUri,
@@ -255,7 +266,7 @@ class AiChatService {
         'model': provider.selectedModel.trim(),
         'system': requestSystemPrompt,
         'messages': _historyPayload(safeHistory),
-        'max_tokens': 2048,
+        'max_tokens': maxOutputTokens,
         'stream': true,
         'temperature': temperature,
       },
@@ -432,11 +443,13 @@ class AiChatService {
   List<ChatMessage> _historyWithinSafeBudget(
     String systemPrompt,
     List<ChatMessage> history,
-    int contextTokenBudget,
-  ) {
-    final safeInputLimit = ((contextTokenBudget * 9) ~/ 10 - _outputReserveTokens)
-        .clamp(2048, contextTokenBudget)
-        .toInt();
+    int contextTokenBudget, {
+    int outputReserveTokens = _defaultOutputReserveTokens,
+  }) {
+    final safeInputLimit =
+        ((contextTokenBudget * 9) ~/ 10 - outputReserveTokens)
+            .clamp(2048, contextTokenBudget)
+            .toInt();
     var remaining = safeInputLimit - _estimateTokens(systemPrompt);
     final candidates = history
         .where((message) => message.author != MessageAuthor.system)
