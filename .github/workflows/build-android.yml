@@ -37,6 +37,8 @@ jobs:
           test/settings_backup_test.dart
           test/mood_codec_test.dart
           test/reliability_hardening_test.dart
+          test/chat_database_migration_test.dart
+          test/memory_selector_test.dart
 
       - name: Test
         run: >-
@@ -46,6 +48,8 @@ jobs:
           test/settings_backup_test.dart
           test/mood_codec_test.dart
           test/reliability_hardening_test.dart
+          test/chat_database_migration_test.dart
+          test/memory_selector_test.dart
 
       - name: Restore stable Android signing key
         uses: actions/cache@v4
