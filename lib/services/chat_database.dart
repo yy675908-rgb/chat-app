@@ -7,20 +7,21 @@ import '../models/conversation.dart';
 
 class ChatDatabase {
   ChatDatabase({DatabaseFactory? factory, String? path})
-    : _factory = factory ?? databaseFactory,
+    : _factoryOverride = factory,
       _pathOverride = path;
 
   static const _databaseName = 'linjian_chat_v1.db';
 
-  final DatabaseFactory _factory;
+  final DatabaseFactory? _factoryOverride;
   final String? _pathOverride;
   Database? _database;
 
   Future<Database> open() async {
     final existing = _database;
     if (existing != null && existing.isOpen) return existing;
+    final factory = _factoryOverride ?? databaseFactory;
     final path = _pathOverride ?? '${await getDatabasesPath()}/$_databaseName';
-    final database = await _factory.openDatabase(
+    final database = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
         version: 1,
@@ -129,10 +130,12 @@ class ChatDatabase {
         where: where,
         whereArgs: whereArgs,
       );
-      final desiredIds = conversations.map((item) => item.id).toSet();
-      final obsoleteIds = existingRows
+      final existingIds = existingRows
           .map((row) => row['id'])
           .whereType<String>()
+          .toSet();
+      final desiredIds = conversations.map((item) => item.id).toSet();
+      final obsoleteIds = existingIds
           .where((id) => !desiredIds.contains(id))
           .toList();
       if (obsoleteIds.isNotEmpty) {
@@ -145,17 +148,23 @@ class ChatDatabase {
 
       final batch = txn.batch();
       for (final conversation in conversations) {
-        batch.insert(
-          'conversations',
-          {
-            'id': conversation.id,
-            'character_id': conversation.characterId,
-            'is_group': conversation.isGroup ? 1 : 0,
-            'updated_at': conversation.updatedAt.millisecondsSinceEpoch,
-            'payload': jsonEncode(conversation.toJson()),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        final values = <String, Object?>{
+          'id': conversation.id,
+          'character_id': conversation.characterId,
+          'is_group': conversation.isGroup ? 1 : 0,
+          'updated_at': conversation.updatedAt.millisecondsSinceEpoch,
+          'payload': jsonEncode(conversation.toJson()),
+        };
+        if (existingIds.contains(conversation.id)) {
+          batch.update(
+            'conversations',
+            values,
+            where: 'id = ?',
+            whereArgs: [conversation.id],
+          );
+        } else {
+          batch.insert('conversations', values);
+        }
       }
       await batch.commit(noResult: true);
     });
