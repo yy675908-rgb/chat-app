@@ -154,11 +154,11 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Future<void> _restoreBackup() async {
     if (_backupBusy) return;
-    final result = await FilePicker.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['json'],
     );
-    if (result == null || result.files.isEmpty || !mounted) return;
+    if (file == null || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -179,7 +179,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     if (confirmed != true) return;
     setState(() => _backupBusy = true);
     try {
-      final bytes = await result.files.single.readAsBytes();
+      final bytes = await file.readAsBytes();
       await _backupService.restoreBackup(utf8.decode(bytes));
       if (!mounted) return;
       _notice('恢复完成');

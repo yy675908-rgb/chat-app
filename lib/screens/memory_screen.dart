@@ -297,12 +297,11 @@ class _MemoryScreenState extends State<MemoryScreen>
   }
 
   Future<void> _importWorldBook() async {
-    final result = await FilePicker.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['txt', 'md', 'markdown'],
     );
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.single;
+    if (file == null) return;
     final bytes = await file.readAsBytes();
     var text = utf8.decode(bytes, allowMalformed: true).trim();
     if (text.isEmpty) {
