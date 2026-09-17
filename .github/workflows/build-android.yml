@@ -24,14 +24,15 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install locked dependencies
-        run: flutter pub get --enforce-lockfile
-
       - name: Generate Android platform files
         run: |
           flutter create --no-pub --platforms=android --org com.yy675908 .
           git clean -f -- test/widget_test.dart
-          git diff --exit-code -- pubspec.yaml pubspec.lock analysis_options.yaml
+          git restore pubspec.lock
+          git diff --exit-code -- pubspec.yaml analysis_options.yaml
+
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
 
       - name: Analyze
         run: flutter analyze --no-pub lib test
