@@ -104,6 +104,27 @@ class BackupService {
   }
 
   Future<void> restoreBackup(String raw) async {
+    final data = _parseAndValidate(raw);
+
+    // Capture the current state only after the incoming file has passed all
+    // structural checks. If any write fails, restore this snapshot.
+    final rollbackRaw = await createBackup(scope: BackupScope.full);
+    final rollbackData = _parseAndValidate(rollbackRaw);
+    try {
+      await _restoreValidated(data);
+    } on Object catch (error) {
+      try {
+        await _restoreValidated(rollbackData);
+      } on Object catch (rollbackError) {
+        throw StateError(
+          '恢复失败，自动回滚也失败。原错误：$error；回滚错误：$rollbackError',
+        );
+      }
+      throw StateError('恢复失败，已自动恢复到操作前状态：$error');
+    }
+  }
+
+  Map<String, Object?> _parseAndValidate(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) throw const FormatException('备份文件格式不正确');
     final data = Map<String, Object?>.from(decoded);
@@ -113,6 +134,105 @@ class BackupService {
       throw const FormatException('不是受支持的聊天备份文件');
     }
 
+    final charactersRaw = data['characters'];
+    if (charactersRaw != null && charactersRaw is! List) {
+      throw const FormatException('备份中的角色数据无效');
+    }
+    for (final item in charactersRaw as List<dynamic>? ?? const []) {
+      if (item is! Map) throw const FormatException('备份中的角色数据无效');
+      CharacterProfile.fromJson(Map<String, Object?>.from(item));
+    }
+    if (data['profile'] case final Map profileRaw) {
+      CharacterProfile.fromJson(Map<String, Object?>.from(profileRaw));
+    } else if ((charactersRaw ?? const []).isEmpty) {
+      throw const FormatException('备份缺少角色数据');
+    }
+
+    final hasConversationData = data.containsKey('conversations');
+    final explicitlyFull = data['scope'] == BackupScope.full.name;
+    if (explicitlyFull && !hasConversationData) {
+      throw const FormatException('完整备份缺少对话数据');
+    }
+    if (hasConversationData) {
+      final rawConversations = data['conversations'];
+      if (rawConversations is! List || rawConversations.isEmpty) {
+        throw const FormatException('备份中的对话数据无效');
+      }
+      final ids = <String>{};
+      for (final item in rawConversations) {
+        if (item is! Map) throw const FormatException('备份中的对话数据无效');
+        final conversation = Conversation.fromJson(
+          Map<String, Object?>.from(item),
+        );
+        if (!ids.add(conversation.id)) {
+          throw const FormatException('备份中存在重复的对话 ID');
+        }
+      }
+      final messagesRaw = data['messages'];
+      if (messagesRaw is! Map) {
+        throw const FormatException('完整备份缺少消息数据');
+      }
+      for (final entry in messagesRaw.entries) {
+        if (entry.value is! List) {
+          throw const FormatException('备份中的消息数据无效');
+        }
+        for (final item in entry.value as List) {
+          if (item is! Map) throw const FormatException('备份中的消息数据无效');
+          ChatMessage.fromJson(Map<String, Object?>.from(item));
+        }
+      }
+    }
+
+    void requireMapOrNull(String key) {
+      final value = data[key];
+      if (value != null && value is! Map) {
+        throw FormatException('备份中的 $key 数据无效');
+      }
+    }
+
+    void requireListOrNull(String key) {
+      final value = data[key];
+      if (value != null && value is! List) {
+        throw FormatException('备份中的 $key 数据无效');
+      }
+    }
+
+    requireMapOrNull('characterMemories');
+    requireMapOrNull('characterMemorySources');
+    requireMapOrNull('stylePreferenceSources');
+    requireMapOrNull('characterStatusSources');
+    requireMapOrNull('characterMoods');
+    requireMapOrNull('characterMoodSources');
+    requireListOrNull('memories');
+    requireListOrNull('stylePreferences');
+    requireListOrNull('worldBooks');
+    requireListOrNull('providers');
+
+    for (final item in data['worldBooks'] as List<dynamic>? ?? const []) {
+      if (item is! Map) throw const FormatException('备份中的世界书数据无效');
+      WorldBookEntry.fromJson(Map<String, Object?>.from(item));
+    }
+    for (final item in data['providers'] as List<dynamic>? ?? const []) {
+      if (item is! Map) throw const FormatException('备份中的供应商数据无效');
+      ProviderProfile.fromJson(Map<String, Object?>.from(item));
+    }
+    if (data['userProfile'] case final Map userRaw) {
+      UserProfile.fromJson(Map<String, Object?>.from(userRaw));
+    }
+    final tokenBudget = data['contextTokenBudget'];
+    if (tokenBudget != null && (tokenBudget is! int || tokenBudget < 2048)) {
+      throw const FormatException('备份中的上下文预算无效');
+    }
+    if (data['reasoningExpanded'] != null && data['reasoningExpanded'] is! bool) {
+      throw const FormatException('备份中的显示设置无效');
+    }
+    if (data['autoMemoryEnabled'] != null && data['autoMemoryEnabled'] is! bool) {
+      throw const FormatException('备份中的自动记忆设置无效');
+    }
+    return data;
+  }
+
+  Future<void> _restoreValidated(Map<String, Object?> data) async {
     final characters = (data['characters'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(
@@ -134,17 +254,11 @@ class BackupService {
     }
 
     final hasConversationData = data.containsKey('conversations');
-    if (data['scope'] == BackupScope.full.name && !hasConversationData) {
-      throw const FormatException('完整备份缺少对话数据');
-    }
     final conversations = (data['conversations'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map((item) => Conversation.fromJson(Map<String, Object?>.from(item)))
         .toList();
     if (hasConversationData) {
-      if (conversations.isEmpty) {
-        throw const FormatException('备份中的对话数据无效');
-      }
       await _chatStore.saveConversations(conversations);
 
       final messagesRaw = data['messages'];
@@ -197,7 +311,7 @@ class BackupService {
     for (final character in restoredCharacters) {
       await _chatStore.saveMemorySources(character.id, <String, String>{});
       await _chatStore.saveCharacterStatusSource(character.id, '');
-      if (data['scope'] == BackupScope.full.name) {
+      if (data['scope'] == BackupScope.full.name || hasConversationData) {
         await _chatStore.saveCharacterMoodSource(character.id, '');
       }
     }
