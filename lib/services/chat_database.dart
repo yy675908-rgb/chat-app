@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/chat_message.dart';
@@ -19,7 +20,15 @@ class ChatDatabase {
   Future<Database> open() async {
     final existing = _database;
     if (existing != null && existing.isOpen) return existing;
-    final factory = _factoryOverride ?? databaseFactory;
+    late final DatabaseFactory factory;
+    try {
+      factory = _factoryOverride ?? databaseFactory;
+    } on StateError catch (error) {
+      if (error.toString().contains('databaseFactory not initialized')) {
+        throw const MissingPluginException('SQLite database factory unavailable');
+      }
+      rethrow;
+    }
     final path = _pathOverride ?? '${await getDatabasesPath()}/$_databaseName';
     final database = await factory.openDatabase(
       path,
