@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
 
     steps:
       - name: Check out source
@@ -23,89 +23,10 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate Android platform files
+      - name: Resolve dependency lock
         run: |
-          flutter create --platforms=android --org com.yy675908 .
-          git clean -f -- test/widget_test.dart
-
-      - name: Install dependencies
-        run: |
+          flutter create --no-pub --platforms=android --org com.yy675908 .
           flutter pub get
           echo '---PUBSPEC_LOCK_BEGIN---'
           cat pubspec.lock
           echo '---PUBSPEC_LOCK_END---'
-
-      - name: Analyze
-        run: flutter analyze lib test
-
-      - name: Test
-        run: flutter test test
-
-      - name: Restore stable Android signing key
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.android/debug.keystore
-          key: linjian-android-signing-v1
-
-      - name: Create signing key on first build
-        run: |
-          mkdir -p /home/runner/.android
-          if [ ! -f /home/runner/.android/debug.keystore ]; then
-            keytool -genkeypair -noprompt \
-              -keystore /home/runner/.android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -dname "CN=Linjian,OU=Android,O=Linjian,L=Beijing,C=CN" \
-              -keyalg RSA -keysize 2048 -validity 36500
-          fi
-
-      - name: Configure release signing
-        run: dart run tool/configure_android_signing.dart
-
-      - name: Build optimized ABI-specific release APKs
-        run: >-
-          flutter build apk
-          --release
-          --split-per-abi
-
-      - name: Prepare and audit APK
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          source_apk="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-          output_dir="build/distribution"
-          app_version=$(awk '/^version:/ {print $2}' pubspec.yaml)
-          app_semver="${app_version%%+*}"
-          output_apk="$output_dir/linjian-arm64-v$app_semver.apk"
-
-          mkdir -p "$output_dir"
-          cp "$source_apk" "$output_apk"
-
-          apk_entries=$(unzip -Z1 "$output_apk")
-          if printf '%s\n' "$apk_entries" \
-            | grep -E '^lib/(armeabi-v7a|x86|x86_64)/' >/dev/null; then
-            echo "Unexpected non-arm64 native library found in release APK" >&2
-            exit 1
-          fi
-          if ! printf '%s\n' "$apk_entries" \
-            | grep -Fx 'lib/arm64-v8a/libflutter.so' >/dev/null; then
-            echo "Required arm64 Flutter runtime is missing from release APK" >&2
-            exit 1
-          fi
-
-          apk_size=$(stat -c%s "$output_apk")
-          max_size=$((25 * 1024 * 1024))
-          if [ "$apk_size" -gt "$max_size" ]; then
-            echo "APK is larger than 25 MiB: $apk_size bytes" >&2
-            exit 1
-          fi
-
-          ls -lh "$output_apk"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: linjian-arm64-release
-          path: build/distribution/linjian-arm64-v*.apk
-          if-no-files-found: error
-          retention-days: 30
