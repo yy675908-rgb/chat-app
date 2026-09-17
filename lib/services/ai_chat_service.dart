@@ -325,45 +325,79 @@ class AiChatService {
 
   Stream<AiStreamEvent> _coalesceFastTextEvents(
     Stream<AiStreamEvent> source,
-  ) async* {
+  ) {
+    late final StreamController<AiStreamEvent> controller;
+    StreamSubscription<AiStreamEvent>? subscription;
+    Timer? flushTimer;
     AiStreamEventKind? bufferedKind;
     final buffer = StringBuffer();
-    var lastFlush = DateTime.fromMillisecondsSinceEpoch(0);
+    DateTime? lastFlush;
 
-    AiStreamEvent? takeBuffered() {
-      if (bufferedKind == null || buffer.isEmpty) return null;
-      final event = AiStreamEvent(kind: bufferedKind!, text: buffer.toString());
+    void cancelFlushTimer() {
+      flushTimer?.cancel();
+      flushTimer = null;
+    }
+
+    void flush() {
+      if (bufferedKind == null || buffer.isEmpty) {
+        cancelFlushTimer();
+        return;
+      }
+      cancelFlushTimer();
+      controller.add(AiStreamEvent(kind: bufferedKind!, text: buffer.toString()));
       buffer.clear();
       bufferedKind = null;
       lastFlush = DateTime.now();
-      return event;
     }
 
-    await for (final event in source) {
-      if (event.kind == AiStreamEventKind.usage || event.text.isEmpty) {
-        final pending = takeBuffered();
-        if (pending != null) yield pending;
-        yield event;
-        continue;
+    void scheduleFlush() {
+      if (flushTimer != null) return;
+      final previous = lastFlush;
+      if (previous == null) {
+        flush();
+        return;
       }
-
-      if (bufferedKind != null && bufferedKind != event.kind) {
-        final pending = takeBuffered();
-        if (pending != null) yield pending;
+      final elapsed = DateTime.now().difference(previous);
+      if (elapsed >= _uiFlushInterval) {
+        flush();
+        return;
       }
-      bufferedKind = event.kind;
-      buffer.write(event.text);
-
-      final now = DateTime.now();
-      if (lastFlush.millisecondsSinceEpoch == 0 ||
-          now.difference(lastFlush) >= _uiFlushInterval) {
-        final pending = takeBuffered();
-        if (pending != null) yield pending;
-      }
+      flushTimer = Timer(_uiFlushInterval - elapsed, flush);
     }
 
-    final pending = takeBuffered();
-    if (pending != null) yield pending;
+    controller = StreamController<AiStreamEvent>(
+      sync: true,
+      onListen: () {
+        subscription = source.listen(
+          (event) {
+            if (event.kind == AiStreamEventKind.usage || event.text.isEmpty) {
+              flush();
+              controller.add(event);
+              return;
+            }
+            if (bufferedKind != null && bufferedKind != event.kind) flush();
+            bufferedKind = event.kind;
+            buffer.write(event.text);
+            scheduleFlush();
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            flush();
+            controller.addError(error, stackTrace);
+          },
+          onDone: () {
+            flush();
+            controller.close();
+          },
+        );
+      },
+      onPause: () => subscription?.pause(),
+      onResume: () => subscription?.resume(),
+      onCancel: () async {
+        cancelFlushTimer();
+        await subscription?.cancel();
+      },
+    );
+    return controller.stream;
   }
 
   Future<int> _resolveContextBudget(int requested) async {
