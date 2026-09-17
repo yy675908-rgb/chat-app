@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
 import '../services/backup_service.dart';
+import 'model_output_settings_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({
@@ -285,6 +286,21 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               onChanged: (value) {
                 setState(() => _autoMemoryEnabled = value);
               },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            elevation: 0,
+            child: ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('Anthropic 输出上限'),
+              subtitle: const Text('按模型设置最大输出 tokens；旧配置默认 4096'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ModelOutputSettingsScreen(),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 24),
