@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -23,10 +23,16 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Resolve dependency lock
+      - name: Resolve and commit dependency lock
         run: |
           flutter create --no-pub --platforms=android --org com.yy675908 .
           flutter pub get
-          echo '---PUBSPEC_LOCK_BEGIN---'
-          cat pubspec.lock
-          echo '---PUBSPEC_LOCK_END---'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.lock
+          if git diff --cached --quiet; then
+            echo "pubspec.lock already up to date"
+          else
+            git commit -m "Lock Flutter dependencies"
+            git push origin HEAD:agent/release-cleanup-0.9.28
+          fi
