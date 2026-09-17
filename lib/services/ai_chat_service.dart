@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
+import 'memory_selector.dart';
 
 class AiChatException implements Exception {
   const AiChatException(this.message);
@@ -145,10 +146,18 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
+    final requestSystemPrompt = MemorySelector.compactSystemPrompt(
+      systemPrompt,
+      history,
+    );
     final budget = await _resolveContextBudget(contextTokenBudget);
-    final safeHistory = _historyWithinSafeBudget(systemPrompt, history, budget);
+    final safeHistory = _historyWithinSafeBudget(
+      requestSystemPrompt,
+      history,
+      budget,
+    );
     final messages = <Map<String, String>>[
-      {'role': 'system', 'content': systemPrompt},
+      {'role': 'system', 'content': requestSystemPrompt},
       ..._historyPayload(safeHistory),
     ];
     final response = await _send(
@@ -224,8 +233,16 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
+    final requestSystemPrompt = MemorySelector.compactSystemPrompt(
+      systemPrompt,
+      history,
+    );
     final budget = await _resolveContextBudget(contextTokenBudget);
-    final safeHistory = _historyWithinSafeBudget(systemPrompt, history, budget);
+    final safeHistory = _historyWithinSafeBudget(
+      requestSystemPrompt,
+      history,
+      budget,
+    );
     final response = await _send(
       uri: provider.messagesUri,
       headers: {
@@ -236,7 +253,7 @@ class AiChatService {
       },
       body: {
         'model': provider.selectedModel.trim(),
-        'system': systemPrompt,
+        'system': requestSystemPrompt,
         'messages': _historyPayload(safeHistory),
         'max_tokens': 2048,
         'stream': true,
