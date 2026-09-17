@@ -29,8 +29,9 @@ class BackupMigrator {
     final data = Map<String, Object?>.from(source);
     final characters = data['characters'];
     final profileRaw = data['profile'];
+    final selectedRaw = data['selectedCharacterId'];
+    String? selectedCharacterId = selectedRaw is String ? selectedRaw : null;
 
-    String? selectedCharacterId = data['selectedCharacterId'] as String?;
     if ((characters == null || (characters is List && characters.isEmpty)) &&
         profileRaw is Map) {
       final profile = CharacterProfile.fromJson(
