@@ -144,7 +144,7 @@ class BackupService {
     }
     if (data['profile'] case final Map profileRaw) {
       CharacterProfile.fromJson(Map<String, Object?>.from(profileRaw));
-    } else if ((charactersRaw as List<dynamic>? ?? const []).isEmpty) {
+    } else if ((charactersRaw ?? const []).isEmpty) {
       throw const FormatException('备份缺少角色数据');
     }
 
