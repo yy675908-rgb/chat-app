@@ -40,10 +40,10 @@ Flutter / Android 优先的本地角色聊天 App。核心目标不是做一个�
 2. 增加角色导入导出和可选的角色语音。
 3. 增加可关闭的本地通知与主动消息。
 
-每次推送到 `main` 后，GitHub Actions 会自动生成 Android 工程、执行分析与全部测试。发布的正式安装包仅包含 `arm64-v8a`，适用于当前主流安卓手机；构建流程会拒绝混入旧式 32 位或模拟器运行库，并对安装包设置 25 MiB 的体积上限。当前稳定构建使用仓库中的 `pubspec.lock` 固定依赖版本。本地安装 Flutter 后可运行：
+每次推送到 `main` 后，GitHub Actions 会自动生成 Android 工程、执行分析与全部测试。发布的正式安装包仅包含 `arm64-v8a`，适用于当前主流安卓手机；构建流程会拒绝混入旧式 32 位或模拟器运行库，并对安装包设置 25 MiB 的体积上限。当前稳定构建使用仓库中的 `pubspec.lock` 固定依赖版本。本地安装 Flutter 3.47.4 后可运行：
 
 ```bash
-flutter create --no-pub --platforms=android --org com.yy675908 .
 flutter pub get --enforce-lockfile
-flutter run
+flutter create --no-pub --platforms=android --org com.yy675908 .
+flutter run --no-pub
 ```
