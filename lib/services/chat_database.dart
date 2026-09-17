@@ -25,7 +25,7 @@ class ChatDatabase {
       factory = _factoryOverride ?? databaseFactory;
     } on StateError catch (error) {
       if (error.toString().contains('databaseFactory not initialized')) {
-        throw const MissingPluginException('SQLite database factory unavailable');
+        throw MissingPluginException('SQLite database factory unavailable');
       }
       rethrow;
     }
