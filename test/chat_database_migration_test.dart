@@ -6,7 +6,6 @@ import 'package:character_chat_app/services/chat_database.dart';
 import 'package:character_chat_app/services/chat_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common/sqlite_api.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -53,7 +52,10 @@ void main() {
     final migratedMessages = await store.loadMessages(conversation.id);
 
     expect(migratedConversations.single.id, conversation.id);
-    expect(migratedMessages.map((item) => item.text).toList(), ['还记得吗', '记得。']);
+    expect(
+      migratedMessages.map((item) => item.text).toList(),
+      ['还记得吗', '记得。'],
+    );
 
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getBool('chat_sqlite_migration_v1'), isTrue);
