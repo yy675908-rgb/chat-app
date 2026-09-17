@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
@@ -80,6 +81,7 @@ class AiChatService {
   static const _retryDelay = Duration(milliseconds: 700);
   static const _uiFlushInterval = Duration(milliseconds: 35);
   static const _retryableStatusCodes = <int>{429, 502, 503};
+  static const _contextTokenBudgetKey = 'context_token_budget_v1';
   static const _defaultContextBudget = 32000;
   static const _outputReserveTokens = 2048;
 
@@ -91,7 +93,7 @@ class AiChatService {
     required String systemPrompt,
     required List<ChatMessage> history,
     double temperature = 0.85,
-    int contextTokenBudget = _defaultContextBudget,
+    int contextTokenBudget = 0,
   }) async* {
     await for (final event in streamEvents(
       provider: provider,
@@ -113,7 +115,7 @@ class AiChatService {
     required String systemPrompt,
     required List<ChatMessage> history,
     double temperature = 0.85,
-    int contextTokenBudget = _defaultContextBudget,
+    int contextTokenBudget = 0,
   }) {
     final source = provider.protocol == ProviderProtocol.anthropic
         ? _streamAnthropic(
@@ -143,11 +145,8 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
-    final safeHistory = _historyWithinSafeBudget(
-      systemPrompt,
-      history,
-      contextTokenBudget,
-    );
+    final budget = await _resolveContextBudget(contextTokenBudget);
+    final safeHistory = _historyWithinSafeBudget(systemPrompt, history, budget);
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': systemPrompt},
       ..._historyPayload(safeHistory),
@@ -225,11 +224,8 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
-    final safeHistory = _historyWithinSafeBudget(
-      systemPrompt,
-      history,
-      contextTokenBudget,
-    );
+    final budget = await _resolveContextBudget(contextTokenBudget);
+    final safeHistory = _historyWithinSafeBudget(systemPrompt, history, budget);
     final response = await _send(
       uri: provider.messagesUri,
       headers: {
@@ -370,16 +366,25 @@ class AiChatService {
     if (pending != null) yield pending;
   }
 
+  Future<int> _resolveContextBudget(int requested) async {
+    if (requested >= 2048) return requested;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = preferences.getInt(_contextTokenBudgetKey);
+      if (saved != null && saved >= 2048) return saved;
+    } on Object {
+      // Pure unit tests or non-Flutter callers may not have platform bindings.
+    }
+    return _defaultContextBudget;
+  }
+
   List<ChatMessage> _historyWithinSafeBudget(
     String systemPrompt,
     List<ChatMessage> history,
     int contextTokenBudget,
   ) {
-    final configured = contextTokenBudget < 2048
-        ? _defaultContextBudget
-        : contextTokenBudget;
-    final safeInputLimit = ((configured * 9) ~/ 10 - _outputReserveTokens)
-        .clamp(2048, configured)
+    final safeInputLimit = ((contextTokenBudget * 9) ~/ 10 - _outputReserveTokens)
+        .clamp(2048, contextTokenBudget)
         .toInt();
     var remaining = safeInputLimit - _estimateTokens(systemPrompt);
     final candidates = history
