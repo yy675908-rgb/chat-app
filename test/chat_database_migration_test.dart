@@ -115,6 +115,49 @@ void main() {
     expect(messages.single.text, '不会被删');
     await database.close();
   });
+  test('incremental message saves preserve order without rewriting history', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = ChatDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final store = ChatStore(database: database);
+    final now = DateTime.utc(2026, 2, 1, 8);
+    final conversation = Conversation(
+      id: 'incremental',
+      characterId: 'character-lin',
+      title: '增量保存',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await store.saveConversation(conversation);
+
+    await store.saveMessage(
+      conversation.id,
+      ChatMessage(
+        id: 'u1',
+        author: MessageAuthor.user,
+        text: '第一条',
+        sentAt: now,
+      ),
+      0,
+    );
+    await store.saveMessage(
+      conversation.id,
+      ChatMessage(
+        id: 'u2',
+        author: MessageAuthor.user,
+        text: '第二条',
+        sentAt: now.add(const Duration(minutes: 1)),
+      ),
+      1,
+    );
+
+    final messages = await store.loadMessages(conversation.id);
+    expect(messages.map((item) => item.id).toList(), ['u1', 'u2']);
+    await database.close();
+  });
+
   test('single conversation metadata updates preserve sibling chats and messages', () async {
     SharedPreferences.setMockInitialValues({});
     final database = ChatDatabase(
