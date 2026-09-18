@@ -12,12 +12,14 @@ import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
 import '../services/chat_store.dart';
+import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
 import '../services/mood_codec.dart';
 import '../services/provider_store.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/conversation_drawer.dart';
+import '../widgets/group_conversation_sheet.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
 import 'app_settings_screen.dart';
@@ -59,7 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
-  final Set<AiChatService> _groupIntentServices = {};
+  final _groupIntentEvaluator = GroupIntentEvaluator();
   String? _activeReplyId;
   bool _loading = true;
   bool _groupScope = false;
@@ -275,99 +277,11 @@ class _ChatScreenState extends State<ChatScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
     }
-    final selectedIds = _characters.map((item) => item.id).toSet();
-    final titleController = TextEditingController();
-    final draft = await showModalBottomSheet<_GroupDraft>(
+    final draft = await showGroupConversationSheet(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              18,
-              0,
-              18,
-              MediaQuery.viewInsetsOf(context).bottom + 18,
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.78,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '创建群聊',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: titleController,
-                    autofocus: false,
-                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                    decoration: const InputDecoration(
-                      labelText: '群聊名称（可不填）',
-                      filled: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '选择角色 · 已选 ${selectedIds.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        for (final character in _characters)
-                          CheckboxListTile(
-                            value: selectedIds.contains(character.id),
-                            title: Text(character.name),
-                            subtitle: _moodForCharacter(character.id).isEmpty
-                                ? null
-                                : Text(_moodForCharacter(character.id)),
-                            onChanged: (checked) {
-                              setSheetState(() {
-                                if (checked == true) {
-                                  selectedIds.add(character.id);
-                                } else {
-                                  selectedIds.remove(character.id);
-                                }
-                              });
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: selectedIds.length < 2
-                        ? null
-                        : () => Navigator.pop(
-                            context,
-                            _GroupDraft(
-                              title: titleController.text.trim(),
-                              participantIds: selectedIds.toList(),
-                            ),
-                          ),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                    icon: const Icon(Icons.groups_2_outlined),
-                    label: const Text('创建群聊'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      characters: _characters,
+      moodForCharacter: _moodForCharacter,
     );
-    titleController.dispose();
     if (draft == null) return;
     final participants = _characters
         .where((item) => draft.participantIds.contains(item.id))
@@ -1047,23 +961,19 @@ class _ChatScreenState extends State<ChatScreen> {
     final lastSpeakerName = _characterForId(lastSpeakerId)?.name ?? '';
     if (mounted) setState(() => _evaluatingGroupIntents = true);
     try {
-      final evaluations = await Future.wait([
-        for (final character in candidates)
-          _evaluateGroupReplyIntent(
-            character: character,
-            provider: provider,
-            apiKey: apiKey,
-            transcript: transcript,
-            roster: roster,
-            spokenNames: spokenNames,
-            lastSpeakerName: lastSpeakerName,
-          ),
-      ]);
+      final intents = await _groupIntentEvaluator.evaluateCandidates(
+        candidates: candidates,
+        provider: provider,
+        apiKey: apiKey,
+        transcript: transcript,
+        roster: roster,
+        spokenNames: spokenNames,
+        lastSpeakerName: lastSpeakerName,
+        characterMemories: _characterMemories,
+        moodForCharacter: _moodForCharacter,
+        intimacyBehavior: _intimacyBehavior,
+      );
       if (_cancelled) return const [];
-      final intents = {
-        for (final evaluation in evaluations)
-          evaluation.character.id: evaluation.intent,
-      };
       final seed = visible.isEmpty ? '' : visible.last.id;
       final rankedIds = GroupReplyPolicy.rankWillingSpeakers(
         intents,
@@ -1077,76 +987,6 @@ class _ChatScreenState extends State<ChatScreen> {
           .toList();
     } finally {
       if (mounted) setState(() => _evaluatingGroupIntents = false);
-    }
-  }
-
-  Future<_CharacterGroupIntent> _evaluateGroupReplyIntent({
-    required CharacterProfile character,
-    required ProviderProfile provider,
-    required String apiKey,
-    required String transcript,
-    required String roster,
-    required String spokenNames,
-    required String lastSpeakerName,
-  }) async {
-    final service = AiChatService();
-    _groupIntentServices.add(service);
-    var raw = '';
-    try {
-      final modelPrompt = provider.systemPromptForModel().trim();
-      final memories = _characterMemories[character.id] ?? const <String>[];
-      final memoryPrompt = memories.isEmpty
-          ? ''
-          : '\n\n你和用户的共同记忆：\n'
-                '${memories.map((item) => '- $item').join('\n')}';
-      final currentMood = _moodForCharacter(character.id);
-      final statePrompt =
-          '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}。';
-      final request = ChatMessage(
-        id:
-            'group-intent-${character.id}-'
-            '${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text:
-            '用户对群聊各角色的好感度：\n$roster\n\n'
-            '最近对话：\n$transcript\n\n'
-            '本段已发言角色：${spokenNames.isEmpty ? '无' : spokenNames}\n'
-            '上一位发言角色：${lastSpeakerName.isEmpty ? '无' : lastSpeakerName}\n\n'
-            '请只判断“${character.name}”此刻是否自然想接话。',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
-        provider: provider,
-        apiKey: apiKey,
-        systemPrompt:
-            '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
-            '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
-            '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
-            '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
-            '用户对这个角色的好感度：${_intimacyBehavior(character.userIntimacy)}'
-            '好感度可以影响角色是否想主动接话、争取注意或改变用户观感，'
-            '但它不是关系定义；具体权重由角色性格、真实关系和当前情境决定。'
-            '由这个角色自己判断是否想回应用户、回应其他角色或主动接续话题。'
-            '被点名、在意、吃醋、反驳、安慰或不愿让用户的话落空，都可以构成接话动机；'
-            '没有自然动机时可以沉默。不要替其他角色判断。'
-            '严格只输出 REPLY|0-100 或 PASS|0-100；数字表示此刻发言意愿强度。',
-        history: [request],
-        temperature: 0.1,
-      )) {
-        raw += chunk;
-      }
-      return _CharacterGroupIntent(
-        character: character,
-        intent: GroupReplyPolicy.parseIntent(raw),
-      );
-    } on Object {
-      return _CharacterGroupIntent(
-        character: character,
-        intent: const GroupReplyIntent(wantsToReply: false, priority: 0),
-      );
-    } finally {
-      _groupIntentServices.remove(service);
-      service.close();
     }
   }
 
@@ -1432,10 +1272,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopGenerating() {
     _cancelled = true;
     _activeService?.close();
-    for (final service in _groupIntentServices.toList()) {
-      service.close();
-    }
-    _groupIntentServices.clear();
+    _groupIntentEvaluator.cancel();
     setState(() {
       _evaluatingGroupIntents = false;
       final retryIndex = _activeRetryIndex;
@@ -2910,9 +2747,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _cancelled = true;
     _activeService?.close();
-    for (final service in _groupIntentServices.toList()) {
-      service.close();
-    }
+    _groupIntentEvaluator.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -3208,18 +3043,4 @@ class _ModelChoice {
 
   final ProviderProfile provider;
   final String model;
-}
-
-class _GroupDraft {
-  const _GroupDraft({required this.title, required this.participantIds});
-
-  final String title;
-  final List<String> participantIds;
-}
-
-class _CharacterGroupIntent {
-  const _CharacterGroupIntent({required this.character, required this.intent});
-
-  final CharacterProfile character;
-  final GroupReplyIntent intent;
 }
