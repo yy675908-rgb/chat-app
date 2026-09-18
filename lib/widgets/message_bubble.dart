@@ -27,6 +27,7 @@ class MessageBubble extends StatelessWidget {
     this.onLike,
     this.onLearnStyle,
     this.onEdit,
+    this.onSendEdited,
     this.retryModels = const [],
     this.onRetryWithModel,
     super.key,
@@ -41,6 +42,7 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onLike;
   final VoidCallback? onLearnStyle;
   final VoidCallback? onEdit;
+  final VoidCallback? onSendEdited;
   final List<RetryModelOption> retryModels;
   final ValueChanged<RetryModelOption>? onRetryWithModel;
 
@@ -108,7 +110,7 @@ class MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         color: scheme.onPrimaryContainer,
                         fontSize: 15.5,
-                        height: 1.45,
+                        height: 1.38,
                       ),
                     ),
                   ),
@@ -129,6 +131,11 @@ class MessageBubble extends StatelessWidget {
                       tooltip: '复制',
                       icon: Icons.copy_rounded,
                       onPressed: () => _copy(context),
+                    ),
+                    _BubbleAction(
+                      tooltip: '从这里发送',
+                      icon: Icons.send_rounded,
+                      onPressed: onSendEdited,
                     ),
                   ],
                 ),
@@ -216,7 +223,7 @@ class MessageBubble extends StatelessWidget {
                       p: TextStyle(
                         color: scheme.onSurface,
                         fontSize: 15.5,
-                        height: 1.56,
+                        height: 1.46,
                       ),
                       code: TextStyle(
                         color: scheme.onSurface,
