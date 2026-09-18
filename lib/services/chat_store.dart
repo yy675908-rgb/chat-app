@@ -45,7 +45,7 @@ class ChatStore {
   SharedPreferences? _preferences;
 
   Future<SharedPreferences> _prefs() async =>
-      _preferences ??= await _prefs();
+      _preferences ??= await SharedPreferences.getInstance();
 
   Future<ChatDatabase?> _databaseOrNull() async {
     if (_sqliteUnavailable) return null;
