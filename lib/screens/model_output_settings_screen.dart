@@ -213,6 +213,7 @@ class _ModelOutputSettingsScreenState
                   const SizedBox(height: 14),
                   TextField(
                     controller: _tokensController,
+                    autofocus: false,
                     keyboardType: TextInputType.number,
                     autocorrect: false,
                     decoration: const InputDecoration(
