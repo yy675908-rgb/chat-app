@@ -1218,7 +1218,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _activeRetryIndex = null;
           _activeRetrySnapshot = null;
         });
-        await _persistMessages();
+        unawaited(_persistMessages());
         if (replyCompleted &&
             !isRetry &&
             !_cancelled &&
