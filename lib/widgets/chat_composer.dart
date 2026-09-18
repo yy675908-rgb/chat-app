@@ -9,6 +9,7 @@ class ChatComposer extends StatelessWidget {
     required this.generating,
     required this.onSend,
     required this.onStop,
+    required this.onNewConversation,
   });
 
   final TextEditingController controller;
@@ -16,6 +17,7 @@ class ChatComposer extends StatelessWidget {
   final bool generating;
   final VoidCallback onSend;
   final VoidCallback onStop;
+  final VoidCallback onNewConversation;
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +25,22 @@ class ChatComposer extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 10),
-        child: AnimatedContainer(
+        padding: const EdgeInsets.fromLTRB(18, 7, 18, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              tooltip: '新对话',
+              style: IconButton.styleFrom(
+                minimumSize: const Size(40, 40),
+                backgroundColor: scheme.surfaceContainerLow,
+              ),
+              onPressed: enabled && !generating ? onNewConversation : null,
+              icon: const Icon(Icons.add_comment_outlined, size: 20),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
@@ -111,6 +127,8 @@ class ChatComposer extends StatelessWidget {
               ],
             ),
           ),
+            ),
+          ],
         ),
       ),
     );
