@@ -294,6 +294,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _newGroupConversation() async {
     if (!await _stopBusyWorkBeforeNavigation()) return;
+    if (!mounted) return;
     if (_characters.length < 2) {
       _showMessage('至少添加两个角色后才能创建群聊');
       return;
@@ -381,6 +382,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _deleteConversation(Conversation conversation) async {
     if (!await _stopBusyWorkBeforeNavigation()) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2182,6 +2184,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     if (!await _stopBusyWorkBeforeNavigation()) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
