@@ -82,6 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _memoryPromptActive = false;
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
+  String? _searchTargetMessageId;
+  int _searchTargetRequest = 0;
 
   bool get _isBusy => _generating || _evaluatingGroupIntents;
 
@@ -330,7 +332,13 @@ class _ChatScreenState extends State<ChatScreen> {
     await _queueReply();
   }
 
-  Future<void> _selectConversation(Conversation conversation) async {
+  Future<void> _selectConversation(
+    Conversation conversation, {
+    bool scrollToBottom = true,
+  }) async {
+    if (_searchTargetMessageId != null && mounted) {
+      setState(() => _searchTargetMessageId = null);
+    }
     if (_currentConversation?.id == conversation.id) {
       _scaffoldKey.currentState?.closeDrawer();
       return;
@@ -354,7 +362,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages = messages;
       _groupScope = conversation.isGroup;
     });
-    _scrollToBottom(jump: true);
+    if (scrollToBottom) _scrollToBottom(jump: true);
   }
 
   Future<void> _deleteConversation(Conversation conversation) async {
@@ -576,7 +584,55 @@ class _ChatScreenState extends State<ChatScreen> {
       _showMessage('这段对话已不存在');
       return;
     }
-    await _selectConversation(targetConversation);
+
+    await _selectConversation(targetConversation, scrollToBottom: false);
+    if (!mounted) return;
+
+    final targetIndex = _messages.indexWhere(
+      (message) => message.id == result.message.id,
+    );
+    if (targetIndex < 0) {
+      _showMessage('这条聊天记录已经不存在');
+      return;
+    }
+
+    var branchChanged = false;
+    final updatedMessages = [..._messages];
+    for (final binding in result.message.branchBindings.entries) {
+      final ancestorIndex = updatedMessages.indexWhere(
+        (message) => message.id == binding.key,
+      );
+      if (ancestorIndex < 0) continue;
+      final ancestor = updatedMessages[ancestorIndex];
+      final variantIndex = ancestor.replyVariants.indexWhere(
+        (variant) => variant.id == binding.value,
+      );
+      if (variantIndex < 0 || ancestor.activeVariantIndex == variantIndex) {
+        continue;
+      }
+      updatedMessages[ancestorIndex] = ancestor.selectVariant(variantIndex);
+      branchChanged = true;
+    }
+
+    if (branchChanged) {
+      setState(() => _messages = updatedMessages);
+      final current = _currentConversation;
+      if (current != null) {
+        await _chatStore.saveMessages(current.id, _messages);
+      }
+      if (!mounted) return;
+    }
+
+    if (!_isMessageVisible(_messages[targetIndex])) {
+      _showMessage('这条记录所在的回复分支暂时无法定位');
+      return;
+    }
+
+    setState(() {
+      _followStreamingOutput = false;
+      _searchTargetMessageId = result.message.id;
+      _searchTargetRequest++;
+    });
   }
 
   Future<void> _openProviderSettings() async {
@@ -2553,6 +2609,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         providers: _providers,
                         speakerName: _speakerName,
                         followStreamingOutput: _followStreamingOutput,
+                        targetMessageId: _searchTargetMessageId,
+                        targetRequest: _searchTargetRequest,
                         onPointerHoldingChanged: (value) {
                           _pointerHoldingMessages = value;
                         },

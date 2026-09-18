@@ -132,31 +132,44 @@ class ConversationDrawer extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: FilledButton.tonalIcon(
-                onPressed: groupScope ? onNewGroup : onNew,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  alignment: Alignment.center,
-                ),
-                icon: Icon(
-                  groupScope
-                      ? Icons.group_add_outlined
-                      : Icons.add_comment_outlined,
-                ),
-                label: Text(groupScope ? '新群聊' : '新对话'),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: OutlinedButton.icon(
-                onPressed: onSearch,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(44),
-                  alignment: Alignment.centerLeft,
-                ),
-                icon: const Icon(Icons.search_rounded, size: 19),
-                label: const Text('搜索聊天记录'),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: groupScope ? onNewGroup : onNew,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(42),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      icon: Icon(
+                        groupScope
+                            ? Icons.group_add_outlined
+                            : Icons.add_comment_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        groupScope ? '新群聊' : '新对话',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onSearch,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(42),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      icon: const Icon(Icons.search_rounded, size: 18),
+                      label: const Text(
+                        '搜索记录',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
@@ -311,17 +324,27 @@ class _IntimacyControlState extends State<_IntimacyControl> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 9, 10, 8),
+        padding: const EdgeInsets.fromLTRB(12, 7, 8, 6),
         child: Column(
           children: [
             Row(
               children: [
                 const Text(
                   '用户好感度',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+                const SizedBox(width: 2),
+                Tooltip(
+                  message:
+                      '表示你对这个角色的好感，不等于关系类型；角色能感知这个数值，并会按自己的性格决定如何反应。',
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    size: 15,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 const Spacer(),
                 Text(
@@ -329,36 +352,36 @@ class _IntimacyControlState extends State<_IntimacyControl> {
                   style: TextStyle(
                     color: scheme.primary,
                     fontWeight: FontWeight.w700,
-                    fontSize: 12.5,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    value: _value.toDouble(),
-                    min: 0,
-                    max: 100,
-                    divisions: 100,
-                    label: '$_value',
-                    onChanged: (value) {
-                      setState(() => _value = value.round());
-                    },
-                    onChangeEnd: (value) {
-                      widget.onChanged(value.round());
-                    },
+            SizedBox(
+              height: 30,
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 7.5,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
                   ),
                 ),
-              ],
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '表示你对这个角色的好感，不等于关系类型；角色能感知这个数值，'
-                '并会按自己的性格决定如何反应。',
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+                child: Slider(
+                  value: _value.toDouble(),
+                  min: 0,
+                  max: 100,
+                  divisions: 100,
+                  label: '$_value',
+                  onChanged: (value) {
+                    setState(() => _value = value.round());
+                  },
+                  onChangeEnd: (value) {
+                    widget.onChanged(value.round());
+                  },
+                ),
               ),
             ),
           ],
