@@ -12,6 +12,7 @@ import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
 import '../services/chat_store.dart';
+import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
 import '../services/mood_codec.dart';
 import '../services/provider_store.dart';
@@ -60,7 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ProviderProfile> _providers = const [];
   ProviderProfile? _selectedProvider;
   AiChatService? _activeService;
-  final Set<AiChatService> _groupIntentServices = {};
+  final _groupIntentEvaluator = GroupIntentEvaluator();
   String? _activeReplyId;
   bool _loading = true;
   bool _groupScope = false;
@@ -960,23 +961,19 @@ class _ChatScreenState extends State<ChatScreen> {
     final lastSpeakerName = _characterForId(lastSpeakerId)?.name ?? '';
     if (mounted) setState(() => _evaluatingGroupIntents = true);
     try {
-      final evaluations = await Future.wait([
-        for (final character in candidates)
-          _evaluateGroupReplyIntent(
-            character: character,
-            provider: provider,
-            apiKey: apiKey,
-            transcript: transcript,
-            roster: roster,
-            spokenNames: spokenNames,
-            lastSpeakerName: lastSpeakerName,
-          ),
-      ]);
+      final intents = await _groupIntentEvaluator.evaluateCandidates(
+        candidates: candidates,
+        provider: provider,
+        apiKey: apiKey,
+        transcript: transcript,
+        roster: roster,
+        spokenNames: spokenNames,
+        lastSpeakerName: lastSpeakerName,
+        characterMemories: _characterMemories,
+        moodForCharacter: _moodForCharacter,
+        intimacyBehavior: _intimacyBehavior,
+      );
       if (_cancelled) return const [];
-      final intents = {
-        for (final evaluation in evaluations)
-          evaluation.character.id: evaluation.intent,
-      };
       final seed = visible.isEmpty ? '' : visible.last.id;
       final rankedIds = GroupReplyPolicy.rankWillingSpeakers(
         intents,
@@ -990,76 +987,6 @@ class _ChatScreenState extends State<ChatScreen> {
           .toList();
     } finally {
       if (mounted) setState(() => _evaluatingGroupIntents = false);
-    }
-  }
-
-  Future<_CharacterGroupIntent> _evaluateGroupReplyIntent({
-    required CharacterProfile character,
-    required ProviderProfile provider,
-    required String apiKey,
-    required String transcript,
-    required String roster,
-    required String spokenNames,
-    required String lastSpeakerName,
-  }) async {
-    final service = AiChatService();
-    _groupIntentServices.add(service);
-    var raw = '';
-    try {
-      final modelPrompt = provider.systemPromptForModel().trim();
-      final memories = _characterMemories[character.id] ?? const <String>[];
-      final memoryPrompt = memories.isEmpty
-          ? ''
-          : '\n\n你和用户的共同记忆：\n'
-                '${memories.map((item) => '- $item').join('\n')}';
-      final currentMood = _moodForCharacter(character.id);
-      final statePrompt =
-          '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}。';
-      final request = ChatMessage(
-        id:
-            'group-intent-${character.id}-'
-            '${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text:
-            '用户对群聊各角色的好感度：\n$roster\n\n'
-            '最近对话：\n$transcript\n\n'
-            '本段已发言角色：${spokenNames.isEmpty ? '无' : spokenNames}\n'
-            '上一位发言角色：${lastSpeakerName.isEmpty ? '无' : lastSpeakerName}\n\n'
-            '请只判断“${character.name}”此刻是否自然想接话。',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
-        provider: provider,
-        apiKey: apiKey,
-        systemPrompt:
-            '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
-            '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
-            '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
-            '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
-            '用户对这个角色的好感度：${_intimacyBehavior(character.userIntimacy)}'
-            '好感度可以影响角色是否想主动接话、争取注意或改变用户观感，'
-            '但它不是关系定义；具体权重由角色性格、真实关系和当前情境决定。'
-            '由这个角色自己判断是否想回应用户、回应其他角色或主动接续话题。'
-            '被点名、在意、吃醋、反驳、安慰或不愿让用户的话落空，都可以构成接话动机；'
-            '没有自然动机时可以沉默。不要替其他角色判断。'
-            '严格只输出 REPLY|0-100 或 PASS|0-100；数字表示此刻发言意愿强度。',
-        history: [request],
-        temperature: 0.1,
-      )) {
-        raw += chunk;
-      }
-      return _CharacterGroupIntent(
-        character: character,
-        intent: GroupReplyPolicy.parseIntent(raw),
-      );
-    } on Object {
-      return _CharacterGroupIntent(
-        character: character,
-        intent: const GroupReplyIntent(wantsToReply: false, priority: 0),
-      );
-    } finally {
-      _groupIntentServices.remove(service);
-      service.close();
     }
   }
 
@@ -1345,10 +1272,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopGenerating() {
     _cancelled = true;
     _activeService?.close();
-    for (final service in _groupIntentServices.toList()) {
-      service.close();
-    }
-    _groupIntentServices.clear();
+    _groupIntentEvaluator.cancel();
     setState(() {
       _evaluatingGroupIntents = false;
       final retryIndex = _activeRetryIndex;
@@ -2823,9 +2747,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _cancelled = true;
     _activeService?.close();
-    for (final service in _groupIntentServices.toList()) {
-      service.close();
-    }
+    _groupIntentEvaluator.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -3121,11 +3043,4 @@ class _ModelChoice {
 
   final ProviderProfile provider;
   final String model;
-}
-
-class _CharacterGroupIntent {
-  const _CharacterGroupIntent({required this.character, required this.intent});
-
-  final CharacterProfile character;
-  final GroupReplyIntent intent;
 }
