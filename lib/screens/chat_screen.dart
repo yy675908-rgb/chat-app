@@ -2621,7 +2621,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       speakerCharacterId: character.id,
     );
     final updatedMessages = [...storedMessages, newMessage];
-    await _chatStore.saveMessages(targetConversation.id, updatedMessages);
+    await _chatStore.saveMessage(
+      targetConversation.id,
+      newMessage,
+      storedMessages.length,
+    );
 
     final updatedConversation = targetConversation.copyWith(updatedAt: now);
     final updatedConversations = conversations
