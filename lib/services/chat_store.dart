@@ -721,6 +721,15 @@ class ChatStore {
         .map((entry) => entry.key)
         .toSet();
     if (preferencesToRemove.isNotEmpty) {
+      for (final characterId in ids) {
+        final scoped = await loadStylePreferences(characterId: characterId);
+        final next = scoped
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList();
+        if (next.length != scoped.length) {
+          await saveStylePreferences(next, characterId: characterId);
+        }
+      }
       final preferences = await loadStylePreferences();
       await saveStylePreferences(
         preferences
