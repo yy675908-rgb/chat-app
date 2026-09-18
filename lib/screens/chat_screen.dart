@@ -1533,7 +1533,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       visibleMessages: _messages.where(_isMessageVisible).toList(),
       currentConversation: _currentConversation,
       branchKey: _currentBranchKey(),
-      conversations: _conversations,
       groupParticipants: _groupParticipants,
       savedMood: _moodForCharacter(activeCharacter.id),
       contextMessages: contextMessages,
