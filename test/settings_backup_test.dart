@@ -215,6 +215,10 @@ void main() {
       '${existing.first.id}::${selectedCharacter.id}',
     );
     expect(
+      data['characterStylePreferences'][selectedCharacter.id],
+      ['当用户疲惫时：回应简短一些'],
+    );
+    expect(
       data['characterStatusSources'][selectedCharacter.id],
       existing.first.id,
     );
@@ -263,8 +267,39 @@ void main() {
       '${existing.first.id}::${selectedCharacter.id}',
     );
     expect(
+      await chatStore.loadStylePreferences(characterId: selectedCharacter.id),
+      ['当用户疲惫时：回应简短一些'],
+    );
+    expect(
       await chatStore.loadCharacterStatusSource(selectedCharacter.id),
       existing.first.id,
     );
   });
+  test('response preferences stay isolated per character', () async {
+    final store = ChatStore();
+    final characters = await store.loadCharacters();
+    final first = characters.first;
+    final second = CharacterProfile.newCharacter(DateTime.utc(2026, 9, 18))
+        .copyWith(name: '第二角色');
+    await store.saveCharacters([first, second]);
+
+    await store.saveStylePreferences(
+      ['当用户难过时：少分析，多陪伴'],
+      characterId: first.id,
+    );
+    await store.saveStylePreferences(
+      ['当用户直接提问时：先给结论'],
+      characterId: second.id,
+    );
+
+    expect(
+      await store.loadStylePreferences(characterId: first.id),
+      ['当用户难过时：少分析，多陪伴'],
+    );
+    expect(
+      await store.loadStylePreferences(characterId: second.id),
+      ['当用户直接提问时：先给结论'],
+    );
+  });
+
 }
