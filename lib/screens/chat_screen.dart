@@ -266,13 +266,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _newConversation() async {
     _scaffoldKey.currentState?.closeDrawer();
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     final now = DateTime.now();
     final conversation = Conversation(
       id: 'conversation-${now.microsecondsSinceEpoch}',
@@ -299,13 +293,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _newGroupConversation() async {
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     if (_characters.length < 2) {
       _showMessage('至少添加两个角色后才能创建群聊');
       return;
@@ -376,13 +364,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     _scaffoldKey.currentState?.closeDrawer();
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     final messages = await _messagesWithGreeting(
       conversation.id,
       _profile,
@@ -398,13 +380,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _deleteConversation(Conversation conversation) async {
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      if (!mounted) return;
-    }
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2205,13 +2181,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _showMessage('至少保留一个角色');
       return;
     }
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-    }
-    if (!mounted) return;
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
