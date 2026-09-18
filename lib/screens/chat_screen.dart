@@ -744,7 +744,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom(force: true);
     await _updateConversationTitle(text);
-    unawaited(_persistMessages());
+    unawaited(
+      _persistAppendedMessage(userMessage, _messages.length - 1),
+    );
     unawaited(
       _proactiveCoordinator.postponeCurrent(characters: _characters),
     );
@@ -1520,6 +1522,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               .toList()
             ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     });
+  }
+
+  Future<void> _persistAppendedMessage(
+    ChatMessage message,
+    int ordinal,
+  ) async {
+    final current = _currentConversation;
+    if (current == null) return;
+    final conversationId = current.id;
+    final updatedAt = DateTime.now();
+
+    final operation = _persistQueue.then((_) async {
+      await _chatStore.saveMessage(conversationId, message, ordinal);
+      final updated = current.copyWith(updatedAt: updatedAt);
+      await _chatStore.saveConversation(updated);
+      if (!mounted || _currentConversation?.id != conversationId) return;
+      setState(() {
+        _currentConversation = updated;
+        _conversations =
+            _conversations
+                .map((item) => item.id == updated.id ? updated : item)
+                .toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      });
+    });
+    _persistQueue = operation.catchError((Object _) {});
+    try {
+      await operation;
+    } on Object {
+      if (mounted) _showMessage('聊天记录保存失败');
+    }
   }
 
   Future<void> _persistMessages() async {
