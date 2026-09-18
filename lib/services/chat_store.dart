@@ -371,12 +371,29 @@ class ChatStore {
   Future<void> deleteConversation(String conversationId) async {
     final database = await _databaseOrNull();
     if (database != null) {
-      await database.deleteMessages(conversationId);
+      await database.deleteConversation(conversationId);
       return;
     }
 
     final preferences = await _prefs();
     await preferences.remove('$_messagesPrefix$conversationId');
+    final raw = preferences.getString(_conversationsKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final conversations = (jsonDecode(raw) as List<dynamic>)
+          .map(
+            (item) =>
+                Conversation.fromJson(Map<String, Object?>.from(item as Map)),
+          )
+          .where((item) => item.id != conversationId)
+          .toList();
+      await preferences.setString(
+        _conversationsKey,
+        jsonEncode(conversations.map((item) => item.toJson()).toList()),
+      );
+    } on Object {
+      // Leave malformed legacy metadata untouched.
+    }
   }
 
   Future<List<ChatSearchResult>> searchMessages(
