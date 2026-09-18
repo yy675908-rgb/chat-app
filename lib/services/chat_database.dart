@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/chat_message.dart';
+import '../models/chat_search_result.dart';
 import '../models/conversation.dart';
+import 'mood_codec.dart';
 
 class ChatDatabase {
   ChatDatabase({DatabaseFactory? factory, String? path})
@@ -261,6 +263,65 @@ class ChatDatabase {
       where: 'conversation_id = ?',
       whereArgs: [conversationId],
     );
+  }
+
+  Future<List<ChatSearchResult>> searchMessages(
+    String query, {
+    int limit = 100,
+  }) async {
+    final term = query.trim();
+    if (term.isEmpty || limit <= 0) return const [];
+
+    final db = await open();
+    final rows = await db.rawQuery(
+      '''
+        SELECT
+          c.payload AS conversation_payload,
+          m.payload AS message_payload
+        FROM messages AS m
+        JOIN conversations AS c ON c.id = m.conversation_id
+        WHERE instr(lower(m.payload), lower(?)) > 0
+        ORDER BY c.updated_at DESC, m.ordinal DESC
+      ''',
+      [term],
+    );
+
+    final normalized = term.toLowerCase();
+    final results = <ChatSearchResult>[];
+    for (final row in rows) {
+      final conversationRaw = row['conversation_payload'];
+      final messageRaw = row['message_payload'];
+      if (conversationRaw is! String ||
+          conversationRaw.isEmpty ||
+          messageRaw is! String ||
+          messageRaw.isEmpty) {
+        continue;
+      }
+      try {
+        final conversation = Conversation.fromJson(
+          Map<String, Object?>.from(jsonDecode(conversationRaw) as Map),
+        );
+        final message = ChatMessage.fromJson(
+          Map<String, Object?>.from(jsonDecode(messageRaw) as Map),
+        );
+        if (message.author == MessageAuthor.system || message.isRetracted) {
+          continue;
+        }
+        final visibleText = MoodCodec.stripMetadata(message.text).trim();
+        if (visibleText.isEmpty ||
+            !visibleText.toLowerCase().contains(normalized)) {
+          continue;
+        }
+        results.add(
+          ChatSearchResult(conversation: conversation, message: message),
+        );
+      } on Object {
+        // Skip only the malformed row.
+      }
+    }
+    results.sort((a, b) => b.message.sentAt.compareTo(a.message.sentAt));
+    if (results.length <= limit) return results;
+    return results.sublist(0, limit);
   }
 
   Future<void> close() async {
