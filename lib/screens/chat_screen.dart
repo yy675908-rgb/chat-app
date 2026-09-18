@@ -21,6 +21,7 @@ import '../services/provider_store.dart';
 import '../services/reply_stream_accumulator.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/chat_message_list.dart';
+import '../widgets/chat_picker_sheets.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/group_conversation_sheet.dart';
 import '../widgets/message_bubble.dart';
@@ -601,7 +602,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return updated?.isConfigured == true && updatedKey.trim().isNotEmpty;
   }
 
-  Future<void> _applyModelChoice(_ModelChoice choice) async {
+  Future<void> _applyModelChoice(ChatModelChoice choice) async {
     final updatedProvider = choice.provider.copyWith(
       selectedModel: choice.model,
     );
@@ -628,112 +629,14 @@ class _ChatScreenState extends State<ChatScreen> {
       await _openProviderSettings();
       return;
     }
-    var providerId =
-        available.any((provider) => provider.id == _selectedProvider?.id)
-        ? _selectedProvider!.id
-        : available.first.id;
-    final choice = await showModalBottomSheet<_ModelChoice>(
+
+    final choice = await showChatModelPickerSheet(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final provider = available.firstWhere(
-            (item) => item.id == providerId,
-          );
-          return SafeArea(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.72,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 10, 8),
-                    child: Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            '选择模型',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: '管理供应商',
-                          onPressed: () {
-                            Navigator.pop(context);
-                            unawaited(_openProviderSettings());
-                          },
-                          icon: const Icon(Icons.tune_rounded),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: DropdownButtonFormField<String>(
-                      initialValue: providerId,
-                      decoration: const InputDecoration(
-                        labelText: '供应商',
-                        filled: true,
-                      ),
-                      items: [
-                        for (final item in available)
-                          DropdownMenuItem<String>(
-                            value: item.id,
-                            child: Text(item.name),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setSheetState(() => providerId = value);
-                        }
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                    child: Text(
-                      '只显示已添加且已有模型的供应商',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 18),
-                      children: [
-                        for (final model in provider.models)
-                          ListTile(
-                            leading: Icon(
-                              _selectedProvider?.id == provider.id &&
-                                      _selectedProvider?.selectedModel == model
-                                  ? Icons.check_circle_rounded
-                                  : Icons.circle_outlined,
-                            ),
-                            title: Text(model),
-                            onTap: () => Navigator.pop(
-                              context,
-                              _ModelChoice(provider: provider, model: model),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+      providers: _providers,
+      selectedProvider: _selectedProvider,
+      onManageProviders: () {
+        unawaited(_openProviderSettings());
+      },
     );
     if (choice != null) await _applyModelChoice(choice);
   }
@@ -2035,130 +1938,36 @@ class _ChatScreenState extends State<ChatScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
     }
-    final selectedId = await showModalBottomSheet<String>(
+
+    final choice = await showConversationSpacePickerSheet(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.68,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(10, 0, 10, 8),
-                  child: Text(
-                    '切换对话空间',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(10, 4, 10, 4),
-                        child: Text(
-                          '群聊',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      ListTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.groups_2_outlined),
-                        ),
-                        title: const Text('群聊'),
-                        subtitle: Text(_groupScope ? '当前分组' : '独立于所有角色的多人对话'),
-                        trailing: _groupScope
-                            ? const Icon(Icons.check_circle_rounded)
-                            : null,
-                        onTap: () => Navigator.pop(context, '__groups__'),
-                      ),
-                      const Divider(height: 18),
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(10, 4, 10, 4),
-                        child: Text(
-                          '角色',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      for (final character in _characters)
-                        ListTile(
-                          leading: CircleAvatar(
-                            child: Text(
-                              character.name.isEmpty
-                                  ? '角'
-                                  : character.name.characters.first,
-                            ),
-                          ),
-                          title: Text(character.name),
-                          subtitle: Text(
-                            !_groupScope && character.id == _profile.id
-                                ? '当前角色'
-                                : '切换到这个角色',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (!_groupScope && character.id == _profile.id)
-                                const Icon(Icons.check_circle_rounded),
-                              IconButton(
-                                tooltip: _characters.length <= 1
-                                    ? '至少保留一个角色'
-                                    : '删除角色',
-                                onPressed: _characters.length <= 1
-                                    ? null
-                                    : () => Navigator.pop(
-                                        context,
-                                        '__delete__:${character.id}',
-                                      ),
-                                icon: const Icon(Icons.delete_outline_rounded),
-                              ),
-                            ],
-                          ),
-                          onTap: () => Navigator.pop(context, character.id),
-                        ),
-                      const Divider(height: 14),
-                      ListTile(
-                        leading: const Icon(Icons.person_add_alt_1_rounded),
-                        title: const Text('添加新角色'),
-                        subtitle: const Text('创建独立的角色设定与对话'),
-                        onTap: () => Navigator.pop(context, '__add__'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      characters: _characters,
+      currentProfile: _profile,
+      groupScope: _groupScope,
     );
-    if (selectedId == '__add__') {
-      await _createCharacter();
-      return;
+    if (choice == null) return;
+
+    switch (choice.action) {
+      case ConversationSpaceAction.add:
+        await _createCharacter();
+        return;
+      case ConversationSpaceAction.delete:
+        final character = _characters.firstWhere(
+          (item) => item.id == choice.characterId,
+        );
+        await _deleteCharacter(character);
+        return;
+      case ConversationSpaceAction.groups:
+        if (!_groupScope) await _switchToGroupScope();
+        return;
+      case ConversationSpaceAction.character:
+        if (!_groupScope && choice.characterId == _profile.id) return;
+        final selected = _characters.firstWhere(
+          (item) => item.id == choice.characterId,
+        );
+        await _switchCharacter(selected);
+        return;
     }
-    if (selectedId != null && selectedId.startsWith('__delete__:')) {
-      final characterId = selectedId.substring('__delete__:'.length);
-      final character = _characters.firstWhere(
-        (item) => item.id == characterId,
-      );
-      await _deleteCharacter(character);
-      return;
-    }
-    if (selectedId == '__groups__') {
-      if (!_groupScope) await _switchToGroupScope();
-      return;
-    }
-    if (selectedId == null || (!_groupScope && selectedId == _profile.id)) {
-      return;
-    }
-    final selected = _characters.firstWhere((item) => item.id == selectedId);
-    await _switchCharacter(selected);
   }
 
   Future<void> _createCharacter() async {
@@ -2786,11 +2595,4 @@ class _TaggedReply {
   final String text;
   final String mood;
   final String status;
-}
-
-class _ModelChoice {
-  const _ModelChoice({required this.provider, required this.model});
-
-  final ProviderProfile provider;
-  final String model;
 }
