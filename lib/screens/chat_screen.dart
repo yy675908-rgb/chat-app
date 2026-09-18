@@ -91,6 +91,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _checkingProactiveMessage = false;
   Timer? _proactiveTimer;
   Future<void> _persistQueue = Future<void>.value();
+  String _cachedApiKeyProviderId = '';
+  String _cachedApiKey = '';
 
   bool get _isBusy => _generating || _evaluatingGroupIntents;
 
@@ -119,6 +121,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _restore() async {
+    _clearApiKeyCache();
     final characters = await _chatStore.loadCharacters();
     final selectedCharacterId = await _chatStore.loadSelectedCharacterId();
     final profile = characters.firstWhere(
@@ -544,6 +547,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _reloadProviders() async {
+    _clearApiKeyCache();
     var providers = await _providerStore.loadProviders();
     final selectedId = await _providerStore.loadSelectedProviderId();
     var selected = providers.firstWhere(
@@ -673,18 +677,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _reloadProviders();
   }
 
+  void _clearApiKeyCache() {
+    _cachedApiKeyProviderId = '';
+    _cachedApiKey = '';
+  }
+
+  Future<String> _loadApiKey(ProviderProfile provider) async {
+    if (_cachedApiKeyProviderId == provider.id) return _cachedApiKey;
+    final key = await _loadApiKey(provider);
+    _cachedApiKeyProviderId = provider.id;
+    _cachedApiKey = key;
+    return key;
+  }
+
   Future<bool> _ensureProviderConfigured() async {
     final provider = _selectedProvider;
     final key = provider == null
         ? ''
-        : await _providerStore.loadApiKey(provider.id);
+        : await _loadApiKey(provider);
     if (provider?.isConfigured == true && key.trim().isNotEmpty) return true;
     if (!mounted) return false;
     await _openProviderSettings();
     final updated = _selectedProvider;
     final updatedKey = updated == null
         ? ''
-        : await _providerStore.loadApiKey(updated.id);
+        : await _loadApiKey(updated);
     return updated?.isConfigured == true && updatedKey.trim().isNotEmpty;
   }
 
@@ -945,7 +962,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }) async {
     final provider = _selectedProvider;
     if (provider == null) return const [];
-    final apiKey = await _providerStore.loadApiKey(provider.id);
+    final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty) return const [];
     final visible = _visibleMessagesFor(_messages);
     final start = visible.length > 16 ? visible.length - 16 : 0;
@@ -1017,7 +1034,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }) async {
     final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
-    final apiKey = await _providerStore.loadApiKey(provider.id);
+    final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty) {
       _showError('这个供应商还没有 API Key');
       return;
@@ -1432,7 +1449,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (variant != null && variant.modelId.isNotEmpty) {
       provider = provider.copyWith(selectedModel: variant.modelId);
     }
-    final apiKey = await _providerStore.loadApiKey(provider.id);
+    final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty || !mounted) return;
 
     try {
@@ -1951,7 +1968,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final provider = _selectedProvider;
     final current = _currentConversation;
     if (provider == null || current == null || !mounted) return;
-    final apiKey = await _providerStore.loadApiKey(provider.id);
+    final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty || !mounted) return;
 
     final visible = _visibleMessagesFor(_messages);
@@ -2581,7 +2598,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final provider = _selectedProvider;
     if (provider == null) return;
-    final apiKey = await _providerStore.loadApiKey(provider.id);
+    final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty) return;
 
     final conversations = await _chatStore.loadConversations(
