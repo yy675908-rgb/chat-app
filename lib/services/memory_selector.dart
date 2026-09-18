@@ -47,7 +47,7 @@ class MemorySelector {
     final visible = history
         .where((message) => message.author != MessageAuthor.system)
         .toList();
-    final start = visible.length > 8 ? visible.length - 8 : 0;
+    final start = visible.length > 4 ? visible.length - 4 : 0;
     final context = visible.sublist(start).map((message) => message.text).join(' ');
     final contextFeatures = _features(context);
 
