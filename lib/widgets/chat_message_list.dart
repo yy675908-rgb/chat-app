@@ -321,11 +321,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
                         message.author != MessageAuthor.system &&
                         message.text.isNotEmpty &&
                         !widget.busy;
+                    final showActions =
+                        message.author == MessageAuthor.character
+                        ? message.text.isNotEmpty
+                        : canEdit;
                     child = MessageBubble(
                       message: message,
                       characterName: widget.speakerName(message),
                       reasoningInitiallyExpanded: widget.reasoningExpanded,
-                      showActions: canEdit,
+                      showActions: showActions,
                       onEdit: canEdit ? () => widget.onEdit(index) : null,
                       onSendEdited: message.author == MessageAuthor.user && canEdit
                           ? () => widget.onSendEdited?.call(index)
