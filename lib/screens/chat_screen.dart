@@ -2435,16 +2435,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  bool _isMessageVisibleIn(
-    List<ChatMessage> messages,
-    ChatMessage message,
-  ) {
-    return _isVisibleWithActiveVariants(
-      message,
-      _activeVariantIdsFor(messages),
-    );
-  }
-
   Map<String, String> _activeBranchBindingsFor(List<ChatMessage> messages) {
     final bindings = <String, String>{};
     final activeVariantIds = _activeVariantIdsFor(messages);
