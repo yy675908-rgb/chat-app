@@ -8,6 +8,7 @@ import 'package:character_chat_app/services/proactive_message_planner.dart';
 import 'package:character_chat_app/services/proactive_message_store.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   CharacterProfile character(String id, String name) => CharacterProfile(
     id: id,
     name: name,
