@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/conversation.dart';
-import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/user_profile.dart';
 import 'package:character_chat_app/services/chat_context_builder.dart';
 
@@ -19,15 +18,6 @@ void main() {
         greeting: '',
         systemPrompt: '角色设定正文。',
         userIntimacy: 72,
-      );
-      final provider = ProviderProfile(
-        id: 'p1',
-        name: '测试',
-        protocol: ProviderProtocol.openAiCompatible,
-        baseUrl: 'https://example.com/v1',
-        models: const ['m1'],
-        selectedModel: 'm1',
-        modelSystemPrompts: const {'m1': '模型隐藏提示。'},
       );
       final current = Conversation(
         id: 'chat-1',
