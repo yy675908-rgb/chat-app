@@ -86,6 +86,12 @@ class ChatContextBuilder {
         '这是系统隐藏元数据：不得把它写进正文，不得改成“心绪：……”普通句子，'
         '不得添加引号、前缀、解释或其他标记。';
 
+    final responseDiscipline =
+        '\n\n回复节奏：默认简洁、自然，优先直接回应用户最新一句。'
+        '除非当前情境确实需要，不重复已经发生的动作、环境、关系状态或前文信息，'
+        '不为了表现亲密、角色感或完整性而扩写。短句能说清时不要写成长段。'
+        '用户只发很短的一句、语气词或动作时，通常用相称长度回应。';
+
     final modelPrompt = selectedProvider?.systemPromptForModel() ?? '';
     final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
@@ -130,7 +136,7 @@ class ChatContextBuilder {
         '$intimacyInstruction'
         '$groupInstruction$userProfileText'
         '$memoryText$preferenceText$worldBookText'
-        '$summaryText$previousSummaryText$context$stateInstruction';
+        '$summaryText$context$responseDiscipline$stateInstruction';
   }
 
   static String matchedWorldBookPrompt({
@@ -139,7 +145,7 @@ class ChatContextBuilder {
   }) {
     if (worldBooks.isEmpty || visibleMessages.isEmpty) return '';
     final start =
-        visibleMessages.length > 12 ? visibleMessages.length - 12 : 0;
+        visibleMessages.length > 4 ? visibleMessages.length - 4 : 0;
     final recentText = visibleMessages
         .sublist(start)
         .map((message) => message.text.toLowerCase())
