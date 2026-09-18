@@ -324,6 +324,33 @@ class ChatStore {
     );
   }
 
+  Future<void> saveMessage(
+    String conversationId,
+    ChatMessage message,
+    int ordinal,
+  ) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.upsertMessage(conversationId, message, ordinal);
+      return;
+    }
+
+    final preferences = await _prefs();
+    final key = '$_messagesPrefix$conversationId';
+    final messages = _decodeMessages(preferences.getString(key));
+    final existing = messages.indexWhere((item) => item.id == message.id);
+    if (existing >= 0) {
+      messages[existing] = message;
+    } else {
+      final insertion = ordinal.clamp(0, messages.length);
+      messages.insert(insertion, message);
+    }
+    await preferences.setString(
+      key,
+      jsonEncode(messages.map((item) => item.toJson()).toList()),
+    );
+  }
+
   Future<void> saveMessages(
     String conversationId,
     List<ChatMessage> messages,
