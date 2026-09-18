@@ -1759,8 +1759,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _currentBranchKey() != sourceBranchKey) {
         return;
       }
-      final currentUserTurns = _messages
-          .where(_isMessageVisible)
+      final currentUserTurns = _visibleMessagesFor(_messages)
           .where((message) => message.author == MessageAuthor.user)
           .length;
       if (currentUserTurns != userTurns) return;
@@ -2440,25 +2439,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     List<ChatMessage> messages,
     ChatMessage message,
   ) {
-    for (final binding in message.branchBindings.entries) {
-      ChatMessage? ancestor;
-      for (final candidate in messages) {
-        if (candidate.id == binding.key) {
-          ancestor = candidate;
-          break;
-        }
-      }
-      if (ancestor == null || ancestor.activeVariant?.id != binding.value) {
-        return false;
-      }
-    }
-    return true;
+    return _isVisibleWithActiveVariants(
+      message,
+      _activeVariantIdsFor(messages),
+    );
   }
 
   Map<String, String> _activeBranchBindingsFor(List<ChatMessage> messages) {
     final bindings = <String, String>{};
+    final activeVariantIds = _activeVariantIdsFor(messages);
     for (final message in messages) {
-      if (!_isMessageVisibleIn(messages, message)) continue;
+      if (!_isVisibleWithActiveVariants(message, activeVariantIds)) continue;
       final variant = message.activeVariant;
       if (message.author == MessageAuthor.character &&
           message.replyVariants.length > 1 &&
@@ -2548,12 +2539,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (conversations.isEmpty) return;
     final targetConversation = conversations.first;
     final storedMessages = await _chatStore.loadMessages(targetConversation.id);
-    final visible = storedMessages
-        .where(
-          (message) =>
-              message.author != MessageAuthor.system &&
-              _isMessageVisibleIn(storedMessages, message),
-        )
+    final visible = _visibleMessagesFor(storedMessages)
+        .where((message) => message.author != MessageAuthor.system)
         .toList();
     final start = visible.length > 12 ? visible.length - 12 : 0;
     final transcript = visible
