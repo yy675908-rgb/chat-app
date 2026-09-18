@@ -2269,13 +2269,20 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) _showMessage('已删除角色“${character.name}”');
   }
 
-  Future<void> _switchCharacter(CharacterProfile profile) async {
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+  Future<bool> _stopBusyWorkBeforeNavigation() async {
+    if (!_isBusy) return true;
+    _stopGenerating();
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (_isBusy && mounted && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
     }
+    if (!_isBusy) return true;
+    if (mounted) _showMessage('当前回复仍在结束，请稍后再试');
+    return false;
+  }
+
+  Future<void> _switchCharacter(CharacterProfile profile) async {
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     await _chatStore.saveSelectedCharacterId(profile.id);
     final loaded = await Future.wait<Object>([
       _chatStore.loadConversations(characterId: profile.id),
@@ -2320,12 +2327,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _switchToGroupScope() async {
-    if (_isBusy) {
-      _stopGenerating();
-      while (_isBusy && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-    }
+    if (!await _stopBusyWorkBeforeNavigation()) return;
     final conversations = await _chatStore.loadGroupConversations();
     final current = conversations.isEmpty ? null : conversations.first;
     final messages = current == null
