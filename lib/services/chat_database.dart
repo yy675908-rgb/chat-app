@@ -229,6 +229,24 @@ class ChatDatabase {
     return result;
   }
 
+  Future<void> upsertMessage(
+    String conversationId,
+    ChatMessage message,
+    int ordinal,
+  ) async {
+    final db = await open();
+    await db.insert(
+      'messages',
+      {
+        'conversation_id': conversationId,
+        'message_id': message.id,
+        'ordinal': ordinal,
+        'payload': jsonEncode(message.toJson()),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<void> saveMessages(
     String conversationId,
     List<ChatMessage> messages,
