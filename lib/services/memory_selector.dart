@@ -35,8 +35,6 @@ class MemorySelector {
         .map((line) => line.substring(2).trim())
         .where((line) => line.isNotEmpty)
         .toList();
-    if (memories.length <= _maxInjectedMemories) return systemPrompt;
-
     final selected = selectRelevant(memories, history);
     final replacement = selected.map((memory) => '- $memory').join('\n');
     return systemPrompt.replaceRange(bodyStart, bodyEnd, replacement);
