@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
