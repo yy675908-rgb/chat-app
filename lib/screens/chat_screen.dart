@@ -2015,6 +2015,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _openAppSettings() async {
     _scaffoldKey.currentState?.closeDrawer();
+    await _waitForPendingPersistence();
+    if (!mounted) return;
     final restored = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => AppSettingsScreen(
