@@ -1491,15 +1491,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _persistMessages() async {
     final current = _currentConversation;
     if (current == null) return;
-    await _chatStore.saveMessages(current.id, _messages);
+    final conversationId = current.id;
+    final messagesSnapshot = List<ChatMessage>.from(_messages);
+    final conversationsSnapshot = List<Conversation>.from(_conversations);
+    await _chatStore.saveMessages(conversationId, messagesSnapshot);
     final updated = current.copyWith(updatedAt: DateTime.now());
     final conversations =
-        _conversations
+        conversationsSnapshot
             .map((item) => item.id == updated.id ? updated : item)
             .toList()
           ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    await _saveScopedConversations(conversations);
-    if (!mounted) return;
+    if (current.isGroup) {
+      await _chatStore.saveGroupConversations(conversations);
+    } else {
+      await _chatStore.saveConversations(
+        conversations,
+        characterId: current.characterId,
+      );
+    }
+    if (!mounted || _currentConversation?.id != conversationId) return;
     setState(() {
       _currentConversation = updated;
       _conversations = conversations;
