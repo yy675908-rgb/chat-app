@@ -72,8 +72,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final liveIds = widget.messages.map((message) => message.id).toSet();
-    _messageKeys.removeWhere((messageId, _) => !liveIds.contains(messageId));
+    if (widget.messages.length < oldWidget.messages.length) {
+      final liveIds = widget.messages.map((message) => message.id).toSet();
+      _messageKeys.removeWhere((messageId, _) => !liveIds.contains(messageId));
+    }
     if (widget.targetMessageId != null &&
         (widget.targetRequest != oldWidget.targetRequest ||
             widget.targetMessageId != oldWidget.targetMessageId)) {
