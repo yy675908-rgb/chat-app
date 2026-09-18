@@ -10,15 +10,15 @@ void main() {
         sentAt: DateTime.utc(2026),
       );
 
-  test('small memory sets stay unchanged', () {
-    final memories = ['第一条', '第二条', '第三条'];
+  test('small unrelated memory sets are not injected', () {
+    final memories = ['用户喜欢陶瓷', '用户去年换过电脑', '用户常去海边散步'];
     expect(
-      MemorySelector.selectRelevant(memories, [user('u', '随便聊聊')]),
-      memories,
+      MemorySelector.selectRelevant(memories, [user('u', '今天下雨了')]),
+      isEmpty,
     );
   });
 
-  test('large memory sets keep anchors and prefer current-topic memories', () {
+  test('large memory sets inject only current-topic memories', () {
     final memories = [
       '用户第一次见面时带了一把黑伞',
       '用户不喜欢被连续追问',
@@ -39,12 +39,11 @@ void main() {
       [user('u', '周末如果天气好，我们去海边散步吧。')],
     );
 
-    expect(selected.length, lessThanOrEqualTo(8));
-    expect(selected, contains(memories.first));
-    expect(selected, contains(memories[1]));
+    expect(selected.length, lessThanOrEqualTo(6));
     expect(selected, contains(memories[3]));
-    expect(selected, contains(memories[memories.length - 2]));
-    expect(selected, contains(memories.last));
+    expect(selected, isNot(contains(memories.first)));
+    expect(selected, isNot(contains(memories[1])));
+    expect(selected, isNot(contains(memories.last)));
     expect(selected, isNot(contains(memories[2])));
   });
 
@@ -78,6 +77,6 @@ void main() {
     final memoryBlock = compacted
         .split('你和用户的共同记忆（仅属于你们这段关系）：\n')[1]
         .split('\n\n')[0];
-    expect(memoryBlock.split('\n').length, lessThanOrEqualTo(8));
+    expect(memoryBlock.split('\n').length, lessThanOrEqualTo(6));
   });
 }
