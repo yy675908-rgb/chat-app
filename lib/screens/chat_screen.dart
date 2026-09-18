@@ -2442,6 +2442,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (mounted) _armProactiveTimer(next);
       }
       _checkingProactiveMessage = false;
+      if (consumed == null && mounted) {
+        unawaited(_syncProactiveSchedule());
+      }
     }
   }
 
