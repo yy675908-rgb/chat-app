@@ -60,7 +60,8 @@ void main() {
 
     await tester.pumpWidget(buildList());
     await tester.pump();
-    expect(find.text('目标消息 70'), findsNothing);
+    const targetKey = ValueKey<String>('chat-message-m70');
+    expect(find.byKey(targetKey), findsNothing);
 
     await tester.pumpWidget(
       buildList(targetMessageId: 'm70', targetRequest: 1),
@@ -68,7 +69,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
-    expect(find.text('目标消息 70'), findsOneWidget);
+    expect(find.byKey(targetKey), findsOneWidget);
     expect(controller.offset, greaterThan(0));
   });
 }
