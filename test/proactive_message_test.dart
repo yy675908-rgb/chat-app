@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/proactive_message_settings.dart';
+import 'package:character_chat_app/services/proactive_message_coordinator.dart';
 import 'package:character_chat_app/services/proactive_message_planner.dart';
 import 'package:character_chat_app/services/proactive_message_store.dart';
 
@@ -69,6 +70,33 @@ void main() {
       ),
       time,
     );
+  });
+
+  test('coordinator restores the persisted future schedule without resetting it', () async {
+    SharedPreferences.setMockInitialValues({});
+    const store = ProactiveMessageStore();
+    const settings = ProactiveMessageSettings(
+      enabled: true,
+      enabledCharacterIds: ['a'],
+      frequency: ProactiveFrequency.balanced,
+    );
+    final now = DateTime(2026, 9, 18, 9);
+    final storedPlan = ProactiveMessagePlan(
+      characterId: 'a',
+      characterName: 'A',
+      dueAt: DateTime(2026, 9, 19, 9),
+    );
+    await store.saveSettings(settings);
+    await store.savePlan(storedPlan);
+
+    const coordinator = ProactiveMessageCoordinator();
+    final restored = await coordinator.ensureScheduled(
+      characters: [character('a', 'A')],
+      now: now,
+    );
+
+    expect(restored?.characterId, 'a');
+    expect(restored?.dueAt, storedPlan.dueAt);
   });
 
   test('proactive settings and plan survive local storage round trip', () async {
