@@ -115,6 +115,50 @@ void main() {
     expect(messages.single.text, '不会被删');
     await database.close();
   });
+  test('single conversation metadata updates preserve sibling chats and messages', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = ChatDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final store = ChatStore(database: database);
+    final now = DateTime.utc(2026, 2, 2);
+    final first = Conversation(
+      id: 'first',
+      characterId: 'character-lin',
+      title: '第一段',
+      createdAt: now,
+      updatedAt: now,
+    );
+    final second = Conversation(
+      id: 'second',
+      characterId: 'character-lin',
+      title: '第二段',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await store.saveConversations([first, second], characterId: 'character-lin');
+    await store.saveMessages(first.id, [
+      ChatMessage(
+        id: 'm1',
+        author: MessageAuthor.user,
+        text: '保留这条消息',
+        sentAt: now,
+      ),
+    ]);
+
+    await store.saveConversation(
+      first.copyWith(updatedAt: now.add(const Duration(minutes: 1))),
+    );
+
+    final conversations = await store.loadConversations(
+      characterId: 'character-lin',
+    );
+    expect(conversations.map((item) => item.id).toSet(), {'first', 'second'});
+    expect((await store.loadMessages(first.id)).single.text, '保留这条消息');
+    await database.close();
+  });
+
   test('chat search finds visible text and ignores hidden metadata', () async {
     SharedPreferences.setMockInitialValues({});
     final database = ChatDatabase(
