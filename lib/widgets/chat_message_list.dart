@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/chat_message.dart';
@@ -78,6 +80,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 
+  Future<void> _waitForNextFrame() {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    WidgetsBinding.instance.scheduleFrame();
+    return completer.future;
+  }
+
   Future<void> _locateTarget() async {
     final targetId = widget.targetMessageId;
     final request = widget.targetRequest;
@@ -92,9 +103,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (targetVisibleIndex < 0) return;
 
     final targetKey = _keyFor(targetId);
-    await WidgetsBinding.instance.endOfFrame;
 
-    for (var attempt = 0; attempt < 8; attempt++) {
+    for (var attempt = 0; attempt < 24; attempt++) {
       if (!mounted ||
           request != widget.targetRequest ||
           targetId != widget.targetMessageId) {
@@ -115,7 +125,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       }
 
       if (!widget.controller.hasClients) {
-        await WidgetsBinding.instance.endOfFrame;
+        await _waitForNextFrame();
         continue;
       }
 
@@ -155,9 +165,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
       } else {
         var nearest = built.first;
         var nearestDistance = (nearest.index - targetVisibleIndex).abs();
+        var minBuiltIndex = built.first.index;
+        var maxBuiltIndex = built.first.index;
         var totalHeight = 0.0;
         for (final item in built) {
           totalHeight += item.height.clamp(24.0, 1200.0).toDouble();
+          if (item.index < minBuiltIndex) minBuiltIndex = item.index;
+          if (item.index > maxBuiltIndex) maxBuiltIndex = item.index;
           final distance = (item.index - targetVisibleIndex).abs();
           if (distance < nearestDistance) {
             nearest = item;
@@ -171,18 +185,41 @@ class _ChatMessageListState extends State<ChatMessageList> {
             currentOffset +
             (targetVisibleIndex - nearest.index) * averageHeight;
 
-        if ((desiredOffset - currentOffset).abs() <
-            position.viewportDimension * 0.35) {
-          final direction = targetVisibleIndex >= nearest.index ? 1.0 : -1.0;
-          desiredOffset =
-              currentOffset + direction * position.viewportDimension * 0.8;
+        final viewportStep = position.viewportDimension * 0.82;
+        if (targetVisibleIndex > maxBuiltIndex) {
+          desiredOffset = desiredOffset > currentOffset + viewportStep
+              ? currentOffset + viewportStep
+              : desiredOffset;
+        } else if (targetVisibleIndex < minBuiltIndex) {
+          desiredOffset = desiredOffset < currentOffset - viewportStep
+              ? currentOffset - viewportStep
+              : desiredOffset;
         }
       }
 
       desiredOffset = desiredOffset.clamp(0.0, maxExtent).toDouble();
-      if ((desiredOffset - currentOffset).abs() < 1) break;
-      widget.controller.jumpTo(desiredOffset);
-      await WidgetsBinding.instance.endOfFrame;
+      if ((desiredOffset - currentOffset).abs() < 1) {
+        final builtIndexes = built.map((item) => item.index);
+        final maxBuilt = builtIndexes.isEmpty
+            ? -1
+            : builtIndexes.reduce((a, b) => a > b ? a : b);
+        final minBuilt = builtIndexes.isEmpty
+            ? widget.visibleMessageIndices.length
+            : builtIndexes.reduce((a, b) => a < b ? a : b);
+        final direction = targetVisibleIndex > maxBuilt
+            ? 1.0
+            : (targetVisibleIndex < minBuilt ? -1.0 : 0.0);
+        if (direction == 0) break;
+        final fallback = (currentOffset +
+                direction * position.viewportDimension * 0.75)
+            .clamp(0.0, maxExtent)
+            .toDouble();
+        if ((fallback - currentOffset).abs() < 1) break;
+        widget.controller.jumpTo(fallback);
+      } else {
+        widget.controller.jumpTo(desiredOffset);
+      }
+      await _waitForNextFrame();
     }
 
     final finalContext = targetKey.currentContext;
