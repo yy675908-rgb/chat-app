@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
+import '../models/user_profile.dart';
 import 'ai_chat_service.dart';
 import 'mood_codec.dart';
 
@@ -109,6 +111,67 @@ class ChatAuxiliaryAiService {
         throw const AiChatException('模型没有返回摘要');
       }
       return summary;
+    } finally {
+      service.close();
+    }
+  }
+
+  Future<String> generateProactiveMessage({
+    required ProviderProfile provider,
+    required String apiKey,
+    required CharacterProfile character,
+    required UserProfile userProfile,
+    required List<String> memories,
+    required String recentTranscript,
+    required String currentMood,
+  }) async {
+    final service = AiChatService();
+    var raw = '';
+    try {
+      final userFields = <String>[
+        if (userProfile.name.trim().isNotEmpty)
+          '名字：${userProfile.name.trim()}',
+        if (userProfile.gender.trim().isNotEmpty)
+          '性别：${userProfile.gender.trim()}',
+        if (userProfile.description.trim().isNotEmpty)
+          '设定：${userProfile.description.trim()}',
+      ];
+      final request = ChatMessage(
+        id: 'proactive-${DateTime.now().microsecondsSinceEpoch}',
+        author: MessageAuthor.user,
+        text:
+            '最近单聊：\n'
+            '${recentTranscript.trim().isEmpty ? '暂无最近对话' : recentTranscript.trim()}\n\n'
+            '共同记忆：\n'
+            '${memories.isEmpty ? '暂无' : memories.map((item) => '- $item').join('\n')}\n\n'
+            '用户资料：\n'
+            '${userFields.isEmpty ? '暂无' : userFields.join('\n')}',
+        sentAt: DateTime.now(),
+      );
+      final modelPrompt = provider.systemPromptForModel().trim();
+      await for (final chunk in service.streamReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt:
+            '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
+            '${character.systemPrompt}\n\n'
+            '【主动消息】现在不是在回复用户刚发来的新消息，而是你隔了一段时间后自然地主动找用户。'
+            '根据你的性格、共同记忆和最近单聊，决定此刻最自然的一句话。'
+            '可以接续未完话题、问候、想起某件事、表达惦记或提出新的小话题；'
+            '不要机械说“系统让我主动联系你”，不要解释机制，不要为了显得亲密而强行暧昧。'
+            '用户对你的好感度为${character.userIntimacy}/100，但它只表示主观好感，不定义关系。'
+            '你上一轮心绪是“${currentMood.trim().isEmpty ? '未记录' : currentMood.trim()}”。'
+            '只输出一条自然聊天正文，不加姓名前缀，不输出心绪标记，不超过80个汉字。',
+        history: [request],
+        temperature: 0.8,
+      )) {
+        raw += chunk;
+      }
+      final text = MoodCodec.stripMetadata(raw).trim();
+      if (text.isEmpty) {
+        throw const AiChatException('模型没有返回主动消息');
+      }
+      return text;
     } finally {
       service.close();
     }
