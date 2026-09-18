@@ -1396,6 +1396,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _persistMessages();
   }
 
+  Future<void> _sendFromUserMessage(int messageIndex) async {
+    if (_isBusy || messageIndex < 0 || messageIndex >= _messages.length) return;
+    final source = _messages[messageIndex];
+    if (source.author != MessageAuthor.user || source.text.trim().isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _messages = _messages.take(messageIndex + 1).toList();
+      _followStreamingOutput = true;
+    });
+    await _persistMessages();
+    _scrollToBottom(force: true);
+    await _queueReply();
+  }
+
   Future<void> _extractStylePreference(
     int messageIndex,
     ChatMessage likedReply,
@@ -2944,6 +2958,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         onScrollActivity: _updateStreamingFollow,
                         onResumeStreamingFollow: _resumeStreamingFollow,
                         onEdit: _editMessage,
+                        onSendEdited: _sendFromUserMessage,
                         onMoveVariant: _moveVariant,
                         onLike: _toggleLike,
                         onLearnStyle: _extractStylePreference,
@@ -2956,6 +2971,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 generating: _isBusy,
                 onSend: _send,
                 onStop: _stopGenerating,
+                onNewConversation: _groupScope ? _newGroupConversation : _newConversation,
               ),
             ],
           ),
