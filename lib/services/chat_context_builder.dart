@@ -32,7 +32,7 @@ class ChatContextBuilder {
     final preferenceText = stylePreferences.isEmpty
         ? ''
         : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
-              '不得覆盖角色设定、固有语气或自行增加回复长度）：\n'
+              '不得覆盖角色设定或固有语气）：\n'
               '${stylePreferences.map((item) => '- $item').join('\n')}';
     final worldBookText = matchedWorldBookPrompt(
       worldBooks: worldBooks,
@@ -86,11 +86,11 @@ class ChatContextBuilder {
         ? '\n\n用户对群聊各角色的好感度：\n'
               '${groupParticipants.map((item) => '- ${item.name}：${item.userIntimacy}/100（${intimacyLabel(item.userIntimacy)}）').join('\n')}\n'
               '好感度只是关系背景，不定义关系类型。当前角色可以按自己的性格和当前情境决定是否在意以及如何反应；'
-              '不要为了体现好感度刻意迎合、增加戏剧性、改变固有说话风格或拉长回复。'
+              '不要为了体现好感度刻意迎合、增加戏剧性或改变固有说话风格。'
         : '\n\n用户对你的好感度为${activeCharacter.userIntimacy}/100'
               '（${intimacyLabel(activeCharacter.userIntimacy)}）。'
               '这只是关系背景，不定义你们的关系。你可以按自己的性格和当前情境决定是否在意以及如何反应；'
-              '不要为了体现好感度刻意迎合、试探、改变固有说话风格或拉长回复。';
+              '不要为了体现好感度刻意迎合、试探或改变固有说话风格。';
 
     final groupInstruction = isGroup
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
