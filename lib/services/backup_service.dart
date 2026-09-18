@@ -45,6 +45,7 @@ class BackupService {
     }
     final providers = await _providerStore.loadProviders();
     final characterMemories = <String, List<String>>{};
+    final characterStylePreferences = <String, List<String>>{};
     final characterMemorySources = <String, Map<String, String>>{};
     final characterMoods = <String, String>{};
     final characterMoodSources = <String, String>{};
@@ -52,6 +53,8 @@ class BackupService {
     for (final character in characters) {
       final memories = await _chatStore.loadMemories(characterId: character.id);
       characterMemories[character.id] = memories;
+      characterStylePreferences[character.id] =
+          await _chatStore.loadStylePreferences(characterId: character.id);
       characterMemorySources[character.id] = await _chatStore.loadMemorySources(
         character.id,
       );
@@ -84,6 +87,7 @@ class BackupService {
       'characterMemories': characterMemories,
       'characterMemorySources': characterMemorySources,
       'stylePreferences': await _chatStore.loadStylePreferences(),
+      'characterStylePreferences': characterStylePreferences,
       'stylePreferenceSources': await _chatStore.loadStylePreferenceSources(),
       'characterStatusSources': characterStatusSources,
       'worldBooks': (await _chatStore.loadWorldBooks())
@@ -209,6 +213,7 @@ class BackupService {
 
     requireMapOrNull('characterMemories');
     requireMapOrNull('characterMemorySources');
+    requireMapOrNull('characterStylePreferences');
     requireMapOrNull('stylePreferenceSources');
     requireMapOrNull('characterStatusSources');
     requireMapOrNull('characterMoods');
@@ -325,6 +330,17 @@ class BackupService {
           .map((item) => item.toString())
           .toList(),
     );
+    final characterStylePreferencesRaw = data['characterStylePreferences'];
+    if (characterStylePreferencesRaw is Map) {
+      for (final entry in characterStylePreferencesRaw.entries) {
+        final values = entry.value;
+        if (values is! List) continue;
+        await _chatStore.saveStylePreferences(
+          values.map((item) => item.toString()).toList(),
+          characterId: entry.key.toString(),
+        );
+      }
+    }
 
     final restoredCharacters = await _chatStore.loadCharacters();
     for (final character in restoredCharacters) {
