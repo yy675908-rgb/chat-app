@@ -88,6 +88,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
+  Timer? _proactiveTimer;
 
   bool get _isBusy => _generating || _evaluatingGroupIntents;
 
@@ -111,7 +112,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_loading) {
-      unawaited(_checkDueProactiveMessage());
+      unawaited(_syncProactiveSchedule());
     }
   }
 
@@ -194,7 +195,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _loading = false;
     });
     _scrollToBottom(jump: true);
-    unawaited(_checkDueProactiveMessage());
+    unawaited(_syncProactiveSchedule());
   }
 
   Future<List<ChatMessage>> _messagesWithGreeting(
@@ -1978,7 +1979,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (restored == true) await _restore();
+    if (restored == true) {
+      await _restore();
+    } else if (mounted) {
+      await _syncProactiveSchedule();
+    }
   }
 
   Future<void> _openMemories() async {
@@ -2385,8 +2390,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return bindings;
   }
 
+  Future<void> _syncProactiveSchedule() async {
+    _proactiveTimer?.cancel();
+    if (_loading || _characters.isEmpty) return;
+    final plan = await _proactiveCoordinator.ensureScheduled(
+      characters: _characters,
+    );
+    if (!mounted) return;
+    _armProactiveTimer(plan);
+  }
+
+  void _armProactiveTimer(ProactiveMessagePlan? plan) {
+    _proactiveTimer?.cancel();
+    _proactiveTimer = null;
+    if (plan == null || !mounted) return;
+    final delay = plan.dueAt.difference(DateTime.now());
+    _proactiveTimer = Timer(
+      delay.isNegative ? Duration.zero : delay,
+      () => unawaited(_checkDueProactiveMessage()),
+    );
+  }
+
   Future<void> _checkDueProactiveMessage() async {
-    if (_checkingProactiveMessage || _loading || _isBusy || _characters.isEmpty) {
+    if (_checkingProactiveMessage || _loading || _characters.isEmpty) {
+      return;
+    }
+    if (_isBusy) {
+      _proactiveTimer?.cancel();
+      _proactiveTimer = Timer(
+        const Duration(seconds: 30),
+        () => unawaited(_checkDueProactiveMessage()),
+      );
       return;
     }
     _checkingProactiveMessage = true;
@@ -2401,10 +2435,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       // Proactive messages are optional and must never disrupt normal chat.
     } finally {
       if (consumed != null) {
-        await _proactiveCoordinator.scheduleAfterConsumed(
+        final next = await _proactiveCoordinator.scheduleAfterConsumed(
           characters: _characters,
           consumed: consumed,
         );
+        if (mounted) _armProactiveTimer(next);
       }
       _checkingProactiveMessage = false;
     }
@@ -2546,6 +2581,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _proactiveTimer?.cancel();
     _cancelled = true;
     _activeService?.close();
     _groupIntentEvaluator.dispose();
