@@ -77,7 +77,6 @@ void main() {
         visibleMessages: contextMessages,
         currentConversation: current,
         branchKey: 'root',
-        conversations: [current, previous],
         groupParticipants: const [],
         savedMood: '平静',
         contextMessages: contextMessages,
