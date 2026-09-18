@@ -121,7 +121,6 @@ void main() {
         visibleMessages: const [],
         currentConversation: current,
         branchKey: 'root',
-        conversations: [current],
         groupParticipants: const [],
         savedMood: '',
         contextMessages: const [],
