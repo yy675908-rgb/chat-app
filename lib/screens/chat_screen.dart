@@ -744,7 +744,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom(force: true);
     await _updateConversationTitle(text);
-    await _persistMessages();
+    unawaited(_persistMessages());
     unawaited(
       _proactiveCoordinator.postponeCurrent(characters: _characters),
     );
@@ -1510,14 +1510,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ? '${compact.characters.take(18).join()}…'
         : compact;
     final updated = current.copyWith(title: title, updatedAt: DateTime.now());
-    final conversations = _conversations
-        .map((item) => item.id == updated.id ? updated : item)
-        .toList();
-    await _saveScopedConversations(conversations);
-    if (!mounted) return;
+    await _chatStore.saveConversation(updated);
+    if (!mounted || _currentConversation?.id != current.id) return;
     setState(() {
       _currentConversation = updated;
-      _conversations = conversations;
+      _conversations =
+          _conversations
+              .map((item) => item.id == updated.id ? updated : item)
+              .toList()
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     });
   }
 
