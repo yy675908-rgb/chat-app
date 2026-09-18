@@ -298,6 +298,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   bool _editingBaseUrl = false;
   bool _loadingKey = true;
   bool _fetching = false;
+  bool _testingConnection = false;
   bool _obscureKey = true;
 
   @override
@@ -495,6 +496,77 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     }
   }
 
+  Future<void> _testConnection() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _storeModelPromptDraft();
+    final draft = _draft();
+    final uri = Uri.tryParse(draft.baseUrl);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      _show('先填写正确的 API 地址');
+      return;
+    }
+    if (draft.selectedModel.isEmpty) {
+      _show('先填写并选择一个模型 ID');
+      return;
+    }
+    if (_keyController.text.trim().isEmpty) {
+      _show('API Key 不能为空');
+      return;
+    }
+
+    setState(() => _testingConnection = true);
+    try {
+      final result = await _service.testConnection(
+        draft,
+        _keyController.text,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: Icon(
+            Icons.check_circle_outline_rounded,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          title: const Text('连接成功'),
+          content: Text(
+            '聊天接口可以正常返回内容。\n\n'
+            '模型：${result.modelId}\n'
+            '首段响应：${result.latency.inMilliseconds} ms\n'
+            '返回：${result.preview}',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } on AiChatException catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: Icon(
+            Icons.error_outline_rounded,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          title: const Text('连接失败'),
+          content: SelectableText(error.message),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _testingConnection = false);
+    }
+  }
+
   Future<void> _save() async {
     _storeModelPromptDraft();
     final draft = _draft();
@@ -542,7 +614,10 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
       appBar: AppBar(
         title: const Text('供应商设置'),
         actions: [
-          TextButton(onPressed: _save, child: const Text('保存')),
+          TextButton(
+            onPressed: _fetching || _testingConnection ? null : _save,
+            child: const Text('保存'),
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -752,7 +827,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: _fetching ? null : _fetchModels,
+                      onPressed: _fetching || _testingConnection ? null : _fetchModels,
                       icon: _fetching
                           ? const SizedBox(
                               width: 14,
@@ -779,6 +854,26 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _fetching || _testingConnection
+                        ? null
+                        : _testConnection,
+                    icon: _testingConnection
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.network_check_rounded),
+                    label: Text(
+                      _testingConnection ? '正在测试聊天接口…' : '测试连接',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
                 if (_models.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   DropdownButtonFormField<String>(
