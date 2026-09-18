@@ -85,7 +85,9 @@ void main() {
       );
 
       expect(prompt, startsWith('模型隐藏提示。\n\n角色设定正文。'));
-      expect(prompt, contains('用户当前对你的好感度为72/100（较高）'));
+      expect(prompt, contains('用户对你的好感度为72/100（较高）'));
+      expect(prompt, contains('不要为了体现好感度刻意迎合'));
+      expect(prompt, contains('不得覆盖角色设定、固有语气或自行增加回复长度'));
       expect(prompt, contains('名字：小元'));
       expect(prompt, contains('用户喜欢陶瓷'));
       expect(prompt, contains('当用户直接提问时：先给结论'));
