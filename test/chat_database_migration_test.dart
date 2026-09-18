@@ -115,4 +115,54 @@ void main() {
     expect(messages.single.text, '不会被删');
     await database.close();
   });
+  test('chat search finds visible text and ignores hidden metadata', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = ChatDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final store = ChatStore(database: database);
+    final now = DateTime.utc(2026, 3, 1);
+    final conversation = Conversation(
+      id: 'search-chat',
+      characterId: 'character-lin',
+      title: '旅行',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await store.saveConversations([conversation]);
+    await store.saveMessages(conversation.id, [
+      ChatMessage(
+        id: 'u1',
+        author: MessageAuthor.user,
+        text: '下次去景德镇看陶瓷',
+        sentAt: now,
+      ),
+      ChatMessage(
+        id: 'a1',
+        author: MessageAuthor.character,
+        text: '可以去御窑博物馆\n[[心绪:期待]]',
+        sentAt: now.add(const Duration(minutes: 1)),
+      ),
+      ChatMessage(
+        id: 's1',
+        author: MessageAuthor.system,
+        text: '景德镇系统提示',
+        sentAt: now.add(const Duration(minutes: 2)),
+      ),
+    ]);
+
+    final placeResults = await store.searchMessages('景德镇');
+    expect(placeResults.map((item) => item.message.id).toList(), ['u1']);
+    expect(placeResults.single.conversation.title, '旅行');
+
+    final visibleResults = await store.searchMessages('御窑');
+    expect(visibleResults.single.message.id, 'a1');
+
+    final hiddenResults = await store.searchMessages('期待');
+    expect(hiddenResults, isEmpty);
+
+    await database.close();
+  });
+
 }
