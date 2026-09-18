@@ -136,6 +136,21 @@ class ConversationDrawer extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onSearch,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(42),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      icon: const Icon(Icons.search_rounded, size: 18),
+                      label: const Text(
+                        '搜索记录',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: FilledButton.tonalIcon(
                       onPressed: groupScope ? onNewGroup : onNew,
                       style: FilledButton.styleFrom(
@@ -151,21 +166,6 @@ class ConversationDrawer extends StatelessWidget {
                       label: Text(
                         groupScope ? '新群聊' : '新对话',
                         style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onSearch,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(42),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
-                      icon: const Icon(Icons.search_rounded, size: 18),
-                      label: const Text(
-                        '搜索记录',
-                        style: TextStyle(fontSize: 13),
                       ),
                     ),
                   ),
