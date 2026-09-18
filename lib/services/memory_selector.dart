@@ -46,10 +46,6 @@ class MemorySelector {
     List<String> memories,
     List<ChatMessage> history,
   ) {
-    if (memories.length <= _maxInjectedMemories) {
-      return List<String>.from(memories);
-    }
-
     final visible = history
         .where((message) => message.author != MessageAuthor.system)
         .toList();
