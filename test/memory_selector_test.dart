@@ -47,6 +47,30 @@ void main() {
     expect(selected, isNot(contains(memories[2])));
   });
 
+
+  test('generic wording alone does not pull unrelated memories forward', () {
+    final memories = ['用户喜欢陶瓷'];
+    final selected = MemorySelector.selectRelevant(
+      memories,
+      [user('u', '我喜欢下雨天。')],
+    );
+    expect(selected, isEmpty);
+  });
+
+  test('assistant echoes cannot keep an old memory alive by themselves', () {
+    final memories = ['用户喜欢陶瓷'];
+    final history = [
+      user('u1', '今天下雨了。'),
+      ChatMessage(
+        id: 'a1',
+        author: MessageAuthor.character,
+        text: '你之前说过喜欢陶瓷。',
+        sentAt: DateTime.utc(2026, 1, 1, 0, 1),
+      ),
+    ];
+    expect(MemorySelector.selectRelevant(memories, history), isEmpty);
+  });
+
   test('system prompt memory section is compacted without touching other sections', () {
     final memories = [
       '基础记忆一',
