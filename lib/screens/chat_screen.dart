@@ -1115,6 +1115,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         apiKey: apiKey,
         systemPrompt: systemPrompt,
         history: recent,
+        contextTokenBudget: _contextTokenBudget,
       )) {
         streamState.add(event);
         if (!mounted || _cancelled) return;
