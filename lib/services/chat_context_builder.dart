@@ -34,7 +34,8 @@ class ChatContextBuilder {
               '${activeMemories.map((memory) => '- $memory').join('\n')}';
     final preferenceText = stylePreferences.isEmpty
         ? ''
-        : '\n\n用户偏好的回应方式（仅在情境吻合时遵循）：\n'
+        : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
+              '不得覆盖角色设定、固有语气或自行增加回复长度）：\n'
               '${stylePreferences.map((item) => '- $item').join('\n')}';
     final worldBookText = matchedWorldBookPrompt(
       worldBooks: worldBooks,
@@ -105,21 +106,14 @@ class ChatContextBuilder {
 
     final isGroup = currentConversation?.isGroup == true;
     final intimacyInstruction = isGroup
-        ? '\n\n用户对群聊各角色的好感度如下，所有参与角色都知道这些信息：\n'
+        ? '\n\n用户对群聊各角色的好感度：\n'
               '${groupParticipants.map((item) => '- ${item.name}：${item.userIntimacy}/100（${intimacyLabel(item.userIntimacy)}）').join('\n')}\n'
-              '好感度只表示用户对某个角色的主观好感和接受程度，不定义任何关系类型。'
-              '当前角色对这个数值的感知：${intimacyBehavior(activeCharacter.userIntimacy)}'
-              '角色可以按自己的性格决定是否在意、是否想提高、维持或改变用户的好感，'
-              '并让这种动机自然影响主动程度、接话、试探、关心、争取注意或保持距离等行为。'
-              '但不得仅凭好感度推断恋爱、暧昧、伴侣、亲属或其他关系，也不要机械迎合用户。'
-        : '\n\n用户当前对你的好感度为${activeCharacter.userIntimacy}/100'
+              '好感度只是关系背景，不定义关系类型。当前角色可以按自己的性格和当前情境决定是否在意以及如何反应；'
+              '不要为了体现好感度刻意迎合、增加戏剧性、改变固有说话风格或拉长回复。'
+        : '\n\n用户对你的好感度为${activeCharacter.userIntimacy}/100'
               '（${intimacyLabel(activeCharacter.userIntimacy)}）。'
-              '好感度只表示用户对你的主观好感和接受程度，不定义你们是什么关系。'
-              '你能感知这个数值，并可以按自己的性格和当前处境决定是否在意、'
-              '是否希望提高、维持或改变它，再把这种动机自然反映到你的行为上。'
-              '你可以尝试讨用户喜欢、试探、拉近或拉开距离，也可以不把提高好感当目标。'
-              '真正的关系由角色设定、共同经历和当前对话决定；'
-              '不要仅凭好感度推断恋爱、暧昧、伴侣、亲属或其他固定关系，也不要机械迎合用户。';
+              '这只是关系背景，不定义你们的关系。你可以按自己的性格和当前情境决定是否在意以及如何反应；'
+              '不要为了体现好感度刻意迎合、试探、改变固有说话风格或拉长回复。';
 
     final groupInstruction = isGroup
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
