@@ -298,11 +298,21 @@ class ChatDatabase {
 
   Future<void> deleteConversation(String conversationId) async {
     final db = await open();
-    await db.delete(
-      'conversations',
-      where: 'id = ?',
-      whereArgs: [conversationId],
-    );
+    await db.transaction((txn) async {
+      // Delete messages explicitly as well as relying on the FK cascade.
+      // This keeps cleanup correct for databases created on devices where
+      // foreign-key enforcement may previously have been unavailable.
+      await txn.delete(
+        'messages',
+        where: 'conversation_id = ?',
+        whereArgs: [conversationId],
+      );
+      await txn.delete(
+        'conversations',
+        where: 'id = ?',
+        whereArgs: [conversationId],
+      );
+    });
   }
 
   Future<void> deleteMessages(String conversationId) async {
