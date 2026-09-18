@@ -1543,7 +1543,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
     });
     _persistQueue = operation.catchError((Object _) {});
-    await operation;
+    try {
+      await operation;
+    } on Object {
+      if (mounted) _showMessage('聊天记录保存失败');
+    }
   }
 
   String _currentBranchKey() {
