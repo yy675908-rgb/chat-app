@@ -63,6 +63,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   final Map<String, GlobalKey> _messageKeys = {};
   String? _highlightedMessageId;
   int _highlightGeneration = 0;
+  Timer? _highlightTimer;
 
   GlobalKey _keyFor(String messageId) {
     return _messageKeys.putIfAbsent(messageId, GlobalKey.new);
@@ -236,11 +237,18 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   void _showTargetHighlight(String messageId) {
     final generation = ++_highlightGeneration;
+    _highlightTimer?.cancel();
     setState(() => _highlightedMessageId = messageId);
-    Future<void>.delayed(const Duration(milliseconds: 1800), () {
+    _highlightTimer = Timer(const Duration(milliseconds: 1800), () {
       if (!mounted || generation != _highlightGeneration) return;
       setState(() => _highlightedMessageId = null);
     });
+  }
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
   }
 
   @override
