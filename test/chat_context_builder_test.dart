@@ -5,7 +5,6 @@ import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/conversation.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/user_profile.dart';
-import 'package:character_chat_app/models/world_book_entry.dart';
 import 'package:character_chat_app/services/chat_context_builder.dart';
 
 void main() {
