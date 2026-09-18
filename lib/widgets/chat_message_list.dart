@@ -26,6 +26,7 @@ class ChatMessageList extends StatefulWidget {
     required this.onScrollActivity,
     required this.onResumeStreamingFollow,
     required this.onEdit,
+    required this.onSendEdited,
     required this.onMoveVariant,
     required this.onLike,
     required this.onLearnStyle,
@@ -49,6 +50,7 @@ class ChatMessageList extends StatefulWidget {
   final VoidCallback onScrollActivity;
   final VoidCallback onResumeStreamingFollow;
   final Future<void> Function(int index) onEdit;
+  final Future<void> Function(int index) onSendEdited;
   final Future<void> Function(int index, int delta) onMoveVariant;
   final Future<void> Function(int index) onLike;
   final Future<void> Function(int index, ChatMessage message) onLearnStyle;
@@ -325,6 +327,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       reasoningInitiallyExpanded: widget.reasoningExpanded,
                       showActions: canEdit,
                       onEdit: canEdit ? () => widget.onEdit(index) : null,
+                      onSendEdited: message.author == MessageAuthor.user && canEdit
+                          ? () => widget.onSendEdited(index)
+                          : null,
                       onPreviousVariant:
                           canUseCharacterActions &&
                               message.activeVariantIndex > 0
