@@ -90,6 +90,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
   Timer? _proactiveTimer;
+  Future<void> _persistQueue = Future<void>.value();
 
   bool get _isBusy => _generating || _evaluatingGroupIntents;
 
@@ -1494,26 +1495,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final conversationId = current.id;
     final messagesSnapshot = List<ChatMessage>.from(_messages);
     final conversationsSnapshot = List<Conversation>.from(_conversations);
-    await _chatStore.saveMessages(conversationId, messagesSnapshot);
-    final updated = current.copyWith(updatedAt: DateTime.now());
-    final conversations =
-        conversationsSnapshot
-            .map((item) => item.id == updated.id ? updated : item)
-            .toList()
-          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    if (current.isGroup) {
-      await _chatStore.saveGroupConversations(conversations);
-    } else {
-      await _chatStore.saveConversations(
-        conversations,
-        characterId: current.characterId,
-      );
-    }
-    if (!mounted || _currentConversation?.id != conversationId) return;
-    setState(() {
-      _currentConversation = updated;
-      _conversations = conversations;
+    final updatedAt = DateTime.now();
+
+    final operation = _persistQueue.then((_) async {
+      await _chatStore.saveMessages(conversationId, messagesSnapshot);
+      final updated = current.copyWith(updatedAt: updatedAt);
+      final conversations =
+          conversationsSnapshot
+              .map((item) => item.id == updated.id ? updated : item)
+              .toList()
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (current.isGroup) {
+        await _chatStore.saveGroupConversations(conversations);
+      } else {
+        await _chatStore.saveConversations(
+          conversations,
+          characterId: current.characterId,
+        );
+      }
+      if (!mounted || _currentConversation?.id != conversationId) return;
+      setState(() {
+        _currentConversation = updated;
+        _conversations = conversations;
+      });
     });
+    _persistQueue = operation.catchError((Object _) {});
+    await operation;
   }
 
   String _currentBranchKey() {
