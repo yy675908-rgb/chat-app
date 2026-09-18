@@ -41,7 +41,9 @@ class _MemoryScreenState extends State<MemoryScreen>
 
   Future<void> _load() async {
     final memories = await _store.loadMemories(characterId: widget.characterId);
-    final preferences = await _store.loadStylePreferences();
+    final preferences = await _store.loadStylePreferences(
+      characterId: widget.characterId,
+    );
     final worldBooks = await _store.loadWorldBooks();
     if (!mounted) return;
     setState(() {
@@ -153,7 +155,10 @@ class _MemoryScreenState extends State<MemoryScreen>
         _preferences[index] = value;
       }
     });
-    await _store.saveStylePreferences(_preferences);
+    await _store.saveStylePreferences(
+      _preferences,
+      characterId: widget.characterId,
+    );
   }
 
   Future<void> _deleteSimple({
@@ -165,7 +170,10 @@ class _MemoryScreenState extends State<MemoryScreen>
       await _saveAndReloadMemories(next);
     } else {
       setState(() => _preferences.removeAt(index));
-      await _store.saveStylePreferences(_preferences);
+      await _store.saveStylePreferences(
+      _preferences,
+      characterId: widget.characterId,
+    );
     }
   }
 
@@ -509,7 +517,7 @@ class _MemoryScreenState extends State<MemoryScreen>
           controller: _tabs,
           tabs: [
             Tab(text: '共同记忆·${widget.characterName}'),
-            const Tab(text: '回应偏好'),
+            Tab(text: '回应偏好·${widget.characterName}'),
             const Tab(text: '世界书'),
           ],
         ),
