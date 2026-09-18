@@ -660,7 +660,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<String> _loadApiKey(ProviderProfile provider) async {
     if (_cachedApiKeyProviderId == provider.id) return _cachedApiKey;
-    final key = await _loadApiKey(provider);
+    final key = await _providerStore.loadApiKey(provider.id);
     _cachedApiKeyProviderId = provider.id;
     _cachedApiKey = key;
     return key;
