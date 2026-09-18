@@ -257,6 +257,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return messages;
   }
 
+  Future<void> _waitForPendingPersistence() async {
+    await _persistQueue;
+  }
+
   Future<void> _newConversation() async {
     _scaffoldKey.currentState?.closeDrawer();
     if (_isBusy) {
@@ -418,6 +422,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
     );
     if (confirmed != true) return;
+    await _waitForPendingPersistence();
     final affectedCharacterIds = conversation.isGroup
         ? conversation.participantIds
         : <String>[conversation.characterId];
@@ -2162,6 +2167,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
     );
     if (confirmed != true) return;
+    await _waitForPendingPersistence();
 
     final remainingCharacters = _characters
         .where((item) => item.id != character.id)
@@ -2325,15 +2331,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _stopBusyWorkBeforeNavigation() async {
-    if (!_isBusy) return true;
-    _stopGenerating();
-    final deadline = DateTime.now().add(const Duration(seconds: 2));
-    while (_isBusy && mounted && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+    if (_isBusy) {
+      _stopGenerating();
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (_isBusy && mounted && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      if (_isBusy) {
+        if (mounted) _showMessage('当前回复仍在结束，请稍后再试');
+        return false;
+      }
     }
-    if (!_isBusy) return true;
-    if (mounted) _showMessage('当前回复仍在结束，请稍后再试');
-    return false;
+    await _waitForPendingPersistence();
+    return true;
   }
 
   Future<void> _switchCharacter(CharacterProfile profile) async {
@@ -2509,6 +2519,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _generateProactiveMessage(ProactiveMessagePlan plan) async {
+    await _waitForPendingPersistence();
     CharacterProfile? character;
     for (final item in _characters) {
       if (item.id == plan.characterId) {
