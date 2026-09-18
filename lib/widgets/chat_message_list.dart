@@ -157,14 +157,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
         var nearestDistance = (nearest.index - targetVisibleIndex).abs();
         var totalHeight = 0.0;
         for (final item in built) {
-          totalHeight += item.height.clamp(24.0, 1200.0);
+          totalHeight += item.height.clamp(24.0, 1200.0).toDouble();
           final distance = (item.index - targetVisibleIndex).abs();
           if (distance < nearestDistance) {
             nearest = item;
             nearestDistance = distance;
           }
         }
-        final averageHeight = (totalHeight / built.length).clamp(40.0, 420.0);
+        final averageHeight = (totalHeight / built.length)
+            .clamp(40.0, 420.0)
+            .toDouble();
         desiredOffset =
             currentOffset +
             (targetVisibleIndex - nearest.index) * averageHeight;
@@ -177,7 +179,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
         }
       }
 
-      desiredOffset = desiredOffset.clamp(0.0, maxExtent);
+      desiredOffset = desiredOffset.clamp(0.0, maxExtent).toDouble();
       if ((desiredOffset - currentOffset).abs() < 1) break;
       widget.controller.jumpTo(desiredOffset);
       await WidgetsBinding.instance.endOfFrame;
