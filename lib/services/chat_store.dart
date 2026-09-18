@@ -41,14 +41,18 @@ class ChatStore {
   final ChatDatabase _database;
   bool _sqliteUnavailable = false;
   Future<void>? _migrationFuture;
+  ChatDatabase? _readyDatabase;
 
   Future<ChatDatabase?> _databaseOrNull() async {
     if (_sqliteUnavailable) return null;
+    final ready = _readyDatabase;
+    if (ready != null) return ready;
     try {
       await _database.open();
       _migrationFuture ??= _migrateLegacyChatData();
       await _migrationFuture;
-      return _database;
+      _readyDatabase = _database;
+      return _readyDatabase;
     } on MissingPluginException {
       _sqliteUnavailable = true;
       return null;
