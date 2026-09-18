@@ -72,6 +72,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.messages.length < oldWidget.messages.length) {
+      final liveIds = widget.messages.map((message) => message.id).toSet();
+      _messageKeys.removeWhere((messageId, _) => !liveIds.contains(messageId));
+    }
     if (widget.targetMessageId != null &&
         (widget.targetRequest != oldWidget.targetRequest ||
             widget.targetMessageId != oldWidget.targetMessageId)) {
@@ -254,6 +258,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final retryModels = [
+      for (final provider in widget.providers)
+        for (final model in provider.models)
+          RetryModelOption(
+            providerId: provider.id,
+            providerName: provider.name,
+            modelId: model,
+          ),
+    ];
     return Stack(
       children: [
         Positioned.fill(
@@ -329,15 +342,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       onLearnStyle: canUseCharacterActions
                           ? () => widget.onLearnStyle(index, message)
                           : null,
-                      retryModels: [
-                        for (final provider in widget.providers)
-                          for (final model in provider.models)
-                            RetryModelOption(
-                              providerId: provider.id,
-                              providerName: provider.name,
-                              modelId: model,
-                            ),
-                      ],
+                      retryModels: retryModels,
                       onRetryWithModel: canUseCharacterActions
                           ? (option) => widget.onRetryWithModel(index, option)
                           : null,
