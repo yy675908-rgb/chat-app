@@ -55,6 +55,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _memories = [];
   Map<String, List<String>> _characterMemories = {};
   List<String> _stylePreferences = [];
+  Map<String, List<String>> _characterStylePreferences = {};
   List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
   Map<String, String> _characterMoods = {};
@@ -112,18 +113,26 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     await _chatStore.saveSelectedCharacterId(profile.id);
     final characterMemories = <String, List<String>>{};
+    final characterStylePreferences = <String, List<String>>{};
     final characterMoods = <String, String>{};
-    for (final character in characters) {
-      characterMemories[character.id] = await _chatStore.loadMemories(
-        characterId: character.id,
-      );
-      final mood = _normalizeMood(
-        await _chatStore.loadCharacterMood(character.id),
-      );
-      if (mood.isNotEmpty) characterMoods[character.id] = mood;
-    }
+    await Future.wait([
+      for (final character in characters)
+        () async {
+          final results = await Future.wait<Object>([
+            _chatStore.loadMemories(characterId: character.id),
+            _chatStore.loadStylePreferences(characterId: character.id),
+            _chatStore.loadCharacterMood(character.id),
+          ]);
+          characterMemories[character.id] = results[0] as List<String>;
+          characterStylePreferences[character.id] =
+              results[1] as List<String>;
+          final mood = _normalizeMood(results[2] as String);
+          if (mood.isNotEmpty) characterMoods[character.id] = mood;
+        }(),
+    ]);
     final memories = characterMemories[profile.id] ?? const <String>[];
-    final stylePreferences = await _chatStore.loadStylePreferences();
+    final stylePreferences =
+        characterStylePreferences[profile.id] ?? const <String>[];
     final worldBooks = await _chatStore.loadWorldBooks();
     final characterMood = characterMoods[profile.id] ?? '';
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
@@ -166,6 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _memories = memories;
       _characterMemories = characterMemories;
       _stylePreferences = stylePreferences;
+      _characterStylePreferences = characterStylePreferences;
       _worldBooks = worldBooks;
       _characterMood = characterMood;
       _characterMoods = characterMoods;
@@ -1383,9 +1393,17 @@ class _ChatScreenState extends State<ChatScreen> {
         if (mounted) _showMessage('这条回复没有产生新的回应偏好');
         return;
       }
-      final latest = await _chatStore.loadStylePreferences();
+      final latest = await _chatStore.loadStylePreferences(
+        characterId: sourceCharacterId,
+      );
       if (!mounted) return;
-      setState(() => _stylePreferences = latest);
+      setState(() {
+        _characterStylePreferences = {
+          ..._characterStylePreferences,
+          sourceCharacterId: latest,
+        };
+        if (_profile.id == sourceCharacterId) _stylePreferences = latest;
+      });
       _showMessage('已提炼回应偏好，可在“记忆与世界”中编辑');
     } on Object {
       if (mounted) {
@@ -1397,8 +1415,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _openFavorites() async {
     _scaffoldKey.currentState?.closeDrawer();
     final entries = <FavoriteReplyEntry>[];
-    for (final conversation in _conversations) {
-      final messages = await _chatStore.loadMessages(conversation.id);
+    final loadedMessages = await Future.wait([
+      for (final conversation in _conversations)
+        _chatStore.loadMessages(conversation.id),
+    ]);
+    for (var conversationIndex = 0;
+        conversationIndex < _conversations.length;
+        conversationIndex++) {
+      final conversation = _conversations[conversationIndex];
+      final messages = loadedMessages[conversationIndex];
       for (final message in messages) {
         if (message.author != MessageAuthor.character) continue;
         for (final variant in message.replyVariants) {
@@ -1482,7 +1507,11 @@ class _ChatScreenState extends State<ChatScreen> {
       userProfile: _userProfile,
       activeMemories:
           _characterMemories[activeCharacter.id] ?? const <String>[],
-      stylePreferences: _stylePreferences,
+      stylePreferences:
+          _characterStylePreferences[activeCharacter.id] ??
+          (_profile.id == activeCharacter.id
+              ? _stylePreferences
+              : const <String>[]),
       worldBooks: _worldBooks,
       visibleMessages: _messages.where(_isMessageVisible).toList(),
       currentConversation: _currentConversation,
@@ -1976,13 +2005,19 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
     final memories = await _chatStore.loadMemories(characterId: _profile.id);
-    final preferences = await _chatStore.loadStylePreferences();
+    final preferences = await _chatStore.loadStylePreferences(
+      characterId: _profile.id,
+    );
     final worldBooks = await _chatStore.loadWorldBooks();
     if (!mounted) return;
     setState(() {
       _memories = memories;
       _characterMemories = {..._characterMemories, _profile.id: memories};
       _stylePreferences = preferences;
+      _characterStylePreferences = {
+        ..._characterStylePreferences,
+        _profile.id: preferences,
+      };
       _worldBooks = worldBooks;
     });
   }
@@ -2242,22 +2277,32 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     await _chatStore.saveSelectedCharacterId(profile.id);
-    final conversations = await _chatStore.loadConversations(
-      characterId: profile.id,
-    );
+    final loaded = await Future.wait<Object>([
+      _chatStore.loadConversations(characterId: profile.id),
+      _chatStore.loadMemories(characterId: profile.id),
+      _chatStore.loadStylePreferences(characterId: profile.id),
+      _chatStore.loadCharacterMood(profile.id),
+    ]);
+    final conversations = loaded[0] as List<Conversation>;
+    final memories = loaded[1] as List<String>;
+    final stylePreferences = loaded[2] as List<String>;
+    final mood = _normalizeMood(loaded[3] as String);
     final current = conversations.first;
     final messages = await _messagesWithGreeting(
       current.id,
       profile,
       isGroup: current.isGroup,
     );
-    final memories = await _chatStore.loadMemories(characterId: profile.id);
-    final mood = _normalizeMood(await _chatStore.loadCharacterMood(profile.id));
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _memories = memories;
       _characterMemories = {..._characterMemories, profile.id: memories};
+      _stylePreferences = stylePreferences;
+      _characterStylePreferences = {
+        ..._characterStylePreferences,
+        profile.id: stylePreferences,
+      };
       _conversations = conversations;
       _currentConversation = current;
       _messages = messages;
