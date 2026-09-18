@@ -279,6 +279,41 @@ class ChatStore {
     );
   }
 
+  Future<void> saveConversation(Conversation conversation) async {
+    final database = await _databaseOrNull();
+    if (database != null) {
+      await database.upsertConversation(conversation);
+      return;
+    }
+
+    final preferences = await _prefs();
+    final raw = preferences.getString(_conversationsKey);
+    final conversations = <Conversation>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        conversations.addAll(
+          (jsonDecode(raw) as List<dynamic>).map(
+            (item) =>
+                Conversation.fromJson(Map<String, Object?>.from(item as Map)),
+          ),
+        );
+      } on Object {
+        // Replace malformed storage with the conversation being saved.
+      }
+    }
+    final index = conversations.indexWhere((item) => item.id == conversation.id);
+    if (index < 0) {
+      conversations.add(conversation);
+    } else {
+      conversations[index] = conversation;
+    }
+    conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await preferences.setString(
+      _conversationsKey,
+      jsonEncode(conversations.map((item) => item.toJson()).toList()),
+    );
+  }
+
   Future<List<ChatMessage>> loadMessages(String conversationId) async {
     final database = await _databaseOrNull();
     if (database != null) return database.loadMessages(conversationId);
