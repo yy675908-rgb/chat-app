@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
+import 'package:character_chat_app/models/proactive_message_settings.dart';
 import 'package:character_chat_app/models/user_profile.dart';
 import 'package:character_chat_app/services/backup_migrator.dart';
 import 'package:character_chat_app/services/backup_service.dart';
 import 'package:character_chat_app/services/chat_store.dart';
+import 'package:character_chat_app/services/proactive_message_store.dart';
 import 'package:character_chat_app/services/provider_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -175,6 +177,17 @@ void main() {
     );
     await chatStore.saveAutoMemoryEnabled(false);
 
+    const proactiveStore = ProactiveMessageStore();
+    await proactiveStore.saveSettings(
+      const ProactiveMessageSettings(
+        enabled: true,
+        enabledCharacterIds: ['lin'],
+        frequency: ProactiveFrequency.frequent,
+        quietStartMinutes: 22 * 60,
+        quietEndMinutes: 7 * 60,
+      ),
+    );
+
     final raw = await BackupService(
       chatStore: chatStore,
       providerStore: providerStore,
@@ -188,6 +201,11 @@ void main() {
     expect(data.containsKey('characterMoods'), isFalse);
     expect(data['userProfile']['name'], '小满');
     expect(data['autoMemoryEnabled'], isFalse);
+    expect(data['proactiveMessageSettings']['enabled'], isTrue);
+    expect(
+      data['proactiveMessageSettings']['frequency'],
+      ProactiveFrequency.frequent.name,
+    );
     expect(
       data['characterMemorySources'][selectedCharacter.id]['只属于当前角色的记忆'],
       existing.first.id,
@@ -208,6 +226,14 @@ void main() {
 
     await chatStore.saveMemories(['临时覆盖'], characterId: selectedCharacter.id);
     await chatStore.saveAutoMemoryEnabled(true);
+    await proactiveStore.saveSettings(const ProactiveMessageSettings());
+    await proactiveStore.savePlan(
+      ProactiveMessagePlan(
+        characterId: selectedCharacter.id,
+        characterName: selectedCharacter.name,
+        dueAt: DateTime(2026, 9, 20, 9),
+      ),
+    );
     await chatStore.saveMemorySources(selectedCharacter.id, {});
     await chatStore.saveStylePreferenceSources({});
     await chatStore.saveCharacterStatusSource(selectedCharacter.id, '');
@@ -224,6 +250,10 @@ void main() {
       '只属于当前角色的记忆',
     ]);
     expect(await chatStore.loadAutoMemoryEnabled(), isFalse);
+    final restoredProactive = await proactiveStore.loadSettings();
+    expect(restoredProactive.enabled, isTrue);
+    expect(restoredProactive.frequency, ProactiveFrequency.frequent);
+    expect(await proactiveStore.loadPlan(), isNull);
     expect(
       (await chatStore.loadMemorySources(selectedCharacter.id))['只属于当前角色的记忆'],
       existing.first.id,
