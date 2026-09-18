@@ -89,7 +89,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
               child: TextField(
                 controller: _controller,
-                autofocus: true,
+                autofocus: false,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _search(),
                 decoration: InputDecoration(
