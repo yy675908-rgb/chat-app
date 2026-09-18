@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
+import '../models/chat_search_result.dart';
 import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/world_book_entry.dart';
@@ -18,6 +19,7 @@ import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
 import 'app_settings_screen.dart';
 import 'character_screen.dart';
+import 'chat_search_screen.dart';
 import 'favorites_screen.dart';
 import 'memory_screen.dart';
 
@@ -606,6 +608,53 @@ class _ChatScreenState extends State<ChatScreen> {
       _providers = providers;
       _selectedProvider = selected;
     });
+  }
+
+  Future<void> _openChatSearch() async {
+    _scaffoldKey.currentState?.closeDrawer();
+    final result = await Navigator.of(context).push<ChatSearchResult>(
+      MaterialPageRoute<ChatSearchResult>(
+        builder: (_) => ChatSearchScreen(characters: _characters),
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _openSearchResult(result);
+  }
+
+  Future<void> _openSearchResult(ChatSearchResult result) async {
+    final conversation = result.conversation;
+    if (conversation.isGroup) {
+      if (!_groupScope) await _switchToGroupScope();
+    } else {
+      CharacterProfile? targetProfile;
+      for (final character in _characters) {
+        if (character.id == conversation.characterId) {
+          targetProfile = character;
+          break;
+        }
+      }
+      if (targetProfile == null) {
+        _showMessage('这段对话对应的角色已不存在');
+        return;
+      }
+      if (_groupScope || _profile.id != targetProfile.id) {
+        await _switchCharacter(targetProfile);
+      }
+    }
+    if (!mounted) return;
+
+    Conversation? targetConversation;
+    for (final item in _conversations) {
+      if (item.id == conversation.id) {
+        targetConversation = item;
+        break;
+      }
+    }
+    if (targetConversation == null) {
+      _showMessage('这段对话已不存在');
+      return;
+    }
+    await _selectConversation(targetConversation);
   }
 
   Future<void> _openProviderSettings() async {
@@ -2902,6 +2951,7 @@ class _ChatScreenState extends State<ChatScreen> {
           selectedId: _currentConversation?.id,
           onNew: _newConversation,
           onNewGroup: _newGroupConversation,
+          onSearch: _openChatSearch,
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
           onRename: _renameConversation,
@@ -3236,6 +3286,7 @@ class _ConversationDrawer extends StatelessWidget {
     required this.selectedId,
     required this.onNew,
     required this.onNewGroup,
+    required this.onSearch,
     required this.onSelect,
     required this.onDelete,
     required this.onRename,
@@ -3255,6 +3306,7 @@ class _ConversationDrawer extends StatelessWidget {
   final String? selectedId;
   final VoidCallback onNew;
   final VoidCallback onNewGroup;
+  final VoidCallback onSearch;
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
   final ValueChanged<Conversation> onRename;
@@ -3364,6 +3416,18 @@ class _ConversationDrawer extends StatelessWidget {
                       : Icons.add_comment_outlined,
                 ),
                 label: Text(groupScope ? '新群聊' : '新对话'),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: OutlinedButton.icon(
+                onPressed: onSearch,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  alignment: Alignment.centerLeft,
+                ),
+                icon: const Icon(Icons.search_rounded, size: 19),
+                label: const Text('搜索聊天记录'),
               ),
             ),
             Padding(

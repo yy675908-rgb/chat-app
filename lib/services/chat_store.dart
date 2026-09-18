@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
+import '../models/chat_search_result.dart';
 import '../models/conversation.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import 'chat_database.dart';
+import 'mood_codec.dart';
 
 class ChatStore {
   ChatStore({ChatDatabase? database}) : _database = database ?? ChatDatabase();
@@ -304,6 +306,42 @@ class ChatStore {
 
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove('$_messagesPrefix$conversationId');
+  }
+
+  Future<List<ChatSearchResult>> searchMessages(
+    String query, {
+    int limit = 100,
+  }) async {
+    final term = query.trim();
+    if (term.isEmpty || limit <= 0) return const [];
+
+    final database = await _databaseOrNull();
+    if (database != null) {
+      return database.searchMessages(term, limit: limit);
+    }
+
+    final normalized = term.toLowerCase();
+    final conversations = await loadConversations();
+    final results = <ChatSearchResult>[];
+    for (final conversation in conversations) {
+      final messages = await loadMessages(conversation.id);
+      for (final message in messages) {
+        if (message.author == MessageAuthor.system || message.isRetracted) {
+          continue;
+        }
+        final visibleText = MoodCodec.stripMetadata(message.text).trim();
+        if (visibleText.isEmpty ||
+            !visibleText.toLowerCase().contains(normalized)) {
+          continue;
+        }
+        results.add(
+          ChatSearchResult(conversation: conversation, message: message),
+        );
+      }
+    }
+    results.sort((a, b) => b.message.sentAt.compareTo(a.message.sentAt));
+    if (results.length <= limit) return results;
+    return results.sublist(0, limit);
   }
 
   List<ChatMessage> _decodeMessages(String? raw) {
