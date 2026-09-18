@@ -299,17 +299,20 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     );
                   }
 
-                  return AnimatedContainer(
-                    key: key,
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    decoration: BoxDecoration(
-                      color: isHighlighted
-                          ? scheme.primaryContainer.withValues(alpha: 0.42)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
+                  return KeyedSubtree(
+                    key: ValueKey<String>('chat-message-${message.id}'),
+                    child: AnimatedContainer(
+                      key: key,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      decoration: BoxDecoration(
+                        color: isHighlighted
+                            ? scheme.primaryContainer.withValues(alpha: 0.42)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: child,
                     ),
-                    child: child,
                   );
                 },
               ),
