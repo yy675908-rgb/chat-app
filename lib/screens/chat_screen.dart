@@ -18,6 +18,7 @@ import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
 import '../services/mood_codec.dart';
 import '../services/provider_store.dart';
+import '../services/reply_stream_accumulator.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/conversation_drawer.dart';
@@ -1014,8 +1015,6 @@ class _ChatScreenState extends State<ChatScreen> {
     ChatMessage? newReply;
     ReplyVariant? streamingVariant;
     List<ChatMessage>? retrySnapshot;
-    DateTime? reasoningStartedAt;
-    DateTime? answerStartedAt;
     if (isRetry) {
       if (targetReplyIndex < 0 || targetReplyIndex >= _messages.length) return;
       replyIndex = targetReplyIndex;
@@ -1090,9 +1089,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     final service = AiChatService();
     _activeService = service;
-    var fullReply = '';
-    var fullReasoning = '';
-    var usage = const AiTokenUsage();
+    final streamState = ReplyStreamAccumulator();
     var replyCompleted = false;
     try {
       await for (final event in service.streamEvents(
@@ -1101,36 +1098,24 @@ class _ChatScreenState extends State<ChatScreen> {
         systemPrompt: systemPrompt,
         history: recent,
       )) {
-        if (event.kind == AiStreamEventKind.content) {
-          answerStartedAt ??= DateTime.now();
-          fullReply += event.text;
-        } else if (event.kind == AiStreamEventKind.reasoning) {
-          reasoningStartedAt ??= DateTime.now();
-          fullReasoning += event.text;
-        } else if (event.usage != null) {
-          usage = usage.merge(event.usage!);
-        }
+        streamState.add(event);
         if (!mounted || _cancelled) return;
         if (event.kind != AiStreamEventKind.usage) {
-          final reasoningDurationMs = reasoningStartedAt == null
-              ? 0
-              : (answerStartedAt ?? DateTime.now())
-                    .difference(reasoningStartedAt)
-                    .inMilliseconds;
+          final reasoningDurationMs = streamState.reasoningDurationMs();
           setState(() {
             if (isRetry) {
               final current = _messages[replyIndex];
               final variants = [...current.replyVariants];
               variants[current.activeVariantIndex] = streamingVariant!.copyWith(
-                text: _visibleReplyWhileStreaming(fullReply),
-                reasoning: fullReasoning,
+                text: _visibleReplyWhileStreaming(streamState.fullReply),
+                reasoning: streamState.fullReasoning,
                 reasoningDurationMs: reasoningDurationMs,
               );
               _messages[replyIndex] = current.copyWith(replyVariants: variants);
             } else {
               _messages[replyIndex] = newReply!.copyWith(
-                text: _visibleReplyWhileStreaming(fullReply),
-                reasoning: fullReasoning,
+                text: _visibleReplyWhileStreaming(streamState.fullReply),
+                reasoning: streamState.fullReasoning,
                 reasoningDurationMs: reasoningDurationMs,
               );
             }
@@ -1141,17 +1126,13 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       }
-      final parsedReply = _splitMoodFromReply(fullReply);
+      final parsedReply = _splitMoodFromReply(streamState.fullReply);
       final replyText = parsedReply.text;
       if (!_cancelled && replyText.isEmpty) {
         throw const AiChatException('模型没有返回文字，请检查模型 ID 和接口类型');
       }
       if (!_cancelled && mounted) {
-        final reasoningDurationMs = reasoningStartedAt == null
-            ? 0
-            : (answerStartedAt ?? DateTime.now())
-                  .difference(reasoningStartedAt)
-                  .inMilliseconds;
+        final reasoningDurationMs = streamState.reasoningDurationMs();
         final variant = ReplyVariant(
           id:
               streamingVariant?.id ??
@@ -1160,12 +1141,12 @@ class _ChatScreenState extends State<ChatScreen> {
           generatedAt: DateTime.now(),
           providerId: provider.id,
           modelId: provider.selectedModel,
-          reasoning: fullReasoning.trim(),
+          reasoning: streamState.fullReasoning.trim(),
           reasoningDurationMs: reasoningDurationMs,
-          promptTokens: usage.promptTokens,
-          completionTokens: usage.completionTokens,
-          reasoningTokens: usage.reasoningTokens,
-          totalTokens: usage.totalTokens,
+          promptTokens: streamState.usage.promptTokens,
+          completionTokens: streamState.usage.completionTokens,
+          reasoningTokens: streamState.usage.reasoningTokens,
+          totalTokens: streamState.usage.totalTokens,
         );
         final previousMood = _moodForCharacter(speakingCharacter.id);
         final nextMood = parsedReply.mood.toUpperCase() == 'SAME'
@@ -1180,12 +1161,12 @@ class _ChatScreenState extends State<ChatScreen> {
           } else {
             _messages[replyIndex] = newReply!.copyWith(
               text: replyText,
-              reasoning: fullReasoning.trim(),
+              reasoning: streamState.fullReasoning.trim(),
               reasoningDurationMs: reasoningDurationMs,
-              promptTokens: usage.promptTokens,
-              completionTokens: usage.completionTokens,
-              reasoningTokens: usage.reasoningTokens,
-              totalTokens: usage.totalTokens,
+              promptTokens: streamState.usage.promptTokens,
+              completionTokens: streamState.usage.completionTokens,
+              reasoningTokens: streamState.usage.reasoningTokens,
+              totalTokens: streamState.usage.totalTokens,
               replyVariants: [variant],
               activeVariantIndex: 0,
             );
@@ -1227,7 +1208,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!_cancelled && mounted) {
         if (isRetry) {
           setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex && fullReply.isEmpty) {
+        } else if (_messages.length > replyIndex && streamState.fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError(error.message);
@@ -1236,7 +1217,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!_cancelled && mounted) {
         if (isRetry) {
           setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex && fullReply.isEmpty) {
+        } else if (_messages.length > replyIndex && streamState.fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError('回复失败：$error');
