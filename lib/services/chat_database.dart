@@ -181,6 +181,28 @@ class ChatDatabase {
     });
   }
 
+  Future<void> upsertConversation(Conversation conversation) async {
+    final db = await open();
+    final values = <String, Object?>{
+      'id': conversation.id,
+      'character_id': conversation.characterId,
+      'is_group': conversation.isGroup ? 1 : 0,
+      'updated_at': conversation.updatedAt.millisecondsSinceEpoch,
+      'payload': jsonEncode(conversation.toJson()),
+    };
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+        'conversations',
+        values,
+        where: 'id = ?',
+        whereArgs: [conversation.id],
+      );
+      if (updated == 0) {
+        await txn.insert('conversations', values);
+      }
+    });
+  }
+
   Future<List<ChatMessage>> loadMessages(String conversationId) async {
     final db = await open();
     final rows = await db.query(
