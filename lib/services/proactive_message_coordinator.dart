@@ -47,6 +47,41 @@ class ProactiveMessageCoordinator {
     return plan;
   }
 
+  Future<ProactiveMessagePlan?> postponeCurrent({
+    required List<CharacterProfile> characters,
+    DateTime? now,
+  }) async {
+    final settings = await _store.loadSettings();
+    if (!settings.enabled) return null;
+    final current = await _store.loadPlan();
+    if (current == null) {
+      return reschedule(characters: characters, now: now);
+    }
+    CharacterProfile? target;
+    for (final character in characters) {
+      if (character.id == current.characterId &&
+          settings.enabledCharacterIds.contains(character.id)) {
+        target = character;
+        break;
+      }
+    }
+    if (target == null) {
+      return reschedule(
+        characters: characters,
+        now: now,
+        previousCharacterId: current.characterId,
+      );
+    }
+    final plan = ProactiveMessagePlanner.planForCharacter(
+      settings: settings,
+      character: target,
+      now: now ?? DateTime.now(),
+    );
+    await _store.savePlan(plan);
+    await _notifications.schedule(plan);
+    return plan;
+  }
+
   Future<ProactiveMessagePlan?> consumeDue({
     required List<CharacterProfile> characters,
     DateTime? now,
