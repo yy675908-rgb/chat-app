@@ -16,6 +16,7 @@ import '../services/group_reply_policy.dart';
 import '../services/mood_codec.dart';
 import '../services/provider_store.dart';
 import '../widgets/chat_composer.dart';
+import '../widgets/chat_message_list.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
@@ -3137,132 +3138,29 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       )
-                    : Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Listener(
-                              onPointerDown: (_) {
-                                _pointerHoldingMessages = true;
-                              },
-                              onPointerUp: (_) {
-                                _pointerHoldingMessages = false;
-                                _updateStreamingFollow();
-                              },
-                              onPointerCancel: (_) {
-                                _pointerHoldingMessages = false;
-                                _updateStreamingFollow();
-                              },
-                              child: NotificationListener<ScrollNotification>(
-                                onNotification: (notification) {
-                                  if (notification
-                                          is ScrollUpdateNotification &&
-                                      notification.dragDetails != null) {
-                                    _updateStreamingFollow();
-                                  } else if (notification
-                                      is ScrollEndNotification) {
-                                    _updateStreamingFollow();
-                                  }
-                                  return false;
-                                },
-                                child: ListView.builder(
-                                  controller: _scrollController,
-                                  keyboardDismissBehavior:
-                                      ScrollViewKeyboardDismissBehavior.onDrag,
-                                  padding: const EdgeInsets.fromLTRB(
-                                    15,
-                                    12,
-                                    15,
-                                    24,
-                                  ),
-                                  itemCount: visibleMessageIndices.length,
-                                  itemBuilder: (context, visibleIndex) {
-                                    final index =
-                                        visibleMessageIndices[visibleIndex];
-                                    final message = _messages[index];
-                                    if (_generating &&
-                                        _activeRetryIndex == null &&
-                                        message.id == _activeReplyId &&
-                                        message.author ==
-                                            MessageAuthor.character &&
-                                        message.text.isEmpty &&
-                                        message.reasoning.isEmpty) {
-                                      return _ThinkingRow(
-                                        name: _speakerName(message),
-                                      );
-                                    }
-                                    final canUseCharacterActions =
-                                        message.author ==
-                                            MessageAuthor.character &&
-                                        message.text.isNotEmpty &&
-                                        !_isBusy;
-                                    final canEdit =
-                                        message.author !=
-                                            MessageAuthor.system &&
-                                        message.text.isNotEmpty &&
-                                        !_isBusy;
-                                    return MessageBubble(
-                                      message: message,
-                                      characterName: _speakerName(message),
-                                      reasoningInitiallyExpanded:
-                                          _reasoningExpanded,
-                                      showActions: canEdit,
-                                      onEdit: canEdit
-                                          ? () => _editMessage(index)
-                                          : null,
-                                      onPreviousVariant:
-                                          canUseCharacterActions &&
-                                              message.activeVariantIndex > 0
-                                          ? () => _moveVariant(index, -1)
-                                          : null,
-                                      onNextVariant:
-                                          canUseCharacterActions &&
-                                              message.activeVariantIndex <
-                                                  message.replyVariants.length -
-                                                      1
-                                          ? () => _moveVariant(index, 1)
-                                          : null,
-                                      onLike: canUseCharacterActions
-                                          ? () => _toggleLike(index)
-                                          : null,
-                                      onLearnStyle: canUseCharacterActions
-                                          ? () => _extractStylePreference(
-                                              index,
-                                              message,
-                                            )
-                                          : null,
-                                      retryModels: [
-                                        for (final provider in _providers)
-                                          for (final model in provider.models)
-                                            RetryModelOption(
-                                              providerId: provider.id,
-                                              providerName: provider.name,
-                                              modelId: model,
-                                            ),
-                                      ],
-                                      onRetryWithModel: canUseCharacterActions
-                                          ? (option) =>
-                                                _retryReply(index, option)
-                                          : null,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (!_followStreamingOutput)
-                            Positioned(
-                              right: 14,
-                              bottom: 12,
-                              child: FloatingActionButton.small(
-                                tooltip: '回到最新消息',
-                                onPressed: _resumeStreamingFollow,
-                                child: const Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                    : ChatMessageList(
+                        controller: _scrollController,
+                        messages: _messages,
+                        visibleMessageIndices: visibleMessageIndices,
+                        generating: _generating,
+                        busy: _isBusy,
+                        activeRetryIndex: _activeRetryIndex,
+                        activeReplyId: _activeReplyId,
+                        reasoningExpanded: _reasoningExpanded,
+                        providers: _providers,
+                        speakerName: _speakerName,
+                        followStreamingOutput: _followStreamingOutput,
+                        onPointerHoldingChanged: (value) {
+                          _pointerHoldingMessages = value;
+                        },
+                        onScrollActivity: _updateStreamingFollow,
+                        onResumeStreamingFollow: _resumeStreamingFollow,
+                        onEdit: _editMessage,
+                        onMoveVariant: _moveVariant,
+                        onLike: _toggleLike,
+                        onLearnStyle: _extractStylePreference,
+                        onRetryWithModel: _retryReply,
+                      )
               ),
               ChatComposer(
                 controller: _controller,
@@ -3291,47 +3189,6 @@ String _intimacyBehavior(int value) {
   return '$value/100（${_intimacyLabel(value)}）。'
       '这是用户对角色的主观好感和接受程度，不是关系类型。'
       '角色可以自行决定是否在意，以及是否想提高、维持或改变它。';
-}
-
-class _ThinkingRow extends StatelessWidget {
-  const _ThinkingRow({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: scheme.secondaryContainer,
-            child: Text(
-              name.isEmpty ? '林' : name.characters.first,
-              style: TextStyle(
-                color: scheme.onSecondaryContainer,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 11),
-          const SizedBox(
-            width: 15,
-            height: 15,
-            child: CircularProgressIndicator(strokeWidth: 1.8),
-          ),
-          const SizedBox(width: 9),
-          Text(
-            '$name 正在想…',
-            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _TaggedReply {
