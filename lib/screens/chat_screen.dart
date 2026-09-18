@@ -746,10 +746,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _queueReply();
   }
 
+  Map<String, String> _activeVariantIdsFor(List<ChatMessage> messages) {
+    return <String, String>{
+      for (final message in messages)
+        if (message.activeVariant case final variant?)
+          message.id: variant.id,
+    };
+  }
+
+  bool _isVisibleWithActiveVariants(
+    ChatMessage message,
+    Map<String, String> activeVariantIds,
+  ) {
+    for (final binding in message.branchBindings.entries) {
+      if (activeVariantIds[binding.key] != binding.value) return false;
+    }
+    return true;
+  }
+
+  List<ChatMessage> _visibleMessagesFor(List<ChatMessage> messages) {
+    final activeVariantIds = _activeVariantIdsFor(messages);
+    return [
+      for (final message in messages)
+        if (_isVisibleWithActiveVariants(message, activeVariantIds)) message,
+    ];
+  }
+
   Map<String, String> _activeBranchBindings() {
     final bindings = <String, String>{};
+    final activeVariantIds = _activeVariantIdsFor(_messages);
     for (final message in _messages) {
-      if (!_isMessageVisible(message)) continue;
+      if (!_isVisibleWithActiveVariants(message, activeVariantIds)) continue;
       final variant = message.activeVariant;
       if (message.author == MessageAuthor.character &&
           message.replyVariants.length > 1 &&
@@ -761,25 +788,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   bool _isMessageVisible(ChatMessage message) {
-    for (final binding in message.branchBindings.entries) {
-      ChatMessage? ancestor;
-      for (final candidate in _messages) {
-        if (candidate.id == binding.key) {
-          ancestor = candidate;
-          break;
-        }
-      }
-      if (ancestor == null || ancestor.activeVariant?.id != binding.value) {
-        return false;
-      }
-    }
-    return true;
+    return _isVisibleWithActiveVariants(
+      message,
+      _activeVariantIdsFor(_messages),
+    );
   }
 
-  List<int> get _visibleMessageIndices => [
-    for (var index = 0; index < _messages.length; index++)
-      if (_isMessageVisible(_messages[index])) index,
-  ];
+  List<int> get _visibleMessageIndices {
+    final activeVariantIds = _activeVariantIdsFor(_messages);
+    return [
+      for (var index = 0; index < _messages.length; index++)
+        if (_isVisibleWithActiveVariants(_messages[index], activeVariantIds))
+          index,
+    ];
+  }
 
   CharacterProfile? _characterForId(String id) {
     for (final character in _characters) {
@@ -839,7 +861,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _showMessage('这个群聊的有效角色不足两个');
       return;
     }
-    final visible = _messages.where(_isMessageVisible).toList();
+    final visible = _visibleMessagesFor(_messages);
     ChatMessage? latestUser;
     for (var index = visible.length - 1; index >= 0; index--) {
       if (visible[index].author == MessageAuthor.user) {
@@ -896,7 +918,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       spokenIds.add(speaker.id);
       lastSpeakerId = speaker.id;
-      final latestVisible = _messages.where(_isMessageVisible).toList();
+      final latestVisible = _visibleMessagesFor(_messages);
       userReplyCovered = !GroupReplyPolicy.latestUserNeedsReply(latestVisible);
       if (!userReplyCovered) {
         for (var index = latestVisible.length - 1; index >= 0; index--) {
@@ -918,7 +940,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (provider == null) return const [];
     final apiKey = await _providerStore.loadApiKey(provider.id);
     if (apiKey.trim().isEmpty) return const [];
-    final visible = _messages.where(_isMessageVisible).toList();
+    final visible = _visibleMessagesFor(_messages);
     final start = visible.length > 16 ? visible.length - 16 : 0;
     final transcript = visible
         .sublist(start)
@@ -1034,9 +1056,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (isRetry) {
         final previousVariantId =
             originalReply!.activeVariant?.id ?? 'original-${originalReply.id}';
+        final activeVariantIds = _activeVariantIdsFor(_messages);
         final visibleDescendants = <int>[
           for (var index = replyIndex + 1; index < _messages.length; index++)
-            if (_isMessageVisible(_messages[index])) index,
+            if (_isVisibleWithActiveVariants(
+              _messages[index],
+              activeVariantIds,
+            ))
+              index,
         ];
         for (final index in visibleDescendants) {
           final descendant = _messages[index];
@@ -1063,10 +1090,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom();
 
-    final contextMessages = _messages
-        .take(replyIndex)
-        .where(_isMessageVisible)
-        .toList();
+    final contextMessages = _visibleMessagesFor(
+      _messages.take(replyIndex).toList(),
+    );
     final systemPrompt = _assembledSystemPrompt(
       contextMessages: contextMessages,
       character: speakingCharacter,
@@ -1538,7 +1564,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ? _stylePreferences
               : const <String>[]),
       worldBooks: _worldBooks,
-      visibleMessages: _messages.where(_isMessageVisible).toList(),
+      visibleMessages: _visibleMessagesFor(_messages),
       currentConversation: _currentConversation,
       branchKey: _currentBranchKey(),
       groupParticipants: _groupParticipants,
@@ -1695,8 +1721,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     final conversationId = current.id;
-    final visible = _messages
-        .where(_isMessageVisible)
+    final visible = _visibleMessagesFor(_messages)
         .where((message) => message.author != MessageAuthor.system)
         .toList();
     final userTurns = visible
@@ -1820,7 +1845,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     final current = _currentConversation;
     if (current == null) return;
-    final visible = _messages.where(_isMessageVisible).toList();
+    final visible = _visibleMessagesFor(_messages);
     final branchKey = _currentBranchKey();
     final promptKey = '${current.id}|$branchKey';
     final promptedAt = _compressionPromptedAtCounts[promptKey] ?? 0;
@@ -1877,7 +1902,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final apiKey = await _providerStore.loadApiKey(provider.id);
     if (apiKey.trim().isEmpty || !mounted) return;
 
-    final visible = _messages.where(_isMessageVisible).toList();
+    final visible = _visibleMessagesFor(_messages);
     if (visible.length <= 14) return;
     final branchKey = _currentBranchKey();
     final markerId = current.summarizedThroughMessageIds[branchKey] ?? '';
