@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
+import 'api_error_diagnostics.dart';
 import '../models/provider_profile.dart';
 import 'memory_selector.dart';
 
@@ -522,7 +523,10 @@ class AiChatService {
         continue;
       }
       throw AiChatException(
-        '接口返回 ${response.statusCode}：${_readError(responseBody)}',
+        ApiErrorDiagnostics.describeHttpFailure(
+          response.statusCode,
+          _readError(responseBody),
+        ),
       );
     }
     throw const AiChatException('模型服务暂时不可用，请稍后重试');
