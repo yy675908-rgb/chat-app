@@ -56,26 +56,6 @@ class ChatContextBuilder {
         ? ''
         : '\n\n当前对话较早内容的摘要：\n$currentSummary';
 
-    final previousSummaries = conversations
-        .where(
-          (conversation) =>
-              conversation.id != currentConversation?.id &&
-              conversation.branchSummaries.isNotEmpty,
-        )
-        .take(3)
-        .map((conversation) {
-          final summary = conversation.branchSummaries.values.last;
-          final compact = summary.characters.length > 320
-              ? '${summary.characters.take(320).join()}…'
-              : summary;
-          return '- ${conversation.title}：$compact';
-        })
-        .toList();
-    final previousSummaryText = previousSummaries.isEmpty
-        ? ''
-        : '\n\n其他近期对话的简短摘要（仅在相关时参考）：\n'
-              '${previousSummaries.join('\n')}';
-
     final previousMood = savedMood.isEmpty ? '未记录' : savedMood;
     final stateInstruction =
         '\n\n角色心绪协议（强制）：读完用户最新消息并完成正文回复后，'
