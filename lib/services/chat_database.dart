@@ -296,6 +296,15 @@ class ChatDatabase {
     });
   }
 
+  Future<void> deleteConversation(String conversationId) async {
+    final db = await open();
+    await db.delete(
+      'conversations',
+      where: 'id = ?',
+      whereArgs: [conversationId],
+    );
+  }
+
   Future<void> deleteMessages(String conversationId) async {
     final db = await open();
     await db.delete(
