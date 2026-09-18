@@ -3,8 +3,7 @@ import '../models/chat_message.dart';
 class MemorySelector {
   const MemorySelector._();
 
-  static const _maxInjectedMemories = 8;
-  static const _minimumFallbackMemories = 6;
+  static const _maxInjectedMemories = 6;
   static const _memoryMarkers = <String>[
     '你和用户的共同记忆（仅属于你们这段关系）：\n',
     '你和用户的共同记忆：\n',
@@ -58,12 +57,7 @@ class MemorySelector {
     final context = visible.sublist(start).map((message) => message.text).join(' ');
     final contextFeatures = _features(context);
 
-    final selectedIndexes = <int>{
-      0,
-      if (memories.length > 1) 1,
-      memories.length - 1,
-      if (memories.length > 2) memories.length - 2,
-    };
+    final selectedIndexes = <int>{};
 
     final scored = <_ScoredMemory>[];
     for (var index = 0; index < memories.length; index++) {
@@ -87,14 +81,6 @@ class MemorySelector {
     for (final item in scored) {
       if (selectedIndexes.length >= _maxInjectedMemories) break;
       selectedIndexes.add(item.index);
-    }
-
-    for (
-      var index = memories.length - 1;
-      selectedIndexes.length < _minimumFallbackMemories && index >= 0;
-      index--
-    ) {
-      selectedIndexes.add(index);
     }
 
     final ordered = selectedIndexes.toList()..sort();
