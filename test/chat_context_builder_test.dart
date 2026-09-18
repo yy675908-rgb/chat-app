@@ -47,6 +47,48 @@ void main() {
       expect(prompt, isNot(contains('不该出现的摘要')));
     });
 
+    test('prompt injects only memories relevant to the current user topic', () {
+      final now = DateTime(2026, 9, 18, 15);
+      final character = CharacterProfile(
+        id: 'c1',
+        name: '林',
+        status: '',
+        firstMetAt: now,
+        greeting: '',
+        systemPrompt: '角色设定正文。',
+        userIntimacy: 72,
+      );
+      final visible = [
+        ChatMessage(
+          id: 'u1',
+          author: MessageAuthor.user,
+          text: '今天想聊聊陶瓷。',
+          sentAt: now,
+        ),
+      ];
+
+      final prompt = ChatContextBuilder.buildSystemPrompt(
+        activeCharacter: character,
+        selectedProvider: null,
+        userProfile: const UserProfile(),
+        activeMemories: const ['用户喜欢陶瓷', '用户去年换过电脑'],
+        stylePreferences: const [],
+        worldBooks: const [],
+        visibleMessages: visible,
+        currentConversation: null,
+        branchKey: 'root',
+        groupParticipants: const [],
+        savedMood: '',
+        contextMessages: visible,
+        now: now,
+      );
+
+      expect(prompt, contains('用户喜欢陶瓷'));
+      expect(prompt, isNot(contains('用户去年换过电脑')));
+      expect(prompt, isNot(contains('拉长回复')));
+      expect(prompt, isNot(contains('自行增加回复长度')));
+    });
+
     test('context trimming honors summarized-through marker and budget', () {
       final now = DateTime(2026, 9, 18);
       final messages = [
