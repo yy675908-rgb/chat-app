@@ -47,6 +47,42 @@ class ProactiveMessageCoordinator {
     return plan;
   }
 
+  Future<ProactiveMessagePlan?> ensureScheduled({
+    required List<CharacterProfile> characters,
+    DateTime? now,
+  }) async {
+    final settings = await _store.loadSettings();
+    if (!settings.enabled) {
+      await _store.clearPlan();
+      await _notifications.cancel();
+      return null;
+    }
+
+    final currentTime = now ?? DateTime.now();
+    final plan = await _store.loadPlan();
+    if (plan == null) {
+      return reschedule(characters: characters, now: currentTime);
+    }
+
+    final valid = characters.any(
+      (character) =>
+          character.id == plan.characterId &&
+          settings.enabledCharacterIds.contains(character.id),
+    );
+    if (!valid) {
+      return reschedule(
+        characters: characters,
+        now: currentTime,
+        previousCharacterId: plan.characterId,
+      );
+    }
+
+    if (plan.dueAt.isAfter(currentTime)) {
+      await _notifications.schedule(plan);
+    }
+    return plan;
+  }
+
   Future<ProactiveMessagePlan?> postponeCurrent({
     required List<CharacterProfile> characters,
     DateTime? now,
@@ -113,7 +149,7 @@ class ProactiveMessageCoordinator {
     return plan;
   }
 
-  Future<void> scheduleAfterConsumed({
+  Future<ProactiveMessagePlan?> scheduleAfterConsumed({
     required List<CharacterProfile> characters,
     required ProactiveMessagePlan consumed,
     DateTime? now,
