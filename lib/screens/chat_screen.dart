@@ -18,6 +18,7 @@ import '../services/provider_store.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/conversation_drawer.dart';
+import '../widgets/group_conversation_sheet.dart';
 import '../widgets/message_bubble.dart';
 import 'api_settings_screen.dart';
 import 'app_settings_screen.dart';
@@ -275,99 +276,11 @@ class _ChatScreenState extends State<ChatScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
     }
-    final selectedIds = _characters.map((item) => item.id).toSet();
-    final titleController = TextEditingController();
-    final draft = await showModalBottomSheet<_GroupDraft>(
+    final draft = await showGroupConversationSheet(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              18,
-              0,
-              18,
-              MediaQuery.viewInsetsOf(context).bottom + 18,
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.78,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '创建群聊',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: titleController,
-                    autofocus: false,
-                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                    decoration: const InputDecoration(
-                      labelText: '群聊名称（可不填）',
-                      filled: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '选择角色 · 已选 ${selectedIds.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        for (final character in _characters)
-                          CheckboxListTile(
-                            value: selectedIds.contains(character.id),
-                            title: Text(character.name),
-                            subtitle: _moodForCharacter(character.id).isEmpty
-                                ? null
-                                : Text(_moodForCharacter(character.id)),
-                            onChanged: (checked) {
-                              setSheetState(() {
-                                if (checked == true) {
-                                  selectedIds.add(character.id);
-                                } else {
-                                  selectedIds.remove(character.id);
-                                }
-                              });
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: selectedIds.length < 2
-                        ? null
-                        : () => Navigator.pop(
-                            context,
-                            _GroupDraft(
-                              title: titleController.text.trim(),
-                              participantIds: selectedIds.toList(),
-                            ),
-                          ),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                    icon: const Icon(Icons.groups_2_outlined),
-                    label: const Text('创建群聊'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      characters: _characters,
+      moodForCharacter: _moodForCharacter,
     );
-    titleController.dispose();
     if (draft == null) return;
     final participants = _characters
         .where((item) => draft.participantIds.contains(item.id))
@@ -3208,13 +3121,6 @@ class _ModelChoice {
 
   final ProviderProfile provider;
   final String model;
-}
-
-class _GroupDraft {
-  const _GroupDraft({required this.title, required this.participantIds});
-
-  final String title;
-  final List<String> participantIds;
 }
 
 class _CharacterGroupIntent {
