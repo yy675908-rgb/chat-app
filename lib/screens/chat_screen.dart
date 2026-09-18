@@ -11,6 +11,7 @@ import '../models/provider_profile.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
+import '../services/chat_auxiliary_ai_service.dart';
 import '../services/chat_store.dart';
 import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
@@ -41,6 +42,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _chatStore = ChatStore();
   final _providerStore = ProviderStore();
+  final _auxiliaryAiService = const ChatAuxiliaryAiService();
 
   CharacterProfile _profile = CharacterProfile.lin(DateTime.now());
   List<CharacterProfile> _characters = const [];
@@ -1421,30 +1423,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final apiKey = await _providerStore.loadApiKey(provider.id);
     if (apiKey.trim().isEmpty || !mounted) return;
 
-    final service = AiChatService();
-    var raw = '';
     try {
-      final request = ChatMessage(
-        id: 'preference-${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text:
-            '用户当时说：$userContext\n'
-            '用户喜欢的角色回复：${likedReply.text}',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
+      final rule = await _auxiliaryAiService.extractStylePreference(
         provider: provider,
         apiKey: apiKey,
-        systemPrompt:
-            '把用户喜欢的一次回复提炼为一条可复用的说话偏好。'
-            '只输出一行，格式必须为“当……时：……”。'
-            '写清适用情境和回应方式，不复述原话，不写分析，不超过45个汉字。',
-        history: [request],
-        temperature: 0.2,
-      )) {
-        raw += chunk;
-      }
-      final rule = _cleanPreference(raw);
+        userContext: userContext,
+        likedReplyText: likedReply.text,
+      );
       if (rule.isEmpty) return;
       final conversations = await _chatStore.loadConversations();
       if (!conversations.any((item) => item.id == sourceConversationId)) return;
@@ -1465,23 +1450,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         _showMessage('偏好提炼失败，可在“记忆与世界”中手动添加');
       }
-    } finally {
-      service.close();
     }
-  }
-
-  String _cleanPreference(String raw) {
-    var value = raw
-        .trim()
-        .replaceAll(RegExp(r'^[-•*#\s]+'), '')
-        .replaceAll(RegExp(r'\s+'), ' ');
-    if (value.startsWith('“') && value.endsWith('”') && value.length > 2) {
-      value = value.substring(1, value.length - 1);
-    }
-    if (value.characters.length > 70) {
-      value = value.characters.take(70).join();
-    }
-    return value;
   }
 
   Future<void> _openFavorites() async {
@@ -1874,39 +1843,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final existingText = existing.isEmpty
         ? '无'
         : existing.take(20).map((item) => '- $item').join('\n');
-    final service = AiChatService();
-    var raw = '';
     try {
-      final request = ChatMessage(
-        id: 'memory-${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text: '已有共同记忆：\n$existingText\n\n最近一段较长对话：\n$transcript',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
+      final memory = await _auxiliaryAiService.suggestRelationshipMemory(
         provider: provider,
         apiKey: apiKey,
-        systemPrompt:
-            '从较长一段对话中判断是否有一条真正值得长期保留的共同记忆。'
-            '只记录用户明确表达或双方明确发生的稳定事实，例如持续偏好、重要事件、约定、关系变化或长期未完成事项。'
-            '不要记录临时情绪、普通寒暄、模型推测或已经存在的同义记忆。'
-            '没有合适内容时只输出 NONE；有则只输出一条简洁事实，不编号、不解释，最多60个汉字。',
-        history: [request],
-        temperature: 0.1,
-      )) {
-        raw += chunk;
-      }
-      var memory = raw
-          .replaceAll(RegExp(r'[\r\n]+'), ' ')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-      if (memory.isEmpty || memory.toUpperCase() == 'NONE') return;
-      if (memory.startsWith('“') && memory.endsWith('”') && memory.length > 2) {
-        memory = memory.substring(1, memory.length - 1).trim();
-      }
-      if (memory.characters.length > 60) {
-        memory = memory.characters.take(60).join();
-      }
+        existingText: existingText,
+        transcript: transcript,
+      );
       if (memory.isEmpty || !mounted) return;
       if (_currentConversation?.id != conversationId ||
           _currentBranchKey() != sourceBranchKey) {
@@ -1967,7 +1910,6 @@ class _ChatScreenState extends State<ChatScreen> {
     } on Object {
       // Memory extraction is optional; never invalidate a successful reply.
     } finally {
-      service.close();
       _memoryPromptActive = false;
     }
   }
@@ -2129,31 +2071,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     await Future<void>.delayed(const Duration(milliseconds: 80));
 
-    final service = AiChatService();
-    var raw = '';
     try {
-      final request = ChatMessage(
-        id: 'summary-${DateTime.now().microsecondsSinceEpoch}',
-        author: MessageAuthor.user,
-        text:
-            '${previousSummary.isEmpty ? '' : '已有摘要：\n$previousSummary\n\n'}'
-            '新增对话：\n$transcript',
-        sentAt: DateTime.now(),
-      );
-      await for (final chunk in service.streamReply(
+      final summary = await _auxiliaryAiService.summarizeConversation(
         provider: provider,
         apiKey: apiKey,
-        systemPrompt:
-            '把对话整理成可供角色继续交流的紧凑事实摘要。'
-            '保留关系变化、约定、重要事件、用户偏好、未完成事项和必要语境；'
-            '删除寒暄、重复和措辞细节。只输出摘要，不超过600个汉字。',
-        history: [request],
-        temperature: 0.2,
-      )) {
-        raw += chunk;
-      }
-      final summary = _splitMoodFromReply(raw).text.trim();
-      if (summary.isEmpty) throw const AiChatException('模型没有返回摘要');
+        previousSummary: previousSummary,
+        transcript: transcript,
+      );
       final updated = current.copyWith(
         branchSummaries: {...current.branchSummaries, branchKey: summary},
         summarizedThroughMessageIds: {
@@ -2175,7 +2099,6 @@ class _ChatScreenState extends State<ChatScreen> {
     } on Object catch (error) {
       if (mounted) _showError('压缩失败：$error');
     } finally {
-      service.close();
       final dialogContext = progressContext;
       if (dialogContext != null && dialogContext.mounted) {
         Navigator.of(dialogContext).pop();
