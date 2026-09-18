@@ -4,6 +4,7 @@ import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/user_profile.dart';
 import '../models/world_book_entry.dart';
+import 'memory_selector.dart';
 
 class ChatContextBuilder {
   const ChatContextBuilder._();
@@ -25,10 +26,14 @@ class ChatContextBuilder {
   }) {
     final context =
         '\n\n当前本地日期和时间（以此为准）：${formatPromptTime(now)}';
-    final memoryText = activeMemories.isEmpty
+    final selectedMemories = MemorySelector.selectRelevant(
+      activeMemories,
+      visibleMessages,
+    );
+    final memoryText = selectedMemories.isEmpty
         ? ''
         : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
-              '${activeMemories.map((memory) => '- $memory').join('\n')}';
+              '${selectedMemories.map((memory) => '- $memory').join('\n')}';
     final preferenceText = stylePreferences.isEmpty
         ? ''
         : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
