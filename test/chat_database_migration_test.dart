@@ -202,6 +202,44 @@ void main() {
     await database.close();
   });
 
+  test('deleting a conversation removes its metadata and messages', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = ChatDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final store = ChatStore(database: database);
+    final now = DateTime.utc(2026, 2, 3);
+    final conversation = Conversation(
+      id: 'delete-me',
+      characterId: 'character-lin',
+      title: '待删除',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await store.saveConversation(conversation);
+    await store.saveMessage(
+      conversation.id,
+      ChatMessage(
+        id: 'm1',
+        author: MessageAuthor.user,
+        text: '一起删掉',
+        sentAt: now,
+      ),
+      0,
+    );
+
+    await store.deleteConversation(conversation.id);
+
+    expect(
+      (await store.loadConversations(characterId: 'character-lin'))
+          .where((item) => item.id == conversation.id),
+      isEmpty,
+    );
+    expect(await store.loadMessages(conversation.id), isEmpty);
+    await database.close();
+  });
+
   test('chat search finds visible text and ignores hidden metadata', () async {
     SharedPreferences.setMockInitialValues({});
     final database = ChatDatabase(
