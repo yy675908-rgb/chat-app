@@ -42,6 +42,10 @@ class ChatStore {
   bool _sqliteUnavailable = false;
   Future<void>? _migrationFuture;
   ChatDatabase? _readyDatabase;
+  SharedPreferences? _preferences;
+
+  Future<SharedPreferences> _prefs() async =>
+      _preferences ??= await _prefs();
 
   Future<ChatDatabase?> _databaseOrNull() async {
     if (_sqliteUnavailable) return null;
@@ -60,7 +64,7 @@ class ChatStore {
   }
 
   Future<void> _migrateLegacyChatData() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     if (preferences.getBool(_sqliteMigrationKey) == true) return;
 
     if (await _database.conversationCount() > 0) {
@@ -121,7 +125,7 @@ class ChatStore {
         createdAt: now,
         updatedAt: now,
       );
-      final preferences = await SharedPreferences.getInstance();
+      final preferences = await _prefs();
       final legacyMessages =
           characterId == null || characterId == 'character-lin'
           ? _decodeMessages(preferences.getString(_legacyMessagesKey))
@@ -134,7 +138,7 @@ class ChatStore {
       return [first];
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_conversationsKey);
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -180,7 +184,7 @@ class ChatStore {
       return database.loadConversations(groupsOnly: true);
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_conversationsKey);
     if (raw == null || raw.isEmpty) return const [];
     try {
@@ -213,7 +217,7 @@ class ChatStore {
       return;
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     var items = conversations;
     if (characterId != null) {
       final raw = preferences.getString(_conversationsKey);
@@ -250,7 +254,7 @@ class ChatStore {
       return;
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_conversationsKey);
     final existing = <Conversation>[];
     if (raw != null && raw.isNotEmpty) {
@@ -279,7 +283,7 @@ class ChatStore {
     final database = await _databaseOrNull();
     if (database != null) return database.loadMessages(conversationId);
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return _decodeMessages(
       preferences.getString('$_messagesPrefix$conversationId'),
     );
@@ -295,7 +299,7 @@ class ChatStore {
       return;
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setString(
       '$_messagesPrefix$conversationId',
       jsonEncode(messages.map((message) => message.toJson()).toList()),
@@ -309,7 +313,7 @@ class ChatStore {
       return;
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.remove('$_messagesPrefix$conversationId');
   }
 
@@ -364,7 +368,7 @@ class ChatStore {
   }
 
   Future<List<String>> loadMemories({String? characterId}) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     if (characterId == null) {
       return preferences.getStringList(_memoriesKey) ?? const [];
     }
@@ -389,7 +393,7 @@ class ChatStore {
     List<String> memories, {
     String? characterId,
   }) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final normalized = memories
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
@@ -414,7 +418,7 @@ class ChatStore {
   }) async {
     final value = memory.trim();
     if (value.isEmpty) return false;
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final key = characterId == null
         ? _memoriesKey
         : '${_memoriesKey}_$characterId';
@@ -434,7 +438,7 @@ class ChatStore {
   }
 
   Future<Map<String, String>> loadMemorySources(String characterId) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString('${_memorySourcesKey}_$characterId');
     if (raw == null || raw.isEmpty) return <String, String>{};
     try {
@@ -450,7 +454,7 @@ class ChatStore {
     String characterId,
     Map<String, String> sources,
   ) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final key = '${_memorySourcesKey}_$characterId';
     final normalized = Map<String, String>.from(sources)
       ..removeWhere(
@@ -464,12 +468,12 @@ class ChatStore {
   }
 
   Future<String> loadGlobalSystemPrompt() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences.getString(_globalSystemPromptKey)?.trim() ?? '';
   }
 
   Future<void> saveGlobalSystemPrompt(String prompt) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final value = prompt.trim();
     if (value.isEmpty) {
       await preferences.remove(_globalSystemPromptKey);
@@ -479,7 +483,7 @@ class ChatStore {
   }
 
   Future<UserProfile> loadUserProfile() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_userProfileKey);
     if (raw == null || raw.isEmpty) return const UserProfile();
     try {
@@ -492,7 +496,7 @@ class ChatStore {
   }
 
   Future<void> saveUserProfile(UserProfile profile) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     if (profile.isEmpty) {
       await preferences.remove(_userProfileKey);
       return;
@@ -501,7 +505,7 @@ class ChatStore {
   }
 
   Future<List<String>> loadStylePreferences({String? characterId}) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final legacy =
         preferences.getStringList(_stylePreferencesKey) ?? const <String>[];
     if (characterId == null || characterId.trim().isEmpty) return legacy;
@@ -530,7 +534,7 @@ class ChatStore {
     List<String> items, {
     String? characterId,
   }) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final normalized = items
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
@@ -565,7 +569,7 @@ class ChatStore {
       await saveStylePreferences([...scoped, value], characterId: id);
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final legacy =
         preferences.getStringList(_stylePreferencesKey) ?? <String>[];
     if (!legacy.contains(value)) {
@@ -584,7 +588,7 @@ class ChatStore {
   }
 
   Future<Map<String, String>> loadStylePreferenceSources() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_stylePreferenceSourcesKey);
     if (raw == null || raw.isEmpty) return <String, String>{};
     try {
@@ -597,7 +601,7 @@ class ChatStore {
   }
 
   Future<void> saveStylePreferenceSources(Map<String, String> sources) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final normalized = Map<String, String>.from(sources)
       ..removeWhere(
         (preference, source) =>
@@ -614,7 +618,7 @@ class ChatStore {
   }
 
   Future<List<WorldBookEntry>> loadWorldBooks() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final raw = preferences.getString(_worldBooksKey);
     if (raw == null || raw.isEmpty) return const [];
     try {
@@ -631,7 +635,7 @@ class ChatStore {
   }
 
   Future<void> saveWorldBooks(List<WorldBookEntry> entries) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setString(
       _worldBooksKey,
       jsonEncode(entries.map((entry) => entry.toJson()).toList()),
@@ -639,7 +643,7 @@ class ChatStore {
   }
 
   Future<String> loadCharacterMood([String? characterId]) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     if (characterId != null) {
       final key = '${_characterMoodKey}_$characterId';
       final value = preferences.getString(key)?.trim();
@@ -657,7 +661,7 @@ class ChatStore {
   }
 
   Future<void> saveCharacterMood(String mood, [String? characterId]) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final value = mood.trim();
     final key = characterId == null
         ? _characterMoodKey
@@ -670,7 +674,7 @@ class ChatStore {
   }
 
   Future<String> loadCharacterMoodSource(String characterId) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences
             .getString('${_characterMoodSourceKey}_$characterId')
             ?.trim() ??
@@ -681,7 +685,7 @@ class ChatStore {
     String characterId,
     String conversationId,
   ) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final key = '${_characterMoodSourceKey}_$characterId';
     final value = conversationId.trim();
     if (value.isEmpty) {
@@ -692,7 +696,7 @@ class ChatStore {
   }
 
   Future<String> loadCharacterStatusSource(String characterId) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences
             .getString('${_characterStatusSourceKey}_$characterId')
             ?.trim() ??
@@ -703,7 +707,7 @@ class ChatStore {
     String characterId,
     String conversationId,
   ) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final key = '${_characterStatusSourceKey}_$characterId';
     final value = conversationId.trim();
     if (value.isEmpty) {
@@ -794,7 +798,7 @@ class ChatStore {
       );
     }
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.remove('${_memoriesKey}_$characterId');
     await preferences.remove('${_memorySourcesKey}_$characterId');
     await preferences.remove('$_stylePreferencesScopedPrefix$characterId');
@@ -808,7 +812,7 @@ class ChatStore {
   }
 
   Future<DateTime> loadFirstMetAt() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final saved = preferences.getString(_firstMetAtKey);
     if (saved != null) {
       final parsed = DateTime.tryParse(saved);
@@ -820,37 +824,37 @@ class ChatStore {
   }
 
   Future<bool> loadReasoningExpanded() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences.getBool(_reasoningExpandedKey) ?? true;
   }
 
   Future<void> saveReasoningExpanded(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setBool(_reasoningExpandedKey, value);
   }
 
   Future<int> loadContextTokenBudget() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences.getInt(_contextTokenBudgetKey) ?? 32000;
   }
 
   Future<void> saveContextTokenBudget(int value) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setInt(_contextTokenBudgetKey, value);
   }
 
   Future<bool> loadAutoMemoryEnabled() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences.getBool(_autoMemoryEnabledKey) ?? true;
   }
 
   Future<void> saveAutoMemoryEnabled(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setBool(_autoMemoryEnabledKey, value);
   }
 
   Future<List<CharacterProfile>> loadCharacters() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final savedCharacters = preferences.getString(_charactersKey);
     if (savedCharacters != null && savedCharacters.isNotEmpty) {
       try {
@@ -885,7 +889,7 @@ class ChatStore {
   }
 
   Future<void> saveCharacters(List<CharacterProfile> characters) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setString(
       _charactersKey,
       jsonEncode(characters.map((item) => item.toJson()).toList()),
@@ -893,12 +897,12 @@ class ChatStore {
   }
 
   Future<String?> loadSelectedCharacterId() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     return preferences.getString(_selectedCharacterKey);
   }
 
   Future<void> saveSelectedCharacterId(String id) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setString(_selectedCharacterKey, id);
   }
 
@@ -912,7 +916,7 @@ class ChatStore {
   }
 
   Future<void> saveProfile(CharacterProfile profile) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.setString(_profileKey, jsonEncode(profile.toJson()));
     final characters = await loadCharacters();
     final index = characters.indexWhere((item) => item.id == profile.id);
