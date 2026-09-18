@@ -4,21 +4,29 @@ import '../models/chat_message.dart';
 import '../models/character_profile.dart';
 import '../models/conversation.dart';
 import '../models/provider_profile.dart';
+import '../models/proactive_message_settings.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import 'backup_migrator.dart';
 import 'chat_store.dart';
+import 'proactive_message_store.dart';
 import 'provider_store.dart';
 
 enum BackupScope { full, configuration }
 
 class BackupService {
-  BackupService({ChatStore? chatStore, ProviderStore? providerStore})
-    : _chatStore = chatStore ?? ChatStore(),
-      _providerStore = providerStore ?? ProviderStore();
+  BackupService({
+    ChatStore? chatStore,
+    ProviderStore? providerStore,
+    ProactiveMessageStore? proactiveMessageStore,
+  }) : _chatStore = chatStore ?? ChatStore(),
+       _providerStore = providerStore ?? ProviderStore(),
+       _proactiveMessageStore =
+           proactiveMessageStore ?? const ProactiveMessageStore();
 
   final ChatStore _chatStore;
   final ProviderStore _providerStore;
+  final ProactiveMessageStore _proactiveMessageStore;
 
   Future<String> createBackup({BackupScope scope = BackupScope.full}) async {
     final profile = await _chatStore.loadProfile();
@@ -84,6 +92,8 @@ class BackupService {
       'reasoningExpanded': await _chatStore.loadReasoningExpanded(),
       'contextTokenBudget': await _chatStore.loadContextTokenBudget(),
       'autoMemoryEnabled': await _chatStore.loadAutoMemoryEnabled(),
+      'proactiveMessageSettings':
+          (await _proactiveMessageStore.loadSettings()).toJson(),
       'globalSystemPrompt': await _chatStore.loadGlobalSystemPrompt(),
       'userProfile': (await _chatStore.loadUserProfile()).toJson(),
       'providers': providers.map((provider) => provider.toJson()).toList(),
@@ -228,6 +238,15 @@ class BackupService {
     }
     if (data['autoMemoryEnabled'] != null && data['autoMemoryEnabled'] is! bool) {
       throw const FormatException('备份中的自动记忆设置无效');
+    }
+    final proactiveSettings = data['proactiveMessageSettings'];
+    if (proactiveSettings != null) {
+      if (proactiveSettings is! Map) {
+        throw const FormatException('备份中的主动消息设置无效');
+      }
+      ProactiveMessageSettings.fromJson(
+        Map<String, Object?>.from(proactiveSettings),
+      );
     }
     return data;
   }
@@ -387,6 +406,14 @@ class BackupService {
     await _chatStore.saveAutoMemoryEnabled(
       data['autoMemoryEnabled'] as bool? ?? true,
     );
+    if (data['proactiveMessageSettings'] case final Map proactiveRaw) {
+      await _proactiveMessageStore.saveSettings(
+        ProactiveMessageSettings.fromJson(
+          Map<String, Object?>.from(proactiveRaw),
+        ),
+      );
+      await _proactiveMessageStore.clearPlan();
+    }
     await _chatStore.saveGlobalSystemPrompt(
       data['globalSystemPrompt']?.toString() ?? '',
     );

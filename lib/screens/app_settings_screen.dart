@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import '../services/backup_service.dart';
 import 'model_output_settings_screen.dart';
+import 'proactive_message_settings_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({
@@ -286,6 +287,21 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               onChanged: (value) {
                 setState(() => _autoMemoryEnabled = value);
               },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            elevation: 0,
+            child: ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: const Text('主动消息与通知'),
+              subtitle: const Text('设置哪些角色可以主动找你、频率和安静时段'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ProactiveMessageSettingsScreen(),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 10),

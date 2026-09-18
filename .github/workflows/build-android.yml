@@ -33,6 +33,9 @@ jobs:
           flutter create --no-pub --platforms=android --org com.yy675908 .
           git clean -f -- test/widget_test.dart
           git restore pubspec.lock
+          git restore android/app/src/main/AndroidManifest.xml
+          git restore android/app/src/main/kotlin/com/yy675908/character_chat_app/MainActivity.kt
+          git restore android/app/src/main/kotlin/com/yy675908/character_chat_app/ProactiveNotificationReceiver.kt
           git diff --exit-code -- pubspec.yaml analysis_options.yaml
 
       - name: Install locked dependencies
