@@ -102,7 +102,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       }
 
       final targetContext = targetKey.currentContext;
-      if (targetContext != null) {
+      if (targetContext != null && targetContext.mounted) {
         await Scrollable.ensureVisible(
           targetContext,
           alignment: 0.32,
@@ -186,7 +186,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
 
     final finalContext = targetKey.currentContext;
-    if (finalContext != null && mounted) {
+    if (finalContext != null && finalContext.mounted && mounted) {
       await Scrollable.ensureVisible(
         finalContext,
         alignment: 0.32,
