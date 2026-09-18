@@ -22,6 +22,7 @@ class ChatStore {
   static const _memoriesKey = 'relationship_memories_v1';
   static const _memorySourcesKey = 'relationship_memory_sources_v1';
   static const _stylePreferencesKey = 'style_preferences_v1';
+  static const _stylePreferencesScopedPrefix = 'style_preferences_v2_';
   static const _stylePreferenceSourcesKey = 'style_preference_sources_v1';
   static const _characterMoodKey = 'character_mood_v1';
   static const _characterMoodSourceKey = 'character_mood_source_v1';
@@ -495,18 +496,50 @@ class ChatStore {
     await preferences.setString(_userProfileKey, jsonEncode(profile.toJson()));
   }
 
-  Future<List<String>> loadStylePreferences() async {
+  Future<List<String>> loadStylePreferences({String? characterId}) async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getStringList(_stylePreferencesKey) ?? const [];
+    final legacy =
+        preferences.getStringList(_stylePreferencesKey) ?? const <String>[];
+    if (characterId == null || characterId.trim().isEmpty) return legacy;
+
+    final id = characterId.trim();
+    final scopedKey = '$_stylePreferencesScopedPrefix$id';
+    final scoped = preferences.getStringList(scopedKey);
+    if (scoped != null) return scoped;
+
+    final sources = await loadStylePreferenceSources();
+    final migrated = <String>[];
+    for (final item in legacy) {
+      final source = sources[item]?.trim() ?? '';
+      if (source.isEmpty) {
+        if (id == 'character-lin') migrated.add(item);
+        continue;
+      }
+      final split = source.split('::');
+      if (split.length >= 2 && split.last == id) migrated.add(item);
+    }
+    await preferences.setStringList(scopedKey, migrated);
+    return migrated;
   }
 
-  Future<void> saveStylePreferences(List<String> items) async {
+  Future<void> saveStylePreferences(
+    List<String> items, {
+    String? characterId,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
     final normalized = items
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toSet()
         .toList();
+    if (characterId != null && characterId.trim().isNotEmpty) {
+      await preferences.setStringList(
+        '$_stylePreferencesScopedPrefix${characterId.trim()}',
+        normalized,
+      );
+      return;
+    }
+
     await preferences.setStringList(_stylePreferencesKey, normalized);
     final sources = await loadStylePreferenceSources();
     sources.removeWhere((preference, _) => !normalized.contains(preference));
@@ -520,22 +553,30 @@ class ChatStore {
   }) async {
     final value = item.trim();
     if (value.isEmpty) return false;
+
+    final id = sourceCharacterId?.trim() ?? '';
+    if (id.isNotEmpty) {
+      final scoped = await loadStylePreferences(characterId: id);
+      if (scoped.contains(value)) return false;
+      await saveStylePreferences([...scoped, value], characterId: id);
+    }
+
     final preferences = await SharedPreferences.getInstance();
-    final items = preferences.getStringList(_stylePreferencesKey) ?? <String>[];
-    if (items.contains(value)) return false;
-    items.add(value);
-    final saved = await preferences.setStringList(_stylePreferencesKey, items);
-    if (saved &&
-        sourceConversationId != null &&
+    final legacy =
+        preferences.getStringList(_stylePreferencesKey) ?? <String>[];
+    if (!legacy.contains(value)) {
+      legacy.add(value);
+      await preferences.setStringList(_stylePreferencesKey, legacy);
+    }
+
+    if (sourceConversationId != null &&
         sourceConversationId.trim().isNotEmpty &&
-        sourceCharacterId != null &&
-        sourceCharacterId.trim().isNotEmpty) {
+        id.isNotEmpty) {
       final sources = await loadStylePreferenceSources();
-      sources[value] =
-          '${sourceConversationId.trim()}::${sourceCharacterId.trim()}';
+      sources[value] = '${sourceConversationId.trim()}::$id';
       await saveStylePreferenceSources(sources);
     }
-    return saved;
+    return true;
   }
 
   Future<Map<String, String>> loadStylePreferenceSources() async {
@@ -680,6 +721,15 @@ class ChatStore {
         .map((entry) => entry.key)
         .toSet();
     if (preferencesToRemove.isNotEmpty) {
+      for (final characterId in ids) {
+        final scoped = await loadStylePreferences(characterId: characterId);
+        final next = scoped
+            .where((item) => !preferencesToRemove.contains(item))
+            .toList();
+        if (next.length != scoped.length) {
+          await saveStylePreferences(next, characterId: characterId);
+        }
+      }
       final preferences = await loadStylePreferences();
       await saveStylePreferences(
         preferences
