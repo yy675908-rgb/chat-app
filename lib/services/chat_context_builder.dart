@@ -20,7 +20,6 @@ class ChatContextBuilder {
     required List<ChatMessage> visibleMessages,
     required Conversation? currentConversation,
     required String branchKey,
-    required List<Conversation> conversations,
     required List<CharacterProfile> groupParticipants,
     required String savedMood,
     required List<ChatMessage>? contextMessages,
