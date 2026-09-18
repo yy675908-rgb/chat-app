@@ -24,7 +24,18 @@ class ProactiveMessagePlanner {
       );
       if (previousIndex >= 0) index = (previousIndex + 1) % enabled.length;
     }
-    final character = enabled[index];
+    return planForCharacter(
+      settings: settings,
+      character: enabled[index],
+      now: now,
+    );
+  }
+
+  static ProactiveMessagePlan planForCharacter({
+    required ProactiveMessageSettings settings,
+    required CharacterProfile character,
+    required DateTime now,
+  }) {
     var dueAt = now.add(Duration(hours: settings.intervalHours));
     dueAt = moveOutsideQuietHours(
       dueAt,
