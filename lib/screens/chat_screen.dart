@@ -1294,9 +1294,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final activeReplyId = _activeReplyId;
         if (activeReplyId != null) {
           final index = _messages.indexWhere(
-            (message) => message.id == activeReplyId && message.text.isEmpty,
+            (message) => message.id == activeReplyId,
           );
-          if (index >= 0) _messages.removeAt(index);
+          if (index >= 0) {
+            final active = _messages[index];
+            if (active.text.trim().isEmpty) {
+              _messages.removeAt(index);
+            }
+          }
         }
       }
     });
