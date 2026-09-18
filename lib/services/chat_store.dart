@@ -342,7 +342,7 @@ class ChatStore {
     if (existing >= 0) {
       messages[existing] = message;
     } else {
-      final insertion = ordinal.clamp(0, messages.length);
+      final insertion = ordinal.clamp(0, messages.length).toInt();
       messages.insert(insertion, message);
     }
     await preferences.setString(
