@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../models/chat_search_result.dart';
 import '../models/conversation.dart';
 import '../models/provider_profile.dart';
+import '../models/proactive_message_settings.dart';
 import '../models/world_book_entry.dart';
 import '../models/user_profile.dart';
 import '../services/ai_chat_service.dart';
@@ -17,6 +18,7 @@ import '../services/chat_store.dart';
 import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
 import '../services/mood_codec.dart';
+import '../services/proactive_message_coordinator.dart';
 import '../services/provider_store.dart';
 import '../services/reply_stream_accumulator.dart';
 import '../widgets/chat_composer.dart';
@@ -39,13 +41,14 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatStore = ChatStore();
   final _providerStore = ProviderStore();
   final _auxiliaryAiService = const ChatAuxiliaryAiService();
+  final _proactiveCoordinator = const ProactiveMessageCoordinator();
 
   CharacterProfile _profile = CharacterProfile.lin(DateTime.now());
   List<CharacterProfile> _characters = const [];
@@ -84,6 +87,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _followStreamingOutput = true;
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
+  bool _checkingProactiveMessage = false;
 
   bool get _isBusy => _generating || _evaluatingGroupIntents;
 
@@ -100,7 +104,15 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_restore());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_loading) {
+      unawaited(_checkDueProactiveMessage());
+    }
   }
 
   Future<void> _restore() async {
@@ -182,6 +194,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _loading = false;
     });
     _scrollToBottom(jump: true);
+    unawaited(_checkDueProactiveMessage());
   }
 
   Future<List<ChatMessage>> _messagesWithGreeting(
@@ -715,6 +728,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom(force: true);
     await _updateConversationTitle(text);
     await _persistMessages();
+    unawaited(
+      _proactiveCoordinator.postponeCurrent(characters: _characters),
+    );
     await _queueReply();
   }
 
@@ -2165,6 +2181,9 @@ class _ChatScreenState extends State<ChatScreen> {
     await _chatStore.saveConversations(keptConversations);
     await _chatStore.saveCharacters(remainingCharacters);
     await _chatStore.clearCharacterState(character.id);
+    unawaited(
+      _proactiveCoordinator.reschedule(characters: remainingCharacters),
+    );
 
     final remainingMemoryMap = Map<String, List<String>>.from(
       _characterMemories,
@@ -2315,6 +2334,9 @@ class _ChatScreenState extends State<ChatScreen> {
           .map((item) => item.id == updated.id ? updated : item)
           .toList();
     });
+    unawaited(
+      _proactiveCoordinator.postponeCurrent(characters: _characters),
+    );
   }
 
   Future<void> _saveUserIntimacy(int value) async {
@@ -2328,6 +2350,160 @@ class _ChatScreenState extends State<ChatScreen> {
       _characters = characters;
       if (_profile.id == updated.id) _profile = updated;
     });
+  }
+
+  bool _isMessageVisibleIn(
+    List<ChatMessage> messages,
+    ChatMessage message,
+  ) {
+    for (final binding in message.branchBindings.entries) {
+      ChatMessage? ancestor;
+      for (final candidate in messages) {
+        if (candidate.id == binding.key) {
+          ancestor = candidate;
+          break;
+        }
+      }
+      if (ancestor == null || ancestor.activeVariant?.id != binding.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Map<String, String> _activeBranchBindingsFor(List<ChatMessage> messages) {
+    final bindings = <String, String>{};
+    for (final message in messages) {
+      if (!_isMessageVisibleIn(messages, message)) continue;
+      final variant = message.activeVariant;
+      if (message.author == MessageAuthor.character &&
+          message.replyVariants.length > 1 &&
+          variant != null) {
+        bindings[message.id] = variant.id;
+      }
+    }
+    return bindings;
+  }
+
+  Future<void> _checkDueProactiveMessage() async {
+    if (_checkingProactiveMessage || _loading || _isBusy || _characters.isEmpty) {
+      return;
+    }
+    _checkingProactiveMessage = true;
+    ProactiveMessagePlan? consumed;
+    try {
+      consumed = await _proactiveCoordinator.consumeDue(
+        characters: _characters,
+      );
+      if (consumed == null) return;
+      await _generateProactiveMessage(consumed);
+    } on Object {
+      // Proactive messages are optional and must never disrupt normal chat.
+    } finally {
+      if (consumed != null) {
+        await _proactiveCoordinator.scheduleAfterConsumed(
+          characters: _characters,
+          consumed: consumed,
+        );
+      }
+      _checkingProactiveMessage = false;
+    }
+  }
+
+  Future<void> _generateProactiveMessage(ProactiveMessagePlan plan) async {
+    CharacterProfile? character;
+    for (final item in _characters) {
+      if (item.id == plan.characterId) {
+        character = item;
+        break;
+      }
+    }
+    if (character == null) return;
+
+    final provider = _selectedProvider;
+    if (provider == null) return;
+    final apiKey = await _providerStore.loadApiKey(provider.id);
+    if (apiKey.trim().isEmpty) return;
+
+    final conversations = await _chatStore.loadConversations(
+      characterId: character.id,
+    );
+    if (conversations.isEmpty) return;
+    final targetConversation = conversations.first;
+    final storedMessages = await _chatStore.loadMessages(targetConversation.id);
+    final visible = storedMessages
+        .where(
+          (message) =>
+              message.author != MessageAuthor.system &&
+              _isMessageVisibleIn(storedMessages, message),
+        )
+        .toList();
+    final start = visible.length > 12 ? visible.length - 12 : 0;
+    final transcript = visible
+        .sublist(start)
+        .map(
+          (message) =>
+              '${message.author == MessageAuthor.user ? '用户' : character!.name}：'
+              '${MoodCodec.stripMetadata(message.text).trim()}',
+        )
+        .where((line) => !line.endsWith('：'))
+        .join('\n');
+    final memories =
+        _characterMemories[character.id] ??
+        await _chatStore.loadMemories(characterId: character.id);
+    final mood =
+        _characterMoods[character.id] ??
+        await _chatStore.loadCharacterMood(character.id);
+
+    final text = await _auxiliaryAiService.generateProactiveMessage(
+      provider: provider,
+      apiKey: apiKey,
+      character: character,
+      userProfile: _userProfile,
+      memories: memories,
+      recentTranscript: transcript,
+      currentMood: mood,
+    );
+    if (text.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final newMessage = ChatMessage(
+      id: 'proactive-${now.microsecondsSinceEpoch}',
+      author: MessageAuthor.character,
+      text: text.trim(),
+      sentAt: now,
+      branchBindings: _activeBranchBindingsFor(storedMessages),
+      speakerCharacterId: character.id,
+    );
+    final updatedMessages = [...storedMessages, newMessage];
+    await _chatStore.saveMessages(targetConversation.id, updatedMessages);
+
+    final updatedConversation = targetConversation.copyWith(updatedAt: now);
+    final updatedConversations = conversations
+        .map(
+          (conversation) => conversation.id == updatedConversation.id
+              ? updatedConversation
+              : conversation,
+        )
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await _chatStore.saveConversations(
+      updatedConversations,
+      characterId: character.id,
+    );
+
+    if (!mounted || _groupScope || _profile.id != character.id) return;
+    setState(() {
+      _conversations = updatedConversations;
+      if (_currentConversation?.id == targetConversation.id) {
+        _currentConversation = updatedConversation;
+        _messages = updatedMessages;
+        _followStreamingOutput = true;
+      }
+    });
+    if (_currentConversation?.id == targetConversation.id) {
+      _scrollToBottom(force: true);
+    }
   }
 
   void _scrollToBottom({bool jump = false, bool force = false}) {
@@ -2369,6 +2545,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cancelled = true;
     _activeService?.close();
     _groupIntentEvaluator.dispose();
