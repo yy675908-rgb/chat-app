@@ -192,7 +192,10 @@ class ConversationDrawer extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: ListView.builder(
+              child: RepaintBoundary(
+                child: ListView.builder(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 itemCount: conversations.length,
                 itemBuilder: (context, index) {
@@ -230,6 +233,7 @@ class ConversationDrawer extends StatelessWidget {
                     onTap: () => onSelect(conversation),
                   );
                 },
+              ),
               ),
             ),
             const Divider(height: 1),
