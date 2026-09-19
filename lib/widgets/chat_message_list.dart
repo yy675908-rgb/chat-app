@@ -332,6 +332,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       characterName: widget.speakerName(message),
                       reasoningInitiallyExpanded: widget.reasoningExpanded,
                       showActions: showActions,
+                      streaming:
+                          widget.generating &&
+                          message.id == widget.activeReplyId,
                       onEdit: canEdit ? () => widget.onEdit(index) : null,
                       onSendEdited: message.author == MessageAuthor.user && canEdit
                           ? () => widget.onSendEdited?.call(index)
@@ -362,10 +365,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
                   return KeyedSubtree(
                     key: ValueKey<String>('chat-message-${message.id}'),
-                    child: AnimatedContainer(
+                    child: Container(
                       key: key,
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
                       decoration: BoxDecoration(
                         color: isHighlighted
                             ? scheme.primaryContainer.withValues(alpha: 0.42)
