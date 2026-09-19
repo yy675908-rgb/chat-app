@@ -902,7 +902,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       while (_replyQueued && mounted) {
         _replyQueued = false;
-        if (!await _ensureProviderConfigured()) return;
+        if (!await _ensureProviderConfigured()) {
+          if (mounted) setState(() {});
+          continue;
+        }
         if (_currentConversation?.isGroup == true) {
           await _requestGroupReplies();
         } else {
@@ -911,6 +914,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } finally {
       _drainingReplies = false;
+      if (_replyQueued && mounted) {
+        unawaited(_queueReply());
+      }
     }
   }
 
