@@ -95,7 +95,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _cachedApiKeyProviderId = '';
   String _cachedApiKey = '';
 
-  bool get _isBusy => _generating || _evaluatingGroupIntents;
+  bool get _isBusy =>
+      _generating || _evaluatingGroupIntents || _drainingReplies;
 
   Future<void> _saveScopedConversations(List<Conversation> conversations) {
     if (_groupScope) {
@@ -782,7 +783,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _loading) return;
+    if (text.isEmpty || _loading || _isBusy || _drainingReplies) return;
     final userMessage = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       author: MessageAuthor.user,
