@@ -796,7 +796,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _followStreamingOutput = true;
     });
     _scrollToBottom(force: true);
-    await _updateConversationTitle(text);
+    unawaited(_updateConversationTitle(text));
     unawaited(
       _persistAppendedMessage(userMessage, _messages.length - 1),
     );
