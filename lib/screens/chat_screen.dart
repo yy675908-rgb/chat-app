@@ -1197,6 +1197,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             }
           }
         });
+        replyCompleted = true;
+        if (mounted) {
+          setState(() {
+            _generating = false;
+            _activeReplyId = null;
+            _activeRetryIndex = null;
+            _activeRetrySnapshot = null;
+          });
+        }
         if (nextMood.isNotEmpty) {
           await _chatStore.saveCharacterMood(nextMood, speakingCharacter.id);
           if (replyConversationId.isNotEmpty) {
@@ -1218,7 +1227,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             previousMood: previousMood,
           );
         }
-        replyCompleted = true;
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
