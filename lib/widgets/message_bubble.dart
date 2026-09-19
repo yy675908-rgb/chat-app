@@ -21,6 +21,7 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.characterName,
     this.showActions = false,
+    this.streaming = false,
     this.reasoningInitiallyExpanded = true,
     this.onPreviousVariant,
     this.onNextVariant,
@@ -36,6 +37,7 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final String characterName;
   final bool showActions;
+  final bool streaming;
   final bool reasoningInitiallyExpanded;
   final VoidCallback? onPreviousVariant;
   final VoidCallback? onNextVariant;
@@ -216,47 +218,62 @@ class MessageBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 9),
                   ],
-                  MarkdownBody(
-                    data: message.text,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
+                  if (streaming)
+                    SelectableText(
+                      message.text,
+                      style: TextStyle(
                         color: scheme.onSurface,
                         fontSize: 15.5,
                         height: 1.46,
                       ),
-                      code: TextStyle(
-                        color: scheme.onSurface,
-                        backgroundColor: scheme.surfaceContainerHighest,
-                        fontSize: 13,
-                      ),
-                      codeblockPadding: const EdgeInsets.all(12),
-                      codeblockDecoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      blockquotePadding: const EdgeInsets.fromLTRB(
-                        12,
-                        7,
-                        10,
-                        7,
-                      ),
-                      blockquoteDecoration: BoxDecoration(
-                        color: scheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border(
-                          left: BorderSide(color: scheme.primary, width: 3),
+                    )
+                  else
+                    MarkdownBody(
+                      data: message.text,
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 15.5,
+                          height: 1.46,
+                        ),
+                        code: TextStyle(
+                          color: scheme.onSurface,
+                          backgroundColor: scheme.surfaceContainerHighest,
+                          fontSize: 13,
+                        ),
+                        codeblockPadding: const EdgeInsets.all(12),
+                        codeblockDecoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        blockquotePadding: const EdgeInsets.fromLTRB(
+                          12,
+                          7,
+                          10,
+                          7,
+                        ),
+                        blockquoteDecoration: BoxDecoration(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border(
+                            left: BorderSide(color: scheme.primary, width: 3),
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   if (message.usedTotalTokens > 0) ...[
                     const SizedBox(height: 8),
                     _TokenUsage(message: message),
                   ],
-                  if (showActions) ...[
-                    const SizedBox(height: 9),
-                    Wrap(
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 140),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topLeft,
+                    child: showActions
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 7),
+                            child: Wrap(
                       spacing: 4,
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -297,7 +314,9 @@ class MessageBubble extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ],
               ),
             ),
