@@ -86,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _memoryPromptActive = false;
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
+  bool _streamScrollScheduled = false;
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
@@ -2740,20 +2741,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _scrollToBottom({bool jump = false, bool force = false}) {
+    if (_streamScrollScheduled && !jump && !force) return;
+    _streamScrollScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _streamScrollScheduled = false;
       if (!_scrollController.hasClients) return;
       if (!jump &&
           !force &&
           (_pointerHoldingMessages || !_followStreamingOutput)) {
         return;
       }
-      final position = _scrollController.position.maxScrollExtent;
+      final target = _scrollController.position.maxScrollExtent;
+      final distance = target - _scrollController.position.pixels;
+      if (distance <= 1) return;
       if (jump || (_generating && !force)) {
-        _scrollController.jumpTo(position);
+        _scrollController.jumpTo(target);
       } else {
         _scrollController.animateTo(
-          position,
-          duration: const Duration(milliseconds: 180),
+          target,
+          duration: const Duration(milliseconds: 140),
           curve: Curves.easeOutCubic,
         );
       }
