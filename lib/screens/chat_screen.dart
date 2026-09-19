@@ -451,6 +451,63 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _clearAllConversations() async {
+    if (!await _stopBusyWorkBeforeNavigation()) return;
+    if (!mounted || _conversations.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空全部对话？'),
+        content: Text(
+          _groupScope
+              ? '当前群聊空间里的全部对话都会删除，且无法恢复。'
+              : '当前角色的全部对话都会删除，且无法恢复。由这些对话产生的共同记忆、回应偏好和心绪也会一并清除。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _waitForPendingPersistence();
+    final targets = List<Conversation>.from(_conversations);
+    for (final conversation in targets) {
+      final affectedCharacterIds = conversation.isGroup
+          ? conversation.participantIds
+          : <String>[conversation.characterId];
+      await _chatStore.clearConversationDerivedState(
+        conversationId: conversation.id,
+        characterIds: affectedCharacterIds,
+      );
+      await _chatStore.deleteConversation(conversation.id);
+    }
+    await _reloadRelationshipState();
+    if (!mounted) return;
+    if (_groupScope) {
+      await _chatStore.saveGroupConversations(const []);
+      if (!mounted) return;
+      setState(() {
+        _conversations = const [];
+        _currentConversation = null;
+        _messages = const [];
+      });
+      return;
+    }
+    setState(() {
+      _conversations = const [];
+      _currentConversation = null;
+      _messages = const [];
+    });
+    await _newConversation();
+  }
+
   Future<void> _reloadRelationshipState() async {
     final characters = await _chatStore.loadCharacters();
     final memories = <String, List<String>>{};
@@ -2768,6 +2825,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           onNew: _newConversation,
           onNewGroup: _newGroupConversation,
           onSearch: _openChatSearch,
+          onClearAll: _clearAllConversations,
           onSelect: _selectConversation,
           onDelete: _deleteConversation,
           onRename: _renameConversation,
