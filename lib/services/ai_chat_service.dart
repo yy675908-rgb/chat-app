@@ -79,7 +79,7 @@ class AiChatService {
   AiChatService({http.Client? client}) : _client = client ?? http.Client();
 
   static const _connectTimeout = Duration(seconds: 20);
-  static const _streamIdleTimeout = Duration(seconds: 60);
+  static const _streamIdleTimeout = Duration(seconds: 35);
   static const _retryDelay = Duration(milliseconds: 700);
   static const _uiFlushInterval = Duration(milliseconds: 32);
   static const _retryableStatusCodes = <int>{429, 502, 503};
