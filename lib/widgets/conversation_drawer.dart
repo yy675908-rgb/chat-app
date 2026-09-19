@@ -267,11 +267,9 @@ class ConversationDrawer extends StatelessWidget {
                         child: _DrawerShortcut(
                           icon: groupScope
                               ? Icons.people_alt_outlined
-                              : Icons.manage_accounts_outlined,
-                          label: groupScope ? '角色与好感度' : '角色设定',
-                          onTap: groupScope
-                              ? onCharacterPicker
-                              : onEditCharacter,
+                              : Icons.swap_horiz_rounded,
+                          label: groupScope ? '角色与好感度' : '角色切换',
+                          onTap: onCharacterPicker,
                         ),
                       ),
                       const SizedBox(width: 8),
