@@ -81,7 +81,7 @@ class AiChatService {
   static const _connectTimeout = Duration(seconds: 20);
   static const _streamIdleTimeout = Duration(seconds: 60);
   static const _retryDelay = Duration(milliseconds: 700);
-  static const _uiFlushInterval = Duration(milliseconds: 50);
+  static const _uiFlushInterval = Duration(milliseconds: 32);
   static const _retryableStatusCodes = <int>{429, 502, 503};
   static const _contextTokenBudgetKey = 'context_token_budget_v1';
   static const _defaultContextBudget = 32000;
