@@ -69,6 +69,13 @@ void main() {
   });
 
 
+  test('reply stream keeps the established idle timeout', () {
+    expect(
+      AiChatService.streamIdleTimeoutForTest,
+      const Duration(seconds: 60),
+    );
+  });
+
   test('SSE stream without trailing newline still delivers reply', () async {
     final client = MockClient((request) async {
       return http.Response.bytes(
