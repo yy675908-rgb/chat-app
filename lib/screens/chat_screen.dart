@@ -902,10 +902,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       while (_replyQueued && mounted) {
         _replyQueued = false;
-        if (!await _ensureProviderConfigured()) {
-          if (mounted) setState(() {});
-          continue;
-        }
+        if (!await _ensureProviderConfigured()) return;
         if (_currentConversation?.isGroup == true) {
           await _requestGroupReplies();
         } else {
@@ -914,9 +911,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } finally {
       _drainingReplies = false;
-      if (_replyQueued && mounted) {
-        unawaited(_queueReply());
-      }
     }
   }
 
@@ -1069,10 +1063,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _yieldBeforeReplyWork() async {
-    await Future<void>.delayed(Duration.zero);
-  }
-
   Future<void> _requestReply({
     ProviderProfile? providerOverride,
     int? targetReplyIndex,
@@ -1080,7 +1070,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }) async {
     final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
-    await _yieldBeforeReplyWork();
     final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty) {
       _showError('这个供应商还没有 API Key');
@@ -1161,7 +1150,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom();
 
-    await _yieldBeforeReplyWork();
     final contextMessages = _visibleMessagesFor(
       _messages.take(replyIndex).toList(),
     );
@@ -1169,7 +1157,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       contextMessages: contextMessages,
       character: speakingCharacter,
     );
-    await _yieldBeforeReplyWork();
     final recent = _historyForModel(
       _messagesWithinBudget(contextMessages, systemPrompt),
     );
@@ -1278,24 +1265,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           });
         }
         if (nextMood.isNotEmpty) {
-          await _chatStore.saveCharacterMood(nextMood, speakingCharacter.id);
-          if (replyConversationId.isNotEmpty) {
-            await _chatStore.saveCharacterMoodSource(
+          unawaited(() async {
+            await _chatStore.saveCharacterMood(
+              nextMood,
               speakingCharacter.id,
-              replyConversationId,
             );
-          }
-        }
-        if (nextMood.isEmpty && replyConversationId.isNotEmpty) {
-          await _repairMoodFromLatestTurn(
-            provider: provider,
-            apiKey: apiKey,
-            contextMessages: contextMessages,
-            replyText: replyText,
-            character: speakingCharacter,
-            conversationId: replyConversationId,
-            sourceReplyId: isRetry ? originalReply!.id : newReply!.id,
-            previousMood: previousMood,
+            if (replyConversationId.isNotEmpty) {
+              await _chatStore.saveCharacterMoodSource(
+                speakingCharacter.id,
+                replyConversationId,
+              );
+            }
+          }());
+        } else if (replyConversationId.isNotEmpty) {
+          unawaited(
+            _repairMoodFromLatestTurn(
+              provider: provider,
+              apiKey: apiKey,
+              contextMessages: contextMessages,
+              replyText: replyText,
+              character: speakingCharacter,
+              conversationId: replyConversationId,
+              sourceReplyId: isRetry ? originalReply!.id : newReply!.id,
+              previousMood: previousMood,
+            ),
           );
         }
       }
@@ -2864,7 +2857,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           titleSpacing: 2,
           title: InkWell(
-            onTap: _showCharacterPicker,
+            onTap: _editCharacter,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
