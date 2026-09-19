@@ -373,7 +373,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: child,
+                      child: RepaintBoundary(child: child),
                     ),
                   );
                 },
