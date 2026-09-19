@@ -40,25 +40,10 @@ class ChatComposer extends StatelessWidget {
             ),
             const SizedBox(width: 7),
             Expanded(
-              child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(25),
-            border: Border.all(
-              color: generating
-                  ? scheme.primary.withValues(alpha: 0.3)
-                  : scheme.outlineVariant.withValues(alpha: 0.55),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: 0.07),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
+              child: Material(
+          color: scheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(15, 3, 6, 3),
             child: Row(
@@ -100,6 +85,8 @@ class ChatComposer extends StatelessWidget {
                       },
                       icon: const Icon(Icons.stop_rounded, size: 20),
                     ),
+                  )
+                        : const SizedBox.shrink(key: ValueKey('idle')),
                   ),
                 const SizedBox(width: 4),
                 Padding(
