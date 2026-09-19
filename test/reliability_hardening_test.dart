@@ -68,6 +68,37 @@ void main() {
     service.close();
   });
 
+
+  test('SSE stream without trailing newline still delivers reply', () async {
+    final client = MockClient((request) async {
+      return http.Response.bytes(
+        utf8.encode('data: {"choices":[{"delta":{"content":"收到"}}]}'),
+        200,
+        headers: {'content-type': 'text/event-stream; charset=utf-8'},
+      );
+    });
+    final service = AiChatService(client: client);
+
+    final reply = await service
+        .streamReply(
+          provider: provider,
+          apiKey: 'secret',
+          systemPrompt: '测试',
+          history: [
+            ChatMessage(
+              id: 'u2',
+              author: MessageAuthor.user,
+              text: '在吗',
+              sentAt: DateTime.utc(2026),
+            ),
+          ],
+        )
+        .join();
+
+    expect(reply, '收到');
+    service.close();
+  });
+
   test('request payload keeps output reserve and safety margin', () async {
     SharedPreferences.setMockInitialValues({
       'context_token_budget_v1': 16000,
