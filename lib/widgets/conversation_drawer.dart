@@ -16,6 +16,7 @@ class ConversationDrawer extends StatelessWidget {
     required this.onNew,
     required this.onNewGroup,
     required this.onSearch,
+    required this.onClearAll,
     required this.onSelect,
     required this.onDelete,
     required this.onRename,
@@ -36,6 +37,7 @@ class ConversationDrawer extends StatelessWidget {
   final VoidCallback onNew;
   final VoidCallback onNewGroup;
   final VoidCallback onSearch;
+  final VoidCallback onClearAll;
   final ValueChanged<Conversation> onSelect;
   final ValueChanged<Conversation> onDelete;
   final ValueChanged<Conversation> onRename;
@@ -135,19 +137,22 @@ class ConversationDrawer extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
               child: Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onSearch,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(42),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
-                      icon: const Icon(Icons.search_rounded, size: 18),
-                      label: const Text(
-                        '搜索记录',
-                        style: TextStyle(fontSize: 13),
-                      ),
+                  IconButton.outlined(
+                    tooltip: '清空历史记录',
+                    onPressed: conversations.isEmpty ? null : onClearAll,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(42, 42),
                     ),
+                    icon: const Icon(Icons.history_rounded, size: 20),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton.outlined(
+                    tooltip: '搜索记录',
+                    onPressed: onSearch,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(42, 42),
+                    ),
+                    icon: const Icon(Icons.search_rounded, size: 20),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
