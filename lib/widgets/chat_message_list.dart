@@ -313,19 +313,20 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       message.reasoning.isEmpty) {
                     child = _ThinkingRow(name: widget.speakerName(message));
                   } else {
+                    final isActiveReply =
+                        widget.generating &&
+                        message.id == widget.activeReplyId;
                     final canUseCharacterActions =
                         message.author == MessageAuthor.character &&
                         message.text.isNotEmpty &&
-                        !widget.busy;
+                        !isActiveReply;
                     final canEdit =
                         message.author != MessageAuthor.system &&
                         message.text.isNotEmpty &&
-                        !widget.busy;
+                        !isActiveReply;
                     final showActions =
                         message.author == MessageAuthor.character
-                        ? message.text.isNotEmpty &&
-                              (!widget.generating ||
-                                  message.id != widget.activeReplyId)
+                        ? message.text.isNotEmpty && !isActiveReply
                         : canEdit;
                     child = MessageBubble(
                       message: message,
