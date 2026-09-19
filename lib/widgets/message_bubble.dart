@@ -266,12 +266,8 @@ class MessageBubble extends StatelessWidget {
                     const SizedBox(height: 8),
                     _TokenUsage(message: message),
                   ],
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 140),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topLeft,
-                    child: showActions
-                        ? Padding(
+                  showActions
+                      ? Padding(
                             padding: const EdgeInsets.only(top: 7),
                             child: Wrap(
                       spacing: 4,
@@ -316,7 +312,6 @@ class MessageBubble extends StatelessWidget {
                     ),
                           )
                         : const SizedBox.shrink(),
-                  ),
                 ],
               ),
             ),
