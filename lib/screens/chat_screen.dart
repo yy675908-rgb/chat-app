@@ -1069,6 +1069,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _yieldBeforeReplyWork() async {
+    await Future<void>.delayed(Duration.zero);
+  }
+
   Future<void> _requestReply({
     ProviderProfile? providerOverride,
     int? targetReplyIndex,
@@ -1076,6 +1080,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }) async {
     final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
+    await _yieldBeforeReplyWork();
     final apiKey = await _loadApiKey(provider);
     if (apiKey.trim().isEmpty) {
       _showError('这个供应商还没有 API Key');
@@ -1156,6 +1161,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom();
 
+    await _yieldBeforeReplyWork();
     final contextMessages = _visibleMessagesFor(
       _messages.take(replyIndex).toList(),
     );
@@ -1163,6 +1169,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       contextMessages: contextMessages,
       character: speakingCharacter,
     );
+    await _yieldBeforeReplyWork();
     final recent = _historyForModel(
       _messagesWithinBudget(contextMessages, systemPrompt),
     );
