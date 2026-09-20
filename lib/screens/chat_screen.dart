@@ -2914,74 +2914,39 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
           ),
           actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: InkWell(
-                onTap: _showChatModelPicker,
-                borderRadius: BorderRadius.circular(22),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minHeight: 42,
-                    maxWidth: 146,
-                  ),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 7, 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _selectedProvider?.name ?? '选择供应商',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              _selectedProvider?.selectedModel ?? '选择模型',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
+            TextButton(
+              onPressed: _showChatModelPicker,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 40),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 118),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _selectedProvider?.selectedModel ?? '选择模型',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 3),
-                      const Icon(Icons.expand_more_rounded, size: 17),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.expand_more_rounded, size: 16),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
           ],
         ),
-        body: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Theme.of(context).colorScheme.surface,
-                Theme.of(context).colorScheme.surfaceContainerLowest,
-              ],
-            ),
-          ),
+        body: ColoredBox(
+          color: Theme.of(context).colorScheme.surface,
           child: Column(
             children: [
               Expanded(
