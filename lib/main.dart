@@ -116,6 +116,12 @@ class CharacterChatApp extends StatelessWidget {
       theme: base.copyWith(
         textTheme: readableTextTheme,
         primaryTextTheme: readableTextTheme,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFFBFCFA),
           foregroundColor: ink,
