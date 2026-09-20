@@ -382,28 +382,23 @@ class _BubbleAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
-    final background = selected
-        ? scheme.secondaryContainer
-        : scheme.surfaceContainerLow;
     final foreground = !enabled
-        ? scheme.onSurface.withValues(alpha: 0.3)
+        ? scheme.onSurface.withValues(alpha: 0.26)
         : selected
         ? scheme.primary
-        : scheme.onSurfaceVariant;
+        : scheme.onSurfaceVariant.withValues(alpha: 0.88);
 
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: background,
-        borderRadius: BorderRadius.circular(10),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: SizedBox(
-            width: 32,
-            height: 30,
-            child: Icon(icon, size: 16, color: foreground),
-          ),
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 20,
+        containedInkWell: true,
+        highlightShape: BoxShape.circle,
+        child: SizedBox(
+          width: 34,
+          height: 32,
+          child: Icon(icon, size: 17, color: foreground),
         ),
       ),
     );
