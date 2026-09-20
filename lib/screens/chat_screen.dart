@@ -611,15 +611,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  Route<T> _smoothPageRoute<T>(WidgetBuilder builder) {
-    return MaterialPageRoute<T>(builder: builder);
-  }
-
-  Future<void> _openChatSearch() async {
+Future<void> _openChatSearch() async {
     _scaffoldKey.currentState?.closeDrawer();
     final result = await Navigator.of(context).push<ChatSearchResult>(
-      _smoothPageRoute<ChatSearchResult>(
-        (_) => ChatSearchScreen(characters: _characters),
+      MaterialPageRoute<ChatSearchResult>(
+        builder: (_) => ChatSearchScreen(characters: _characters),
       ),
     );
     if (result == null || !mounted) return;
@@ -713,7 +709,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _openProviderSettings() async {
     _scaffoldKey.currentState?.closeDrawer();
     await Navigator.of(context).push<void>(
-      _smoothPageRoute<void>((_) => const ApiSettingsScreen()),
+      MaterialPageRoute<void>(builder: (_) => const ApiSettingsScreen()),
     );
     await _reloadProviders();
   }
@@ -1595,7 +1591,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     entries.sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
     if (!mounted) return;
     await Navigator.of(context).push<void>(
-      _smoothPageRoute<void>((_) => FavoritesScreen(entries: entries)),
+      MaterialPageRoute<void>(
+        builder: (_) => FavoritesScreen(entries: entries),
+      ),
     );
   }
 
@@ -2193,8 +2191,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _openMemories() async {
     _scaffoldKey.currentState?.closeDrawer();
     await Navigator.of(context).push<void>(
-      _smoothPageRoute<void>(
-        (_) => MemoryScreen(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoryScreen(
           characterId: _profile.id,
           characterName: _profile.name,
         ),
