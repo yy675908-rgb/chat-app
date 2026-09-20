@@ -298,7 +298,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                 addRepaintBoundaries: false,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(15, 12, 15, 24),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
                 itemCount: widget.visibleMessageIndices.length,
                 itemBuilder: (context, visibleIndex) {
                   final index = widget.visibleMessageIndices[visibleIndex];
@@ -388,10 +388,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
           Positioned(
             right: 14,
             bottom: 12,
-            child: FloatingActionButton.small(
+            child: IconButton.filledTonal(
               tooltip: '回到最新消息',
               onPressed: widget.onResumeStreamingFollow,
-              child: const Icon(Icons.keyboard_arrow_down_rounded),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded),
             ),
           ),
       ],
