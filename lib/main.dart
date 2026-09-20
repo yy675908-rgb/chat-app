@@ -41,38 +41,6 @@ class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
   }
 }
 
-class _LinjianPageTransitionsBuilder extends PageTransitionsBuilder {
-  const _LinjianPageTransitionsBuilder();
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 380);
-
-  @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 340);
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeInOutCubic,
-      reverseCurve: Curves.easeInOutCubic,
-    );
-    return SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(0.055, 0),
-        end: Offset.zero,
-      ).animate(curved),
-      child: child,
-    );
-  }
-}
-
 class CharacterChatApp extends StatelessWidget {
   const CharacterChatApp({super.key});
 
@@ -148,11 +116,6 @@ class CharacterChatApp extends StatelessWidget {
       theme: base.copyWith(
         textTheme: readableTextTheme,
         primaryTextTheme: readableTextTheme,
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: _LinjianPageTransitionsBuilder(),
-          },
-        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFFBFCFA),
           foregroundColor: ink,
