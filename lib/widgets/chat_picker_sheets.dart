@@ -10,13 +10,28 @@ class ChatModelChoice {
   final String model;
 }
 
-Future<ChatModelChoice?> showChatModelPickerSheet({
+sealed class ChatModelPickerResult {
+  const ChatModelPickerResult();
+}
+
+final class ChatModelSelection extends ChatModelPickerResult {
+  const ChatModelSelection(this.choice);
+
+  final ChatModelChoice choice;
+}
+
+final class ManageProvidersSelection extends ChatModelPickerResult {
+  const ManageProvidersSelection();
+}
+
+Future<ChatModelPickerResult?> showChatModelPickerSheet({
   required BuildContext context,
   required List<ProviderProfile> providers,
   required ProviderProfile? selectedProvider,
-  required VoidCallback onManageProviders,
 }) async {
-  final available = providers.where((provider) => provider.models.isNotEmpty).toList();
+  final available = providers
+      .where((provider) => provider.models.isNotEmpty)
+      .toList();
   if (available.isEmpty) return null;
 
   var providerId =
@@ -24,7 +39,7 @@ Future<ChatModelChoice?> showChatModelPickerSheet({
           ? selectedProvider!.id
           : available.first.id;
 
-  return showModalBottomSheet<ChatModelChoice>(
+  return showModalBottomSheet<ChatModelPickerResult>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -59,10 +74,10 @@ Future<ChatModelChoice?> showChatModelPickerSheet({
                       ),
                       IconButton(
                         tooltip: '管理供应商',
-                        onPressed: () {
-                          Navigator.pop(context);
-                          onManageProviders();
-                        },
+                        onPressed: () => Navigator.pop(
+                          context,
+                          const ManageProvidersSelection(),
+                        ),
                         icon: const Icon(Icons.tune_rounded),
                       ),
                     ],
@@ -116,7 +131,12 @@ Future<ChatModelChoice?> showChatModelPickerSheet({
                           title: Text(model),
                           onTap: () => Navigator.pop(
                             context,
-                            ChatModelChoice(provider: provider, model: model),
+                            ChatModelSelection(
+                              ChatModelChoice(
+                                provider: provider,
+                                model: model,
+                              ),
+                            ),
                           ),
                         ),
                     ],

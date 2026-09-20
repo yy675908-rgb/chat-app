@@ -68,7 +68,6 @@ void main() {
     service.close();
   });
 
-
   test('SSE stream without trailing newline still delivers reply', () async {
     final client = MockClient((request) async {
       return http.Response.bytes(

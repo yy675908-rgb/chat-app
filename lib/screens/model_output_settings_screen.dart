@@ -225,7 +225,9 @@ class _ModelOutputSettingsScreenState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '每个模型单独保存。旧配置默认使用 ${ProviderProfile.defaultAnthropicMaxOutputTokens}；实际请求还会受当前上下文预算限制。',
+                    '每个模型单独保存。旧配置默认使用 '
+                    '${ProviderProfile.defaultAnthropicMaxOutputTokens}；'
+                    '实际请求还会受当前上下文预算限制。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,

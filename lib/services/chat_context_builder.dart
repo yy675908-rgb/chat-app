@@ -89,7 +89,10 @@ class ChatContextBuilder {
     final isGroup = currentConversation?.isGroup == true;
     final intimacyInstruction = isGroup
         ? '\n\n用户对群聊各角色的好感度：\n'
-              '${groupParticipants.map((item) => '- ${item.name}：${item.userIntimacy}/100（${intimacyLabel(item.userIntimacy)}）').join('\n')}\n'
+              '${groupParticipants.map((item) {
+                final intimacy = intimacyLabel(item.userIntimacy);
+                return '- ${item.name}：${item.userIntimacy}/100（$intimacy）';
+              }).join('\n')}\n'
               '好感度只是关系背景，不定义关系类型。当前角色可以按自己的性格和当前情境决定是否在意以及如何反应；'
               '不要为了体现好感度刻意迎合、增加戏剧性或改变固有说话风格。'
         : '\n\n用户对你的好感度为${activeCharacter.userIntimacy}/100'

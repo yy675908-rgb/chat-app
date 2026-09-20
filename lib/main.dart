@@ -7,7 +7,6 @@ void main() {
   runApp(const CharacterChatApp());
 }
 
-
 class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
   void _clearFocus() {
     FocusManager.instance.primaryFocus?.unfocus();

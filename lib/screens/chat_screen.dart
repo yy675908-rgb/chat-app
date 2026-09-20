@@ -98,6 +98,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool get _isBusy =>
       _generating || _evaluatingGroupIntents || _drainingReplies;
 
+  void _resetConversationUiState() {
+    _controller.clear();
+    _searchTargetMessageId = null;
+    _searchTargetRequest++;
+    _pointerHoldingMessages = false;
+    _followStreamingOutput = true;
+  }
+
   Future<void> _saveScopedConversations(List<Conversation> conversations) {
     if (_groupScope) {
       return _chatStore.saveGroupConversations(conversations);
@@ -209,6 +217,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _messages = messages;
       _groupScope = false;
       _loading = false;
+      _resetConversationUiState();
     });
     _scrollToBottom(jump: true);
     unawaited(_syncProactiveSchedule());
@@ -290,6 +299,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _currentConversation = conversation;
       _messages = messages;
       _groupScope = false;
+      _resetConversationUiState();
     });
     _scrollToBottom(jump: true);
   }
@@ -349,7 +359,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _currentConversation = conversation;
       _messages = messages;
       _groupScope = true;
-      _followStreamingOutput = true;
+      _resetConversationUiState();
     });
     _scrollToBottom(jump: true);
     await _queueReply();
@@ -359,9 +369,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Conversation conversation, {
     bool scrollToBottom = true,
   }) async {
-    if (_searchTargetMessageId != null && mounted) {
-      setState(() => _searchTargetMessageId = null);
-    }
     if (_currentConversation?.id == conversation.id) {
       _scaffoldKey.currentState?.closeDrawer();
       return;
@@ -378,6 +385,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _currentConversation = conversation;
       _messages = messages;
       _groupScope = conversation.isGroup;
+      _resetConversationUiState();
     });
     if (scrollToBottom) _scrollToBottom(jump: true);
   }
@@ -426,6 +434,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _conversations = const [];
           _currentConversation = null;
           _messages = const [];
+          _resetConversationUiState();
         });
         return;
       }
@@ -447,6 +456,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _conversations = remaining;
         _currentConversation = next;
         _messages = messages;
+        _resetConversationUiState();
       });
     } else if (mounted) {
       setState(() => _conversations = remaining);
@@ -499,6 +509,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _conversations = const [];
         _currentConversation = null;
         _messages = const [];
+        _resetConversationUiState();
       });
       return;
     }
@@ -506,6 +517,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _conversations = const [];
       _currentConversation = null;
       _messages = const [];
+      _resetConversationUiState();
     });
     await _newConversation();
   }
@@ -611,7 +623,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-Future<void> _openChatSearch() async {
+  Future<void> _openChatSearch() async {
     _scaffoldKey.currentState?.closeDrawer();
     final result = await Navigator.of(context).push<ChatSearchResult>(
       MaterialPageRoute<ChatSearchResult>(
@@ -770,15 +782,21 @@ Future<void> _openChatSearch() async {
       return;
     }
 
-    final choice = await showChatModelPickerSheet(
+    final result = await showChatModelPickerSheet(
       context: context,
       providers: _providers,
       selectedProvider: _selectedProvider,
-      onManageProviders: () {
-        unawaited(_openProviderSettings());
-      },
     );
-    if (choice != null) await _applyModelChoice(choice);
+    switch (result) {
+      case null:
+        return;
+      case ChatModelSelection(:final choice):
+        await _applyModelChoice(choice);
+        return;
+      case ManageProvidersSelection():
+        await _openProviderSettings();
+        return;
+    }
   }
 
   Future<void> _send() async {
@@ -1481,7 +1499,7 @@ Future<void> _openChatSearch() async {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _messages = _messages.take(messageIndex + 1).toList();
-      _followStreamingOutput = true;
+      _resetConversationUiState();
     });
     await _persistMessages();
     _scrollToBottom(force: true);
@@ -2441,6 +2459,7 @@ Future<void> _openChatSearch() async {
         _currentConversation = current;
         _messages = messages;
         _groupScope = true;
+        _resetConversationUiState();
       });
     } else if (_profile.id == character.id) {
       setState(() {
@@ -2519,6 +2538,7 @@ Future<void> _openChatSearch() async {
       }
       _characterMoods = moods;
       _groupScope = false;
+      _resetConversationUiState();
     });
     _scrollToBottom(jump: true);
   }
@@ -2536,6 +2556,7 @@ Future<void> _openChatSearch() async {
       _conversations = conversations;
       _currentConversation = current;
       _messages = messages;
+      _resetConversationUiState();
     });
     _scrollToBottom(jump: true);
     if (current == null) await _newGroupConversation();
@@ -2992,6 +3013,7 @@ Future<void> _openChatSearch() async {
                         ),
                       )
                     : ChatMessageList(
+                        key: ValueKey(_currentConversation?.id),
                         controller: _scrollController,
                         messages: _messages,
                         visibleMessageIndices: visibleMessageIndices,
@@ -3024,7 +3046,9 @@ Future<void> _openChatSearch() async {
                 generating: _isBusy,
                 onSend: _send,
                 onStop: _stopGenerating,
-                onNewConversation: _groupScope ? _newGroupConversation : _newConversation,
+                onNewConversation: _groupScope
+                    ? _newGroupConversation
+                    : _newConversation,
               ),
             ],
           ),

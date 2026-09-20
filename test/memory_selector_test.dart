@@ -47,7 +47,6 @@ void main() {
     expect(selected, isNot(contains(memories[2])));
   });
 
-
   test('generic wording alone does not pull unrelated memories forward', () {
     final memories = ['用户喜欢陶瓷'];
     final selected = MemorySelector.selectRelevant(
