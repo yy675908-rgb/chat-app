@@ -107,5 +107,40 @@ void main() {
 
       expect(state.reasoningDurationMs(), 0);
     });
+
+    test('keeps long chunked replies intact', () {
+      final state = ReplyStreamAccumulator();
+      for (var index = 0; index < 5000; index++) {
+        state.add(
+          const AiStreamEvent(
+            kind: AiStreamEventKind.content,
+            text: '片段',
+          ),
+        );
+      }
+
+      expect(state.fullReply.length, 10000);
+      expect(state.fullReply.startsWith('片段片段'), isTrue);
+      expect(state.fullReply.endsWith('片段片段'), isTrue);
+    });
+
+    test('refreshes snapshots after later chunks arrive', () {
+      final state = ReplyStreamAccumulator();
+      state.add(
+        const AiStreamEvent(
+          kind: AiStreamEventKind.content,
+          text: '前半',
+        ),
+      );
+      expect(state.fullReply, '前半');
+
+      state.add(
+        const AiStreamEvent(
+          kind: AiStreamEventKind.content,
+          text: '后半',
+        ),
+      );
+      expect(state.fullReply, '前半后半');
+    });
   });
 }

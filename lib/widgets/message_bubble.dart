@@ -219,7 +219,7 @@ class MessageBubble extends StatelessWidget {
                     const SizedBox(height: 9),
                   ],
                   if (streaming)
-                    SelectableText(
+                    Text(
                       message.text,
                       style: TextStyle(
                         color: scheme.onSurface,

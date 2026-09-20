@@ -87,6 +87,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _pointerHoldingMessages = false;
   bool _followStreamingOutput = true;
   bool _streamScrollScheduled = false;
+  Timer? _streamRenderTimer;
+  int _streamRenderGeneration = 0;
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
@@ -1182,6 +1184,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final service = AiChatService();
     _activeService = service;
     final streamState = ReplyStreamAccumulator();
+    var pendingStreamScroll = false;
+
+    void renderStreamingState() {
+      if (!mounted || _cancelled) return;
+      final shouldScroll = pendingStreamScroll;
+      pendingStreamScroll = false;
+      final reasoningDurationMs = streamState.reasoningDurationMs();
+      final visibleReply = _visibleReplyWhileStreaming(streamState.fullReply);
+      final reasoning = streamState.fullReasoning;
+      setState(() {
+        if (isRetry) {
+          final current = _messages[replyIndex];
+          final variants = [...current.replyVariants];
+          variants[current.activeVariantIndex] = streamingVariant!.copyWith(
+            text: visibleReply,
+            reasoning: reasoning,
+            reasoningDurationMs: reasoningDurationMs,
+          );
+          _messages[replyIndex] = current.copyWith(replyVariants: variants);
+        } else {
+          _messages[replyIndex] = newReply!.copyWith(
+            text: visibleReply,
+            reasoning: reasoning,
+            reasoningDurationMs: reasoningDurationMs,
+          );
+        }
+      });
+      if (shouldScroll) _scrollToBottom();
+    }
+
     var replyCompleted = false;
     try {
       await for (final event in service.streamEvents(
@@ -1195,30 +1227,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (!mounted || _cancelled) return;
         if (event.kind != AiStreamEventKind.usage) {
           final reasoningDurationMs = streamState.reasoningDurationMs();
-          setState(() {
-            if (isRetry) {
-              final current = _messages[replyIndex];
-              final variants = [...current.replyVariants];
-              variants[current.activeVariantIndex] = streamingVariant!.copyWith(
-                text: _visibleReplyWhileStreaming(streamState.fullReply),
-                reasoning: streamState.fullReasoning,
-                reasoningDurationMs: reasoningDurationMs,
-              );
-              _messages[replyIndex] = current.copyWith(replyVariants: variants);
-            } else {
-              _messages[replyIndex] = newReply!.copyWith(
-                text: _visibleReplyWhileStreaming(streamState.fullReply),
-                reasoning: streamState.fullReasoning,
-                reasoningDurationMs: reasoningDurationMs,
-              );
-            }
-          });
-          if (event.kind == AiStreamEventKind.content ||
-              reasoningDurationMs < 500) {
-            _scrollToBottom();
-          }
+          pendingStreamScroll =
+              pendingStreamScroll ||
+              event.kind == AiStreamEventKind.content ||
+              reasoningDurationMs < 500;
+          _scheduleStreamRender(renderStreamingState);
         }
       }
+      _cancelScheduledStreamRender();
+      pendingStreamScroll = false;
       final parsedReply = _splitMoodFromReply(streamState.fullReply);
       final replyText = parsedReply.text;
       if (!_cancelled && replyText.isEmpty) {
@@ -1273,16 +1290,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               _characterMood = nextMood;
             }
           }
+          _generating = false;
+          _activeReplyId = null;
+          _activeRetryIndex = null;
+          _activeRetrySnapshot = null;
         });
+        _scrollToBottom();
         replyCompleted = true;
-        if (mounted) {
-          setState(() {
-            _generating = false;
-            _activeReplyId = null;
-            _activeRetryIndex = null;
-            _activeRetrySnapshot = null;
-          });
-        }
         if (nextMood.isNotEmpty) {
           unawaited(() async {
             await _chatStore.saveCharacterMood(
@@ -1313,32 +1327,48 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
+        _cancelScheduledStreamRender();
+        if (!isRetry && streamState.fullReply.isNotEmpty) {
+          renderStreamingState();
+        }
         if (isRetry) {
           setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex && streamState.fullReply.isEmpty) {
+        } else if (_messages.length > replyIndex &&
+            streamState.fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError(error.message);
       }
     } on Object catch (error) {
       if (!_cancelled && mounted) {
+        _cancelScheduledStreamRender();
+        if (!isRetry && streamState.fullReply.isNotEmpty) {
+          renderStreamingState();
+        }
         if (isRetry) {
           setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex && streamState.fullReply.isEmpty) {
+        } else if (_messages.length > replyIndex &&
+            streamState.fullReply.isEmpty) {
           setState(() => _messages.removeAt(replyIndex));
         }
         _showError('回复失败：$error');
       }
     } finally {
+      _cancelScheduledStreamRender();
       service.close();
       if (identical(_activeService, service)) _activeService = null;
       if (mounted) {
-        setState(() {
-          _generating = false;
-          _activeReplyId = null;
-          _activeRetryIndex = null;
-          _activeRetrySnapshot = null;
-        });
+        if (_generating ||
+            _activeReplyId != null ||
+            _activeRetryIndex != null ||
+            _activeRetrySnapshot != null) {
+          setState(() {
+            _generating = false;
+            _activeReplyId = null;
+            _activeRetryIndex = null;
+            _activeRetrySnapshot = null;
+          });
+        }
         if (replyCompleted &&
             !isRetry &&
             replyIndex >= 0 &&
@@ -1371,6 +1401,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _stopGenerating() {
     _cancelled = true;
+    _cancelScheduledStreamRender();
     _activeService?.close();
     _groupIntentEvaluator.cancel();
     setState(() {
@@ -2794,6 +2825,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _scheduleStreamRender(VoidCallback render) {
+    if (_streamRenderTimer != null) return;
+    final generation = _streamRenderGeneration;
+    _streamRenderTimer = Timer(const Duration(milliseconds: 32), () {
+      _streamRenderTimer = null;
+      if (generation != _streamRenderGeneration) return;
+      if (mounted) render();
+    });
+  }
+
+  void _cancelScheduledStreamRender() {
+    _streamRenderTimer?.cancel();
+    _streamRenderTimer = null;
+    _streamRenderGeneration++;
+  }
+
   void _updateStreamingFollow() {
     if (!_scrollController.hasClients) return;
     final distance =
@@ -2815,6 +2862,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _proactiveTimer?.cancel();
     _cancelled = true;
+    _cancelScheduledStreamRender();
     _activeService?.close();
     _groupIntentEvaluator.dispose();
     _controller.dispose();
