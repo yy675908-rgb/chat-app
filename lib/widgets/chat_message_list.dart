@@ -366,18 +366,41 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     );
                   }
 
+                  final anchoredChild = Container(
+                    key: key,
+                    decoration: BoxDecoration(
+                      color: isHighlighted
+                          ? scheme.primaryContainer.withValues(alpha: 0.42)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: RepaintBoundary(child: child),
+                  );
+                  final isFreshMessage =
+                      visibleIndex == widget.visibleMessageIndices.length - 1 &&
+                      message.sentAt
+                              .isAfter(
+                                DateTime.now().subtract(
+                                  const Duration(milliseconds: 700),
+                                ),
+                              );
                   return KeyedSubtree(
                     key: ValueKey<String>('chat-message-${message.id}'),
-                    child: Container(
-                      key: key,
-                      decoration: BoxDecoration(
-                        color: isHighlighted
-                            ? scheme.primaryContainer.withValues(alpha: 0.42)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: RepaintBoundary(child: child),
-                    ),
+                    child: isFreshMessage
+                        ? TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: 1),
+                            duration: const Duration(milliseconds: 160),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, child) => Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 5 * (1 - value)),
+                                child: child,
+                              ),
+                            ),
+                            child: anchoredChild,
+                          )
+                        : anchoredChild,
                   );
                 },
               ),
