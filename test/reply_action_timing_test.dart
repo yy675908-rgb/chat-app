@@ -22,7 +22,6 @@ void main() {
           messages: [message],
           visibleMessageIndices: const [0],
           generating: generating,
-          busy: generating,
           activeRetryIndex: null,
           activeReplyId: generating ? message.id : null,
           reasoningExpanded: false,

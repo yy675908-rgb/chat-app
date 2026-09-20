@@ -35,7 +35,6 @@ void main() {
               messages: messages,
               visibleMessageIndices: visible,
               generating: false,
-              busy: false,
               activeRetryIndex: null,
               activeReplyId: null,
               reasoningExpanded: false,

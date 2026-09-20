@@ -13,7 +13,6 @@ class ChatMessageList extends StatefulWidget {
     required this.messages,
     required this.visibleMessageIndices,
     required this.generating,
-    required this.busy,
     required this.activeRetryIndex,
     required this.activeReplyId,
     required this.reasoningExpanded,
@@ -37,7 +36,6 @@ class ChatMessageList extends StatefulWidget {
   final List<ChatMessage> messages;
   final List<int> visibleMessageIndices;
   final bool generating;
-  final bool busy;
   final int? activeRetryIndex;
   final String? activeReplyId;
   final bool reasoningExpanded;

@@ -88,7 +88,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _followStreamingOutput = true;
   bool _streamScrollScheduled = false;
   Timer? _streamRenderTimer;
-  int _streamRenderGeneration = 0;
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
@@ -1214,6 +1213,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (shouldScroll) _scrollToBottom();
     }
 
+    void settleFailedReply() {
+      _cancelScheduledStreamRender();
+      if (isRetry) {
+        setState(() => _messages = retrySnapshot!);
+      } else if (!streamState.hasReply) {
+        if (_messages.length > replyIndex) {
+          setState(() => _messages.removeAt(replyIndex));
+        }
+      } else {
+        renderStreamingState();
+      }
+    }
+
     var replyCompleted = false;
     try {
       await for (final event in service.streamEvents(
@@ -1236,7 +1248,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       _cancelScheduledStreamRender();
       pendingStreamScroll = false;
-      final parsedReply = _splitMoodFromReply(streamState.fullReply);
+      final fullReply = streamState.fullReply;
+      final fullReasoning = streamState.fullReasoning.trim();
+      final parsedReply = _splitMoodFromReply(fullReply);
       final replyText = parsedReply.text;
       if (!_cancelled && replyText.isEmpty) {
         throw const AiChatException('模型没有返回文字，请检查模型 ID 和接口类型');
@@ -1251,7 +1265,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           generatedAt: DateTime.now(),
           providerId: provider.id,
           modelId: provider.selectedModel,
-          reasoning: streamState.fullReasoning.trim(),
+          reasoning: fullReasoning,
           reasoningDurationMs: reasoningDurationMs,
           promptTokens: streamState.usage.promptTokens,
           completionTokens: streamState.usage.completionTokens,
@@ -1271,7 +1285,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           } else {
             _messages[replyIndex] = newReply!.copyWith(
               text: replyText,
-              reasoning: streamState.fullReasoning.trim(),
+              reasoning: fullReasoning,
               reasoningDurationMs: reasoningDurationMs,
               promptTokens: streamState.usage.promptTokens,
               completionTokens: streamState.usage.completionTokens,
@@ -1327,30 +1341,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
-        _cancelScheduledStreamRender();
-        if (!isRetry && streamState.fullReply.isNotEmpty) {
-          renderStreamingState();
-        }
-        if (isRetry) {
-          setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex &&
-            streamState.fullReply.isEmpty) {
-          setState(() => _messages.removeAt(replyIndex));
-        }
+        settleFailedReply();
         _showError(error.message);
       }
     } on Object catch (error) {
       if (!_cancelled && mounted) {
-        _cancelScheduledStreamRender();
-        if (!isRetry && streamState.fullReply.isNotEmpty) {
-          renderStreamingState();
-        }
-        if (isRetry) {
-          setState(() => _messages = retrySnapshot!);
-        } else if (_messages.length > replyIndex &&
-            streamState.fullReply.isEmpty) {
-          setState(() => _messages.removeAt(replyIndex));
-        }
+        settleFailedReply();
         _showError('回复失败：$error');
       }
     } finally {
@@ -2827,10 +2823,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scheduleStreamRender(VoidCallback render) {
     if (_streamRenderTimer != null) return;
-    final generation = _streamRenderGeneration;
     _streamRenderTimer = Timer(const Duration(milliseconds: 32), () {
       _streamRenderTimer = null;
-      if (generation != _streamRenderGeneration) return;
       if (mounted) render();
     });
   }
@@ -2838,7 +2832,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _cancelScheduledStreamRender() {
     _streamRenderTimer?.cancel();
     _streamRenderTimer = null;
-    _streamRenderGeneration++;
   }
 
   void _updateStreamingFollow() {
@@ -3066,7 +3059,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         messages: _messages,
                         visibleMessageIndices: visibleMessageIndices,
                         generating: _generating,
-                        busy: _isBusy,
                         activeRetryIndex: _activeRetryIndex,
                         activeReplyId: _activeReplyId,
                         reasoningExpanded: _reasoningExpanded,

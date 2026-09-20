@@ -97,6 +97,7 @@ void main() {
 
     test('no reasoning reports zero duration', () {
       final state = ReplyStreamAccumulator();
+      expect(state.hasReply, isFalse);
       state.add(
         const AiStreamEvent(
           kind: AiStreamEventKind.content,
@@ -105,6 +106,7 @@ void main() {
         now: DateTime.utc(2026, 9, 18),
       );
 
+      expect(state.hasReply, isTrue);
       expect(state.reasoningDurationMs(), 0);
     });
 

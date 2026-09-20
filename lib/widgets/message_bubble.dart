@@ -78,10 +78,6 @@ class MessageBubble extends StatelessWidget {
 
     final isUser = message.author == MessageAuthor.user;
     final scheme = Theme.of(context).colorScheme;
-    final time = MaterialLocalizations.of(context).formatTimeOfDay(
-      TimeOfDay.fromDateTime(message.sentAt),
-      alwaysUse24HourFormat: true,
-    );
 
     if (isUser) {
       return Padding(
@@ -147,6 +143,11 @@ class MessageBubble extends StatelessWidget {
         ),
       );
     }
+
+    final time = MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(message.sentAt),
+      alwaysUse24HourFormat: true,
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 11, 6, 12),
