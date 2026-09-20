@@ -137,28 +137,22 @@ class ConversationDrawer extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
               child: Row(
                 children: [
-                  IconButton.outlined(
+                  IconButton(
                     tooltip: '清空历史记录',
                     onPressed: conversations.isEmpty ? null : onClearAll,
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(42, 42),
-                    ),
                     icon: const Icon(Icons.history_rounded, size: 20),
                   ),
                   const SizedBox(width: 6),
-                  IconButton.outlined(
+                  IconButton(
                     tooltip: '搜索记录',
                     onPressed: onSearch,
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(42, 42),
-                    ),
                     icon: const Icon(Icons.search_rounded, size: 20),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: FilledButton.tonalIcon(
+                    child: TextButton.icon(
                       onPressed: groupScope ? onNewGroup : onNew,
-                      style: FilledButton.styleFrom(
+                      style: TextButton.styleFrom(
                         minimumSize: const Size.fromHeight(42),
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                       ),
@@ -203,9 +197,10 @@ class ConversationDrawer extends StatelessWidget {
                   final selected = conversation.id == selectedId;
                   return ListTile(
                     selected: selected,
-                    selectedTileColor: scheme.secondaryContainer,
+                    selectedTileColor:
+                        scheme.secondaryContainer.withValues(alpha: 0.55),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     leading: Icon(
                       conversation.isGroup
