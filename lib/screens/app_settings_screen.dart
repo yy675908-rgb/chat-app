@@ -225,7 +225,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
         children: [
           const Text(
             '显示',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -242,7 +242,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           const SizedBox(height: 24),
           const Text(
             '对话上下文',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
@@ -271,7 +271,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             '应用会从最新消息向前保留，直到接近所选 token 预算；共同记忆和命中的世界书另外加入。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 13,
               height: 1.5,
             ),
           ),
@@ -322,7 +322,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           const SizedBox(height: 24),
           const Text(
             '用户人物信息',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Row(
@@ -374,13 +374,13 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             '会作为用户资料告诉角色，不显示在聊天消息中。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 13,
             ),
           ),
           const SizedBox(height: 24),
           const Text(
             '本地数据',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -410,7 +410,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             '备份文件不包含 API Key，应用不会主动上传；文件保存位置由你选择。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 13,
               height: 1.5,
             ),
           ),

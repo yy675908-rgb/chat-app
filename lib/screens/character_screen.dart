@@ -114,7 +114,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: scheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 180),
@@ -150,7 +150,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                           '这里决定角色是谁、如何开口，以及说话时遵循的个性。',
                           style: TextStyle(
                             color: scheme.onSurfaceVariant,
-                            fontSize: 12.5,
+                            fontSize: 13,
                             height: 1.45,
                           ),
                         ),
@@ -206,7 +206,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
             '每次新建单聊时都会先显示这段开场白，让角色先开口；内容完全由你自己决定。',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 13,
               height: 1.45,
             ),
           ),
@@ -257,7 +257,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                   '长设定建议用“全屏编辑”；全屏模式不会自动弹键盘，也不会和页面滚动抢选择操作。',
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: 13,
                     height: 1.5,
                   ),
                 ),
@@ -376,8 +376,8 @@ class _SectionLabel extends StatelessWidget {
       text,
       style: TextStyle(
         color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontSize: 12.5,
-        fontWeight: FontWeight.w700,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
         letterSpacing: 0.2,
       ),
     );

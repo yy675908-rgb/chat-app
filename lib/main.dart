@@ -175,7 +175,7 @@ class CharacterChatApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           width: 300,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.horizontal(right: Radius.circular(18)),
+            borderRadius: BorderRadius.horizontal(right: Radius.circular(14)),
           ),
         ),
         cardTheme: CardThemeData(
@@ -184,8 +184,7 @@ class CharacterChatApp extends StatelessWidget {
           elevation: 0,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
         listTileTheme: ListTileThemeData(
@@ -196,7 +195,7 @@ class CharacterChatApp extends StatelessWidget {
             vertical: 2,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
         dividerTheme: DividerThemeData(
@@ -220,19 +219,19 @@ class CharacterChatApp extends StatelessWidget {
             color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(17),
-            borderSide: BorderSide(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(17),
-            borderSide: BorderSide(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: teal, width: 1.4),
           ),
           errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: scheme.error),
           ),
         ),
@@ -241,7 +240,7 @@ class CharacterChatApp extends StatelessWidget {
             minimumSize: const Size(48, 48),
             padding: const EdgeInsets.symmetric(horizontal: 18),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
             ),
             elevation: 0,
           ),
@@ -250,7 +249,7 @@ class CharacterChatApp extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(48, 46),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(12),
             ),
             side: BorderSide(color: scheme.outlineVariant),
           ),
@@ -258,7 +257,7 @@ class CharacterChatApp extends StatelessWidget {
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
         ),
@@ -274,7 +273,7 @@ class CharacterChatApp extends StatelessWidget {
           elevation: 1,
           highlightElevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
         bottomSheetTheme: const BottomSheetThemeData(
@@ -284,14 +283,14 @@ class CharacterChatApp extends StatelessWidget {
           modalBarrierColor: Color(0x520F1D1F),
           showDragHandle: true,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
         ),
         dialogTheme: DialogThemeData(
           backgroundColor: scheme.surfaceContainerLowest,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         popupMenuTheme: PopupMenuThemeData(
@@ -299,7 +298,7 @@ class CharacterChatApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           textStyle: const TextStyle(color: ink, fontSize: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
         menuTheme: MenuThemeData(
@@ -321,7 +320,7 @@ class CharacterChatApp extends StatelessWidget {
           backgroundColor: const Color(0xFF263234),
           contentTextStyle: const TextStyle(color: Colors.white),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(10),
           ),
           insetPadding: const EdgeInsets.all(14),
         ),
@@ -333,14 +332,14 @@ class CharacterChatApp extends StatelessWidget {
           indicatorSize: TabBarIndicatorSize.tab,
           indicator: BoxDecoration(
             color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         chipTheme: base.chipTheme.copyWith(
           backgroundColor: scheme.surfaceContainer,
           side: BorderSide.none,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
           ),
           labelStyle: TextStyle(
             color: scheme.onSurfaceVariant,

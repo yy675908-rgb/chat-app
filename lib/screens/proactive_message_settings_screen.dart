@@ -194,7 +194,7 @@ class _ProactiveMessageSettingsScreenState
           const SizedBox(height: 24),
           const Text(
             '角色',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -222,7 +222,7 @@ class _ProactiveMessageSettingsScreenState
           const SizedBox(height: 24),
           const Text(
             '频率',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<ProactiveFrequency>(
@@ -252,7 +252,7 @@ class _ProactiveMessageSettingsScreenState
           const SizedBox(height: 24),
           const Text(
             '安静时段',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -282,7 +282,7 @@ class _ProactiveMessageSettingsScreenState
             '安静时段内不会安排提醒；例如 23:00–08:00 会把落在夜间的下一次提醒顺延到早上。',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 13,
               height: 1.5,
             ),
           ),

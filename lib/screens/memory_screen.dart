@@ -460,7 +460,7 @@ class _MemoryScreenState extends State<MemoryScreen>
                 if (entry.keywords.isEmpty)
                   const Text(
                     '未设置触发词：当前不会自动加入对话',
-                    style: TextStyle(fontSize: 11.5),
+                    style: TextStyle(fontSize: 12.5),
                   )
                 else
                   Wrap(
@@ -480,7 +480,7 @@ class _MemoryScreenState extends State<MemoryScreen>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12.5,
+                    fontSize: 13,
                     height: 1.45,
                   ),
                 ),
@@ -567,7 +567,7 @@ class _MemoryEmptyState extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: scheme.secondaryContainer.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, size: 27, color: scheme.onSecondaryContainer),
             ),
@@ -585,7 +585,7 @@ class _MemoryEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.45,
               ),
             ),

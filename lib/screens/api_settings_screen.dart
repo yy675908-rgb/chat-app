@@ -194,7 +194,7 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Material(
                       color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(12),
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
                         onTap: () => _editProvider(provider),
@@ -234,7 +234,7 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurfaceVariant,
-                                        fontSize: 12.5,
+                                        fontSize: 13,
                                       ),
                                     ),
                                   ],
@@ -264,7 +264,7 @@ class _ApiSettingsScreenState extends State<ApiSettingsScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -778,7 +778,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                       : '选择平台会自动填入官方常用地址；也可以用右侧铅笔修改。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     height: 1.4,
                   ),
                 ),
@@ -956,7 +956,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                     '每个模型单独保存；会发送给模型，但不会显示在聊天中。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
+                      fontSize: 13,
                       height: 1.45,
                     ),
                   ),
@@ -966,7 +966,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
                   '读取模型失败不代表聊天接口不可用。有些代理不提供 /models，请直接手动填写。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+                    fontSize: 13,
                     height: 1.45,
                   ),
                 ),
@@ -1094,7 +1094,7 @@ class _UrlOption extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 11.5,
+              fontSize: 12.5,
             ),
           ),
         ],
@@ -1152,7 +1152,7 @@ class _ProtocolOption extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 11.5,
+              fontSize: 12.5,
               height: 1.3,
             ),
           ),
@@ -1171,7 +1171,7 @@ class _PrivacyNote extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,

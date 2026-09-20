@@ -49,7 +49,7 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
             const SizedBox(height: 8),
             const Text(
               '写清楚情境和希望角色怎么回应。',
-              style: TextStyle(fontSize: 12),
+              style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -126,8 +126,7 @@ class _StylePreferencesScreenState extends State<StylePreferencesScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 11, 4, 11),
                   decoration: BoxDecoration(
                     color: scheme.surface,
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: scheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
