@@ -123,15 +123,15 @@ class CharacterChatApp extends StatelessWidget {
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
-          toolbarHeight: 72,
-          titleSpacing: 8,
+          toolbarHeight: 62,
+          titleSpacing: 4,
         ),
         drawerTheme: const DrawerThemeData(
           backgroundColor: Color(0xFFFBFCFA),
           surfaceTintColor: Colors.transparent,
-          width: 304,
+          width: 300,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+            borderRadius: BorderRadius.horizontal(right: Radius.circular(18)),
           ),
         ),
         cardTheme: CardThemeData(
@@ -152,7 +152,7 @@ class CharacterChatApp extends StatelessWidget {
             vertical: 2,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         dividerTheme: DividerThemeData(
