@@ -418,13 +418,12 @@ class _DrawerShortcut extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(15),
-      clipBehavior: Clip.antiAlias,
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          height: 48,
+          height: 44,
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: wide ? 14 : 10),
             child: Row(
