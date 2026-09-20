@@ -28,6 +28,10 @@ Future<ChatModelChoice?> showChatModelPickerSheet({
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 300),
+      reverseDuration: Duration(milliseconds: 260),
+    ),
     builder: (context) => StatefulBuilder(
       builder: (context, setSheetState) {
         final provider = available.firstWhere((item) => item.id == providerId);
@@ -166,6 +170,10 @@ Future<ConversationSpaceChoice?> showConversationSpacePickerSheet({
   return showModalBottomSheet<ConversationSpaceChoice>(
     context: context,
     showDragHandle: true,
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 300),
+      reverseDuration: Duration(milliseconds: 260),
+    ),
     builder: (context) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
