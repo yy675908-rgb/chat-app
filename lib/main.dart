@@ -11,9 +11,6 @@ void main() {
 class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
   void _clearFocus() {
     FocusManager.instance.primaryFocus?.unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
   }
 
   @override
@@ -38,6 +35,49 @@ class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _clearFocus();
     super.didRemove(route, previousRoute);
+  }
+}
+
+class _LinjianPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _LinjianPageTransitionsBuilder();
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 300);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 260);
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final enter = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    final exit = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(enter),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset.zero,
+          end: const Offset(-0.10, 0),
+        ).animate(exit),
+        child: child,
+      ),
+    );
   }
 }
 
@@ -116,6 +156,11 @@ class CharacterChatApp extends StatelessWidget {
       theme: base.copyWith(
         textTheme: readableTextTheme,
         primaryTextTheme: readableTextTheme,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: _LinjianPageTransitionsBuilder(),
+          },
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFFBFCFA),
           foregroundColor: ink,
