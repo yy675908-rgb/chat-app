@@ -119,7 +119,6 @@ class CharacterChatApp extends StatelessWidget {
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
             TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           },
         ),
         appBarTheme: const AppBarTheme(
