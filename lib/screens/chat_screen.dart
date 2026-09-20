@@ -2853,7 +2853,11 @@ Future<void> _openChatSearch() async {
         appBar: AppBar(
           leading: IconButton(
             tooltip: '会话',
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            onPressed: () {
+              final scaffold = _scaffoldKey.currentState;
+              if (scaffold == null) return;
+              scaffold.openDrawer();
+            },
             icon: const Icon(Icons.menu_rounded),
           ),
           titleSpacing: 2,
