@@ -42,10 +42,10 @@ class _LinjianPageTransitionsBuilder extends PageTransitionsBuilder {
   const _LinjianPageTransitionsBuilder();
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 300);
+  Duration get transitionDuration => const Duration(milliseconds: 340);
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 260);
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 300);
 
   @override
   Widget buildTransitions<T>(
