@@ -68,11 +68,20 @@ jobs:
         run: dart run tool/configure_android_signing.dart
 
       - name: Build optimized ABI-specific release APKs
-        run: >-
-          flutter build apk
-          --no-pub
-          --release
-          --split-per-abi
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_version=$(awk '/^version:/ {print $2}' pubspec.yaml)
+          app_semver="${app_version%%+*}"
+          app_build="${app_version##*+}"
+
+          flutter build apk \
+            --no-pub \
+            --release \
+            --split-per-abi \
+            --build-name="$app_semver" \
+            --build-number="$app_build"
 
       - name: Prepare and audit APK
         shell: bash
@@ -87,6 +96,20 @@ jobs:
 
           mkdir -p "$output_dir"
           cp "$source_apk" "$output_apk"
+
+          android_sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          aapt_path=$(find "$android_sdk/build-tools" -type f -name aapt \
+            | sort -V | tail -n 1)
+          if [ -z "$aapt_path" ]; then
+            echo "aapt was not found in the Android SDK" >&2
+            exit 1
+          fi
+          actual_version=$("$aapt_path" dump badging "$output_apk" \
+            | sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p")
+          if [ "$actual_version" != "$app_semver" ]; then
+            echo "APK version mismatch: expected $app_semver, got $actual_version" >&2
+            exit 1
+          fi
 
           apk_entries=$(unzip -Z1 "$output_apk")
           if printf '%s\n' "$apk_entries" \
