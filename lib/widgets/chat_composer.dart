@@ -24,6 +24,7 @@ class ChatComposer extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
+      maintainBottomViewPadding: true,
       child: Material(
         color: scheme.surface,
         child: Padding(

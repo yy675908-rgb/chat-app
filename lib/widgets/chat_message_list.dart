@@ -293,7 +293,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
               child: ListView.builder(
                 controller: widget.controller,
                 addAutomaticKeepAlives: false,
-                addRepaintBoundaries: false,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
