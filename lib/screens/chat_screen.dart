@@ -3114,8 +3114,10 @@ class _KeyboardStableBody extends StatelessWidget {
     return ColoredBox(
       color: color,
       child: ClipRect(
-        child: Transform.translate(
-          offset: Offset(0, -mediaQuery.viewInsets.bottom),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: mediaQuery.viewInsets.bottom),
+          duration: const Duration(milliseconds: 48),
+          curve: Curves.easeOutCubic,
           child: Padding(
             padding: EdgeInsets.only(bottom: mediaQuery.viewPadding.bottom),
             child: MediaQuery(
@@ -3124,6 +3126,10 @@ class _KeyboardStableBody extends StatelessWidget {
                   .removePadding(removeBottom: true),
               child: child,
             ),
+          ),
+          builder: (context, bottomInset, child) => Transform.translate(
+            offset: Offset(0, -bottomInset),
+            child: child,
           ),
         ),
       ),
