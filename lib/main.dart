@@ -21,7 +21,6 @@ class _KeyboardDismissNavigatorObserver extends NavigatorObserver {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _clearFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _clearFocus());
     super.didPop(route, previousRoute);
   }
 

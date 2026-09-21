@@ -2891,6 +2891,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       child: Scaffold(
         key: _scaffoldKey,
+        resizeToAvoidBottomInset: false,
         drawer: ConversationDrawer(
           profile: _profile,
           currentMood: mood,
@@ -3011,7 +3012,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             const SizedBox(width: 4),
           ],
         ),
-        body: ColoredBox(
+        body: _KeyboardStableBody(
           color: Theme.of(context).colorScheme.surface,
           child: Column(
             children: [
@@ -3091,6 +3092,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     : _newConversation,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _KeyboardStableBody extends StatelessWidget {
+  const _KeyboardStableBody({
+    required this.color,
+    required this.child,
+  });
+
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    return ColoredBox(
+      color: color,
+      child: ClipRect(
+        child: Transform.translate(
+          offset: Offset(0, -mediaQuery.viewInsets.bottom),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: mediaQuery.viewPadding.bottom),
+            child: MediaQuery(
+              data: mediaQuery
+                  .removeViewInsets(removeBottom: true)
+                  .removePadding(removeBottom: true),
+              child: child,
+            ),
           ),
         ),
       ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-class ChatComposer extends StatelessWidget {
+class ChatComposer extends StatefulWidget {
   const ChatComposer({
     super.key,
     required this.controller,
@@ -20,11 +20,52 @@ class ChatComposer extends StatelessWidget {
   final VoidCallback onNewConversation;
 
   @override
+  State<ChatComposer> createState() => _ChatComposerState();
+}
+
+class _ChatComposerState extends State<ChatComposer> {
+  late final FocusNode _focusNode;
+  bool _directFocusRequest = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(
+      debugLabel: 'chat-composer',
+      skipTraversal: true,
+    )..addListener(_guardFocus);
+  }
+
+  void _guardFocus() {
+    if (_focusNode.hasFocus && !_directFocusRequest) {
+      _focusNode.unfocus();
+    } else if (!_focusNode.hasFocus) {
+      _directFocusRequest = false;
+    }
+  }
+
+  void _allowDirectFocus() {
+    if (!widget.enabled) return;
+    _directFocusRequest = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_focusNode.hasFocus) {
+        _directFocusRequest = false;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_guardFocus);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
-      maintainBottomViewPadding: true,
       child: Material(
         color: scheme.surface,
         child: Padding(
@@ -34,7 +75,9 @@ class ChatComposer extends StatelessWidget {
             children: [
               IconButton(
                 tooltip: '新对话',
-                onPressed: enabled && !generating ? onNewConversation : null,
+                onPressed: widget.enabled && !widget.generating
+                    ? widget.onNewConversation
+                    : null,
                 icon: const Icon(Icons.add_comment_outlined, size: 21),
               ),
               const SizedBox(width: 2),
@@ -50,50 +93,61 @@ class ChatComposer extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: controller,
-                            autofocus: false,
-                            enabled: enabled,
-                            minLines: 1,
-                            maxLines: 6,
-                            textInputAction: TextInputAction.newline,
-                            onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                            decoration: InputDecoration(
-                              hintText: generating ? '可以继续说…' : '说点什么…',
-                              hintStyle: TextStyle(
-                                color: scheme.onSurfaceVariant.withValues(alpha: 0.62),
+                          child: Listener(
+                            onPointerDown: (_) => _allowDirectFocus(),
+                            child: TextField(
+                              controller: widget.controller,
+                              focusNode: _focusNode,
+                              autofocus: false,
+                              enabled: widget.enabled,
+                              minLines: 1,
+                              maxLines: 6,
+                              textInputAction: TextInputAction.newline,
+                              onTapOutside: (_) => _focusNode.unfocus(),
+                              decoration: InputDecoration(
+                                hintText: widget.generating
+                                    ? '可以继续说…'
+                                    : '说点什么…',
+                                hintStyle: TextStyle(
+                                  color: scheme.onSurfaceVariant.withValues(
+                                    alpha: 0.62,
+                                  ),
+                                ),
+                                border: InputBorder.none,
+                                filled: false,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
                               ),
-                              border: InputBorder.none,
-                              filled: false,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 11),
                             ),
                           ),
                         ),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 120),
-                          child: generating
+                          child: widget.generating
                               ? IconButton(
                                   key: const ValueKey('stop'),
                                   tooltip: '停止当前回复',
                                   onPressed: () {
                                     HapticFeedback.selectionClick();
-                                    onStop();
+                                    widget.onStop();
                                   },
                                   icon: const Icon(Icons.stop_rounded, size: 20),
                                 )
                               : const SizedBox.shrink(key: ValueKey('idle')),
                         ),
                         ValueListenableBuilder<TextEditingValue>(
-                          valueListenable: controller,
+                          valueListenable: widget.controller,
                           builder: (context, value, _) {
                             final canSend =
-                                enabled && value.text.trim().isNotEmpty;
+                                widget.enabled &&
+                                value.text.trim().isNotEmpty;
                             return IconButton(
                               tooltip: '发送',
                               onPressed: canSend
                                   ? () {
                                       HapticFeedback.selectionClick();
-                                      onSend();
+                                      widget.onSend();
                                     }
                                   : null,
                               icon: Icon(
