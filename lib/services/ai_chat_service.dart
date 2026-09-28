@@ -81,7 +81,6 @@ class AiChatService {
       _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60);
 
   static const _connectTimeout = Duration(seconds: 20);
-  static const _streamIdleTimeout = Duration(seconds: 60);
   static const _retryDelay = Duration(milliseconds: 700);
   static const _uiFlushInterval = Duration(milliseconds: 32);
   static const _retryableStatusCodes = <int>{429, 502, 503};
@@ -347,18 +346,63 @@ class AiChatService {
   }
 
   Stream<String> _streamLines(http.StreamedResponse response) {
-    return response.stream
-        .timeout(
-          _streamIdleTimeout,
-          onTimeout: (sink) {
-            sink.addError(
-              const AiChatException('模型长时间没有返回数据，已停止本次生成'),
+    late final StreamController<String> controller;
+    StreamSubscription<String>? subscription;
+    Timer? idleTimer;
+    var finished = false;
+
+    void finishWithError() {
+      if (finished) return;
+      finished = true;
+      idleTimer?.cancel();
+      controller.addError(
+        const AiChatException('模型长时间没有返回有效内容，已停止本次生成'),
+      );
+      unawaited(controller.close());
+      unawaited(subscription?.cancel() ?? Future<void>.value());
+    }
+
+    void resetTimer() {
+      idleTimer?.cancel();
+      idleTimer = Timer(_eventIdleTimeout, finishWithError);
+    }
+
+    controller = StreamController<String>(
+      onListen: () {
+        resetTimer();
+        subscription = response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(
+              (line) {
+                if (finished) return;
+                if (_sseData(line) != null) resetTimer();
+                controller.add(line);
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                if (finished) return;
+                finished = true;
+                idleTimer?.cancel();
+                controller.addError(error, stackTrace);
+                unawaited(controller.close());
+              },
+              onDone: () {
+                if (finished) return;
+                finished = true;
+                idleTimer?.cancel();
+                unawaited(controller.close());
+              },
             );
-            sink.close();
-          },
-        )
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
+      },
+      onPause: () => subscription?.pause(),
+      onResume: () => subscription?.resume(),
+      onCancel: () {
+        finished = true;
+        idleTimer?.cancel();
+        unawaited(subscription?.cancel() ?? Future<void>.value());
+      },
+    );
+    return controller.stream;
   }
 
   Stream<AiStreamEvent> _coalesceFastTextEvents(

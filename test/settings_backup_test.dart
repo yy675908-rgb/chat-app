@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -144,7 +145,21 @@ void main() {
 
   test('full backup restores mood for each conversation separately', () async {
     final chatStore = ChatStore();
-    final service = BackupService(chatStore: chatStore);
+    final providerStore = ProviderStore();
+    await providerStore.saveProviders([
+      const ProviderProfile(
+        id: 'test',
+        name: 'Test',
+        protocol: ProviderProtocol.openAiCompatible,
+        baseUrl: 'https://example.com/v1',
+        models: ['demo-model'],
+        selectedModel: 'demo-model',
+      ),
+    ]);
+    final service = BackupService(
+      chatStore: chatStore,
+      providerStore: providerStore,
+    );
     final conversations = await chatStore.loadConversations();
     final first = conversations.first;
     final second = Conversation(
