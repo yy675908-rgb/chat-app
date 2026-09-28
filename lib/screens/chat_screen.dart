@@ -816,9 +816,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _followStreamingOutput = true;
     });
     _scrollToBottom(force: true);
-    unawaited(_updateConversationTitle(text));
+    final currentTitle = _currentConversation?.title;
+    final firstMessageTitle =
+        currentTitle == '新对话' || currentTitle == '第一次见面'
+        ? text.replaceAll(RegExp(r'\s+'), ' ').trim()
+        : null;
     unawaited(
-      _persistAppendedMessage(userMessage, _messages.length - 1),
+      _persistAppendedMessage(
+        userMessage,
+        _messages.length - 1,
+        firstMessageTitle: firstMessageTitle,
+      ),
     );
     unawaited(
       _proactiveCoordinator.postponeCurrent(characters: _characters),
@@ -930,7 +938,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     } finally {
-      _drainingReplies = false;
+      if (mounted) {
+        setState(() => _drainingReplies = false);
+      } else {
+        _drainingReplies = false;
+      }
     }
   }
 
@@ -1642,33 +1654,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _updateConversationTitle(String text) async {
-    final current = _currentConversation;
-    if (current == null ||
-        (current.title != '新对话' && current.title != '第一次见面')) {
-      return;
-    }
-    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final title = compact.characters.length > 18
-        ? '${compact.characters.take(18).join()}…'
-        : compact;
-    final updated = current.copyWith(title: title, updatedAt: DateTime.now());
-    await _chatStore.saveConversation(updated);
-    if (!mounted || _currentConversation?.id != current.id) return;
-    setState(() {
-      _currentConversation = updated;
-      _conversations =
-          _conversations
-              .map((item) => item.id == updated.id ? updated : item)
-              .toList()
-            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    });
-  }
-
   Future<void> _persistAppendedMessage(
     ChatMessage message,
-    int ordinal,
-  ) async {
+    int ordinal, {
+    String? firstMessageTitle,
+  }) async {
     final current = _currentConversation;
     if (current == null) return;
     final conversationId = current.id;
@@ -1676,7 +1666,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final operation = _persistQueue.then((_) async {
       await _chatStore.saveMessage(conversationId, message, ordinal);
-      final updated = current.copyWith(updatedAt: updatedAt);
+      final latest = _currentConversation?.id == conversationId
+          ? _currentConversation!
+          : current;
+      final title = firstMessageTitle == null
+          ? null
+          : firstMessageTitle.characters.length > 18
+          ? '${firstMessageTitle.characters.take(18).join()}…'
+          : firstMessageTitle;
+      final updated = latest.copyWith(
+        title: title,
+        updatedAt: updatedAt,
+      );
       await _chatStore.saveConversation(updated);
       if (!mounted || _currentConversation?.id != conversationId) return;
       setState(() {
@@ -1705,7 +1706,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final operation = _persistQueue.then((_) async {
       await _chatStore.saveMessages(conversationId, messagesSnapshot);
-      final updated = current.copyWith(updatedAt: updatedAt);
+      final latest = _currentConversation?.id == conversationId
+          ? _currentConversation!
+          : current;
+      final updated = latest.copyWith(updatedAt: updatedAt);
       await _chatStore.saveConversation(updated);
       if (!mounted || _currentConversation?.id != conversationId) return;
       setState(() {
@@ -2823,7 +2827,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scheduleStreamRender(VoidCallback render) {
     if (_streamRenderTimer != null) return;
-    _streamRenderTimer = Timer(const Duration(milliseconds: 32), () {
+    _streamRenderTimer = Timer(const Duration(milliseconds: 64), () {
       _streamRenderTimer = null;
       if (mounted) render();
     });
