@@ -18,9 +18,8 @@ Future<GroupConversationDraft?> showGroupConversationSheet({
   required String Function(String characterId) moodForCharacter,
 }) async {
   final selectedIds = characters.map((item) => item.id).toSet();
-  final titleController = TextEditingController();
-  try {
-    return await showModalBottomSheet<GroupConversationDraft>(
+  var title = '';
+  return showModalBottomSheet<GroupConversationDraft>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -47,7 +46,7 @@ Future<GroupConversationDraft?> showGroupConversationSheet({
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: titleController,
+                    onChanged: (value) => title = value,
                     autofocus: false,
                     onTapOutside: (_) => FocusScope.of(context).unfocus(),
                     decoration: const InputDecoration(
@@ -93,7 +92,7 @@ Future<GroupConversationDraft?> showGroupConversationSheet({
                         : () => Navigator.pop(
                             context,
                             GroupConversationDraft(
-                              title: titleController.text.trim(),
+                              title: title.trim(),
                               participantIds: selectedIds.toList(),
                             ),
                           ),
@@ -109,8 +108,5 @@ Future<GroupConversationDraft?> showGroupConversationSheet({
           ),
         ),
       ),
-    );
-  } finally {
-    titleController.dispose();
-  }
+  );
 }

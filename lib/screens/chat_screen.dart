@@ -352,8 +352,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ? _conversations
         : await _chatStore.loadGroupConversations();
     final conversations = [conversation, ...existingGroups];
-    await _chatStore.saveMessages(conversation.id, messages);
     await _chatStore.saveGroupConversations(conversations);
+    await _chatStore.saveMessages(conversation.id, messages);
     if (!mounted) return;
     setState(() {
       _conversations = conversations;
