@@ -25,6 +25,30 @@ void main() {
     selectedModel: 'model',
   );
 
+  test('heartbeat-only stream reports an error instead of hanging', () async {
+    final service = AiChatService(
+      client: _HeartbeatOnlyClient(),
+      eventIdleTimeout: const Duration(milliseconds: 80),
+    );
+    addTearDown(service.close);
+
+    await expectLater(
+      service.streamReply(
+        provider: provider,
+        apiKey: 'secret',
+        systemPrompt: '测试',
+        history: const [],
+      ).drain<void>(),
+      throwsA(
+        isA<AiChatException>().having(
+          (error) => error.message,
+          'message',
+          contains('没有返回有效内容'),
+        ),
+      ),
+    );
+  });
+
   test('429/502/503 is retried once before any streamed reply starts', () async {
     var attempts = 0;
     final client = MockClient((request) async {
@@ -174,4 +198,18 @@ void main() {
     expect(after.single.id, original.id);
     expect(after.single.name, '原角色');
   });
+}
+
+class _HeartbeatOnlyClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    return http.StreamedResponse(
+      Stream.periodic(
+        const Duration(milliseconds: 10),
+        (_) => utf8.encode(': ping\n\n'),
+      ),
+      200,
+      headers: {'content-type': 'text/event-stream'},
+    );
+  }
 }

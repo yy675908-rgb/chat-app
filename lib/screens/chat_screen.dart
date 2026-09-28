@@ -234,15 +234,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final messages = <ChatMessage>[];
     for (final message in loadedMessages) {
       final cleaned = _sanitizeMoodMetadataInMessage(message);
+      if (cleaned.author == MessageAuthor.character &&
+          cleaned.text.trim().isEmpty &&
+          cleaned.reasoning.trim().isEmpty &&
+          cleaned.replyVariants.every(
+            (variant) =>
+                variant.text.trim().isEmpty && variant.reasoning.trim().isEmpty,
+          )) {
+        cleanedStoredMetadata = true;
+        continue;
+      }
       if (_messageMoodMetadataChanged(message, cleaned)) {
         cleanedStoredMetadata = true;
       }
       messages.add(cleaned);
     }
+    if (cleanedStoredMetadata) {
+      await _chatStore.saveMessages(conversationId, messages);
+    }
     if (messages.isNotEmpty) {
-      if (cleanedStoredMetadata) {
-        await _chatStore.saveMessages(conversationId, messages);
-      }
       return messages;
     }
 
@@ -1229,7 +1239,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _cancelScheduledStreamRender();
       if (isRetry) {
         setState(() => _messages = retrySnapshot!);
-      } else if (!streamState.hasReply) {
+      } else if (_splitMoodFromReply(streamState.fullReply).text.isEmpty) {
         if (_messages.length > replyIndex) {
           setState(() => _messages.removeAt(replyIndex));
         }

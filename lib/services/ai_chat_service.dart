@@ -76,7 +76,9 @@ class AiStreamEvent {
 }
 
 class AiChatService {
-  AiChatService({http.Client? client}) : _client = client ?? http.Client();
+  AiChatService({http.Client? client, Duration? eventIdleTimeout})
+    : _client = client ?? http.Client(),
+      _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60);
 
   static const _connectTimeout = Duration(seconds: 20);
   static const _streamIdleTimeout = Duration(seconds: 60);
@@ -88,6 +90,7 @@ class AiChatService {
   static const _defaultOutputReserveTokens = 2048;
 
   final http.Client _client;
+  final Duration _eventIdleTimeout;
 
   Stream<String> streamReply({
     required ProviderProfile provider,
@@ -136,7 +139,13 @@ class AiChatService {
             temperature: temperature,
             contextTokenBudget: contextTokenBudget,
           );
-    return _coalesceFastTextEvents(source);
+    return _coalesceFastTextEvents(source).timeout(
+      _eventIdleTimeout,
+      onTimeout: (sink) {
+        sink.addError(const AiChatException('模型长时间没有返回有效内容，已停止本次生成'));
+        sink.close();
+      },
+    );
   }
 
   Stream<AiStreamEvent> _streamOpenAi({

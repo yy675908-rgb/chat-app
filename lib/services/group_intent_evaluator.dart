@@ -6,7 +6,9 @@ import 'group_reply_policy.dart';
 
 class GroupIntentEvaluator {
   GroupIntentEvaluator({AiChatService Function()? serviceFactory})
-    : _serviceFactory = serviceFactory ?? AiChatService.new;
+    : _serviceFactory =
+          serviceFactory ??
+          (() => AiChatService(eventIdleTimeout: const Duration(seconds: 20)));
 
   final AiChatService Function() _serviceFactory;
   final Set<AiChatService> _activeServices = {};
