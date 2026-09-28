@@ -1360,14 +1360,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
         _scrollToBottom();
         replyCompleted = true;
-        if (nextMood.isNotEmpty) {
-          unawaited(() async {
-            if (replyConversationId.isNotEmpty) {
-              await _chatStore.saveConversationMood(
-                replyConversationId, speakingCharacter.id, nextMood,
-              );
-            }
-          }());
+        if (nextMood.isNotEmpty && replyConversationId.isNotEmpty) {
+          final moodSave = _persistQueue.then(
+            (_) => _chatStore.saveConversationMood(
+              replyConversationId, speakingCharacter.id, nextMood,
+            ),
+          );
+          _persistQueue = moodSave.catchError((Object _) {});
         } else if (replyConversationId.isNotEmpty) {
           unawaited(
             _repairMoodFromLatestTurn(

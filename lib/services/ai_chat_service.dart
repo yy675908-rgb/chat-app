@@ -138,13 +138,7 @@ class AiChatService {
             temperature: temperature,
             contextTokenBudget: contextTokenBudget,
           );
-    return _coalesceFastTextEvents(source).timeout(
-      _eventIdleTimeout,
-      onTimeout: (sink) {
-        sink.addError(const AiChatException('模型长时间没有返回有效内容，已停止本次生成'));
-        sink.close();
-      },
-    );
+    return _coalesceFastTextEvents(source);
   }
 
   Stream<AiStreamEvent> _streamOpenAi({
