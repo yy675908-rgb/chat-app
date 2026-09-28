@@ -72,7 +72,7 @@ class GroupIntentEvaluator {
             '${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text:
-            '用户对群聊各角色的好感度：\n$roster\n\n'
+            '用户对群聊各角色的亲密度：\n$roster\n\n'
             '最近对话：\n$transcript\n\n'
             '本段已发言角色：${spokenNames.isEmpty ? '无' : spokenNames}\n'
             '上一位发言角色：${lastSpeakerName.isEmpty ? '无' : lastSpeakerName}\n\n'
@@ -87,9 +87,9 @@ class GroupIntentEvaluator {
             '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
             '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
             '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
-            '用户对这个角色的好感度：$intimacyBehavior'
-            '好感度可以影响角色是否想主动接话、争取注意或改变用户观感，'
-            '但它不是关系定义；具体权重由角色性格、真实关系和当前情境决定。'
+            '用户对这个角色的亲密度：$intimacyBehavior'
+            '角色知道用户的感受，可以自然影响是否接话；亲密度与实际关系远近独立，'
+            '具体反应由角色性格、真实关系和当前情境决定。'
             '由这个角色自己判断是否想回应用户、回应其他角色或主动接续话题。'
             '被点名、在意、吃醋、反驳、安慰或不愿让用户的话落空，都可以构成接话动机；'
             '没有自然动机时可以沉默。不要替其他角色判断。'

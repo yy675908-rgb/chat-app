@@ -82,7 +82,8 @@ void main() {
       );
 
       expect(prompt, startsWith('模型隐藏提示。\n\n角色设定正文。'));
-      expect(prompt, contains('用户对你的好感度为72/100（较高）'));
+      expect(prompt, contains('用户对你的亲密度为72/100（较高）'));
+      expect(prompt, contains('关系亲近时也可能很低'));
       expect(prompt, contains('名字：小元'));
       expect(prompt, contains('用户喝咖啡通常不加糖'));
       expect(prompt, isNot(contains('用户喜欢陶瓷')));

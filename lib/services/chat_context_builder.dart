@@ -88,17 +88,17 @@ class ChatContextBuilder {
 
     final isGroup = currentConversation?.isGroup == true;
     final intimacyInstruction = isGroup
-        ? '\n\n用户对群聊各角色的好感度：\n'
+        ? '\n\n用户对群聊各角色的亲密度（用户对各角色的主观感受）：\n'
               '${groupParticipants.map((item) {
                 final intimacy = intimacyLabel(item.userIntimacy);
                 return '- ${item.name}：${item.userIntimacy}/100（$intimacy）';
               }).join('\n')}\n'
-              '好感度只是关系背景，不定义关系类型。当前角色可以按自己的性格和当前情境决定是否在意以及如何反应；'
-              '不要为了体现好感度刻意迎合、增加戏剧性或改变固有说话风格。'
-        : '\n\n用户对你的好感度为${activeCharacter.userIntimacy}/100'
+              '亲密度与实际关系远近是独立的：关系亲近时用户仍可能亲密度低，关系疏远时也可能亲密度高。'
+              '你知道这些感受，可以按性格、对话和关系自然回应；不要据此推断关系或刻意迎合。'
+        : '\n\n用户对你的亲密度为${activeCharacter.userIntimacy}/100'
               '（${intimacyLabel(activeCharacter.userIntimacy)}）。'
-              '这只是关系背景，不定义你们的关系。你可以按自己的性格和当前情境决定是否在意以及如何反应；'
-              '不要为了体现好感度刻意迎合、试探或改变固有说话风格。';
+              '这是用户对你的主观感受，与实际关系远近独立：关系亲近时也可能很低，关系疏远时也可能很高。'
+              '你知道用户的感受，可按自己的性格和当前情境自然回应，但不要据此推断或改写关系，也不要刻意迎合。';
 
     final groupInstruction = isGroup
         ? '\n\n这是一个多人群聊。你当前只扮演“${activeCharacter.name}”，'
@@ -200,8 +200,8 @@ class ChatContextBuilder {
 
   static String intimacyBehavior(int value) {
     return '$value/100（${intimacyLabel(value)}）。'
-        '这是用户对角色的主观好感和接受程度，不是关系类型。'
-        '角色可以自行决定是否在意，以及是否想提高、维持或改变它。';
+        '这是用户对角色的主观亲密感受，与实际关系远近独立。'
+        '角色知道这个感受，可以按性格和情境自然回应，不要据此推断关系。';
   }
 
   static String formatPromptTime(DateTime value) {

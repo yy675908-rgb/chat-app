@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:character_chat_app/models/character_profile.dart';
+import 'package:character_chat_app/models/conversation.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/proactive_message_settings.dart';
 import 'package:character_chat_app/models/user_profile.dart';
@@ -139,6 +140,30 @@ void main() {
       ).restoreBackup(raw),
       completes,
     );
+  });
+
+  test('full backup restores mood for each conversation separately', () async {
+    final chatStore = ChatStore();
+    final service = BackupService(chatStore: chatStore);
+    final conversations = await chatStore.loadConversations();
+    final first = conversations.first;
+    final second = Conversation(
+      id: 'conversation-second',
+      characterId: first.characterId,
+      title: '另一段对话',
+      createdAt: first.createdAt,
+      updatedAt: first.updatedAt,
+    );
+    await chatStore.saveConversations([first, second]);
+    await chatStore.saveConversationMood(first.id, first.characterId, '开心');
+    await chatStore.saveConversationMood(second.id, second.characterId, '低落');
+
+    final backup = await service.createBackup();
+    await chatStore.saveConversationMood(first.id, first.characterId, '被覆盖');
+    await service.restoreBackup(backup);
+
+    expect(await chatStore.loadConversationMood(first.id, first.characterId), '开心');
+    expect(await chatStore.loadConversationMood(second.id, second.characterId), '低落');
   });
 
   test('configuration backup excludes chat history', () async {

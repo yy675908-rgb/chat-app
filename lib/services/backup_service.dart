@@ -49,6 +49,7 @@ class BackupService {
     final characterMemorySources = <String, Map<String, String>>{};
     final characterMoods = <String, String>{};
     final characterMoodSources = <String, String>{};
+    final conversationMoods = <String, Map<String, String>>{};
     final characterStatusSources = <String, String>{};
     for (final character in characters) {
       final memories = await _chatStore.loadMemories(characterId: character.id);
@@ -73,6 +74,19 @@ class BackupService {
         if (moodSource.isNotEmpty) {
           characterMoodSources[character.id] = moodSource;
         }
+      }
+    }
+    if (scope == BackupScope.full) {
+      for (final conversation in conversations) {
+        final moods = <String, String>{};
+        final ids = conversation.isGroup
+            ? conversation.participantIds
+            : <String>[conversation.characterId];
+        for (final id in ids) {
+          final mood = await _chatStore.loadConversationMood(conversation.id, id);
+          if (mood.isNotEmpty) moods[id] = mood;
+        }
+        if (moods.isNotEmpty) conversationMoods[conversation.id] = moods;
       }
     }
     final data = <String, Object?>{
@@ -113,6 +127,7 @@ class BackupService {
         'characterMood': await _chatStore.loadCharacterMood(),
         'characterMoods': characterMoods,
         'characterMoodSources': characterMoodSources,
+        'conversationMoods': conversationMoods,
       });
     }
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -218,6 +233,17 @@ class BackupService {
     requireMapOrNull('characterStatusSources');
     requireMapOrNull('characterMoods');
     requireMapOrNull('characterMoodSources');
+    requireMapOrNull('conversationMoods');
+    if (data['conversationMoods'] case final Map moods) {
+      for (final entry in moods.entries) {
+        if (entry.value is! Map ||
+            (entry.value as Map).entries.any(
+              (item) => item.key is! String || item.value is! String,
+            )) {
+          throw const FormatException('备份中的会话心绪数据无效');
+        }
+      }
+    }
     requireListOrNull('memories');
     requireListOrNull('stylePreferences');
     requireListOrNull('worldBooks');
@@ -283,6 +309,7 @@ class BackupService {
         .map((item) => Conversation.fromJson(Map<String, Object?>.from(item)))
         .toList();
     if (hasConversationData) {
+      await _chatStore.clearAllConversationMoods();
       await _chatStore.saveConversations(conversations);
 
       final messagesRaw = data['messages'];
@@ -412,6 +439,16 @@ class BackupService {
       await _chatStore.saveCharacterMood(
         data['characterMood']?.toString() ?? '',
       );
+    }
+    final scopedMoodsRaw = data['conversationMoods'];
+    if (hasConversationData && scopedMoodsRaw is Map) {
+      for (final entry in scopedMoodsRaw.entries) {
+        for (final item in (entry.value as Map).entries) {
+          await _chatStore.saveConversationMood(
+            entry.key.toString(), item.key.toString(), item.value.toString(),
+          );
+        }
+      }
     }
     await _chatStore.saveReasoningExpanded(
       data['reasoningExpanded'] as bool? ?? true,

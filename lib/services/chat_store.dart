@@ -774,6 +774,59 @@ class ChatStore {
     }
   }
 
+  String _conversationMoodKey(String conversationId, String characterId) =>
+      'conversation_mood_v1_${conversationId}_$characterId';
+
+  Future<String> loadConversationMood(
+    String conversationId,
+    String characterId,
+  ) async {
+    final preferences = await _prefs();
+    final key = _conversationMoodKey(conversationId, characterId);
+    final saved = preferences.getString(key);
+    if (saved != null) return saved.trim();
+    // Old versions stored one mood per character. Its recorded source is the
+    // only conversation to which it can safely be assigned.
+    if (await loadCharacterMoodSource(characterId) != conversationId) return '';
+    final legacy = await loadCharacterMood(characterId);
+    if (legacy.isNotEmpty) await preferences.setString(key, legacy);
+    return legacy;
+  }
+
+  Future<void> saveConversationMood(
+    String conversationId,
+    String characterId,
+    String mood,
+  ) async {
+    final preferences = await _prefs();
+    final key = _conversationMoodKey(conversationId, characterId);
+    final value = mood.trim();
+    if (value.isEmpty) {
+      await preferences.remove(key);
+    } else {
+      await preferences.setString(key, value);
+    }
+  }
+
+  Future<void> clearConversationMoods(String conversationId) async {
+    final preferences = await _prefs();
+    final prefix = 'conversation_mood_v1_${conversationId}_';
+    for (final key in preferences.getKeys().where(
+      (key) => key.startsWith(prefix),
+    )) {
+      await preferences.remove(key);
+    }
+  }
+
+  Future<void> clearAllConversationMoods() async {
+    final preferences = await _prefs();
+    for (final key in preferences.getKeys().where(
+      (key) => key.startsWith('conversation_mood_v1_'),
+    )) {
+      await preferences.remove(key);
+    }
+  }
+
   Future<String> loadCharacterStatusSource(String characterId) async {
     final preferences = await _prefs();
     return preferences
@@ -800,6 +853,7 @@ class ChatStore {
     required String conversationId,
     required Iterable<String> characterIds,
   }) async {
+    await clearConversationMoods(conversationId);
     final ids = characterIds.where((id) => id.trim().isNotEmpty).toSet();
 
     final preferenceSources = await loadStylePreferenceSources();
@@ -878,6 +932,12 @@ class ChatStore {
     }
 
     final preferences = await _prefs();
+    for (final key in preferences.getKeys().where(
+      (key) => key.startsWith('conversation_mood_v1_') &&
+          key.endsWith('_$characterId'),
+    )) {
+      await preferences.remove(key);
+    }
     await preferences.remove('${_memoriesKey}_$characterId');
     await preferences.remove('${_memorySourcesKey}_$characterId');
     await preferences.remove('$_stylePreferencesScopedPrefix$characterId');

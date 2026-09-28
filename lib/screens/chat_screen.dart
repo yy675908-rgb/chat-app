@@ -142,27 +142,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _chatStore.saveSelectedCharacterId(profile.id);
     final characterMemories = <String, List<String>>{};
     final characterStylePreferences = <String, List<String>>{};
-    final characterMoods = <String, String>{};
     await Future.wait([
       for (final character in characters)
         () async {
           final results = await Future.wait<Object>([
             _chatStore.loadMemories(characterId: character.id),
             _chatStore.loadStylePreferences(characterId: character.id),
-            _chatStore.loadCharacterMood(character.id),
           ]);
           characterMemories[character.id] = results[0] as List<String>;
           characterStylePreferences[character.id] =
               results[1] as List<String>;
-          final mood = _normalizeMood(results[2] as String);
-          if (mood.isNotEmpty) characterMoods[character.id] = mood;
         }(),
     ]);
     final memories = characterMemories[profile.id] ?? const <String>[];
     final stylePreferences =
         characterStylePreferences[profile.id] ?? const <String>[];
     final worldBooks = await _chatStore.loadWorldBooks();
-    final characterMood = characterMoods[profile.id] ?? '';
     final reasoningExpanded = await _chatStore.loadReasoningExpanded();
     final contextTokenBudget = await _chatStore.loadContextTokenBudget();
     final autoMemoryEnabled = await _chatStore.loadAutoMemoryEnabled();
@@ -172,6 +167,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
     var providers = await _providerStore.loadProviders();
     final current = conversations.first;
+    final characterMoods = await _moodsForConversation(current);
+    final characterMood = characterMoods[profile.id] ?? '';
     final selectedId = await _providerStore.loadSelectedProviderId();
     var selected = providers.firstWhere(
       (provider) => provider.id == selectedId,
@@ -309,6 +306,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _conversations = conversations;
       _currentConversation = conversation;
       _messages = messages;
+      _characterMoods = {};
+      _characterMood = '';
       _groupScope = false;
       _resetConversationUiState();
     });
@@ -331,7 +330,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final draft = await showGroupConversationSheet(
       context: context,
       characters: _characters,
-      moodForCharacter: _moodForCharacter,
+      moodForCharacter: (_) => '',
     );
     if (draft == null) return;
     final participants = _characters
@@ -369,6 +368,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _conversations = conversations;
       _currentConversation = conversation;
       _messages = messages;
+      _characterMoods = {};
+      _characterMood = '';
       _groupScope = true;
       _resetConversationUiState();
     });
@@ -391,8 +392,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _profile,
       isGroup: conversation.isGroup,
     );
+    final moods = await _moodsForConversation(conversation);
     if (!mounted) return;
     setState(() {
+      _characterMoods = moods;
+      _characterMood = moods[_profile.id] ?? '';
       _currentConversation = conversation;
       _messages = messages;
       _groupScope = conversation.isGroup;
@@ -445,6 +449,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _conversations = const [];
           _currentConversation = null;
           _messages = const [];
+          _characterMoods = {};
+          _characterMood = '';
           _resetConversationUiState();
         });
         return;
@@ -462,8 +468,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _profile,
         isGroup: next.isGroup,
       );
+      final moods = await _moodsForConversation(next);
       if (!mounted) return;
       setState(() {
+        _characterMoods = moods;
+        _characterMood = moods[_profile.id] ?? '';
         _conversations = remaining;
         _currentConversation = next;
         _messages = messages;
@@ -520,6 +529,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _conversations = const [];
         _currentConversation = null;
         _messages = const [];
+        _characterMoods = {};
+        _characterMood = '';
         _resetConversationUiState();
       });
       return;
@@ -528,6 +539,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _conversations = const [];
       _currentConversation = null;
       _messages = const [];
+      _characterMoods = {};
+      _characterMood = '';
       _resetConversationUiState();
     });
     await _newConversation();
@@ -541,11 +554,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       memories[character.id] = await _chatStore.loadMemories(
         characterId: character.id,
       );
-      final mood = _normalizeMood(
-        await _chatStore.loadCharacterMood(character.id),
-      );
-      if (mood.isNotEmpty) moods[character.id] = mood;
     }
+    moods.addAll(await _moodsForConversation(_currentConversation));
     if (!mounted) return;
     final active = characters.firstWhere(
       (item) => item.id == _profile.id,
@@ -912,6 +922,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return _normalizeMood(_characterMoods[characterId] ?? '');
   }
 
+  Future<Map<String, String>> _moodsForConversation(
+    Conversation? conversation,
+  ) async {
+    if (conversation == null) return {};
+    final ids = conversation.isGroup
+        ? conversation.participantIds
+        : <String>[conversation.characterId];
+    final moods = <String, String>{};
+    await Future.wait(ids.map((id) async {
+      final mood = _normalizeMood(
+        await _chatStore.loadConversationMood(conversation.id, id),
+      );
+      if (mood.isNotEmpty) moods[id] = mood;
+    }));
+    return moods;
+  }
+
   List<CharacterProfile> get _groupParticipants {
     final ids = _currentConversation?.participantIds ?? const <String>[];
     return _characters.where((item) => ids.contains(item.id)).toList();
@@ -1060,7 +1087,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           final moodValue = _moodForCharacter(character.id);
           final mood = moodValue.isEmpty ? '' : '；当前心绪：$moodValue';
           return '- ${character.name}$mood；'
-              '用户好感度：${character.userIntimacy}/100'
+              '用户亲密度：${character.userIntimacy}/100'
               '（${_intimacyLabel(character.userIntimacy)}）';
         })
         .join('\n');
@@ -1335,14 +1362,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         replyCompleted = true;
         if (nextMood.isNotEmpty) {
           unawaited(() async {
-            await _chatStore.saveCharacterMood(
-              nextMood,
-              speakingCharacter.id,
-            );
             if (replyConversationId.isNotEmpty) {
-              await _chatStore.saveCharacterMoodSource(
-                speakingCharacter.id,
-                replyConversationId,
+              await _chatStore.saveConversationMood(
+                replyConversationId, speakingCharacter.id, nextMood,
               );
             }
           }());
@@ -1896,8 +1918,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _characterMoods = {..._characterMoods, character.id: mood};
         if (_profile.id == character.id) _characterMood = mood;
       });
-      await _chatStore.saveCharacterMood(mood, character.id);
-      await _chatStore.saveCharacterMoodSource(character.id, conversationId);
+      await _chatStore.saveConversationMood(
+        conversationId, character.id, mood,
+      );
     } on Object {
       // Keep the last valid mood when the optional repair request fails.
     } finally {
@@ -2465,7 +2488,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       nextProfile = remainingCharacters.first;
       await _chatStore.saveSelectedCharacterId(nextProfile.id);
       nextMood = _normalizeMood(
-        await _chatStore.loadCharacterMood(nextProfile.id),
+        await _chatStore.loadConversationMood(
+          _currentConversation?.id ?? '', nextProfile.id,
+        ),
       );
       nextMemories = await _chatStore.loadMemories(characterId: nextProfile.id);
       remainingMemoryMap[nextProfile.id] = nextMemories;
@@ -2488,14 +2513,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final messages = current == null
           ? <ChatMessage>[]
           : await _messagesWithGreeting(current.id, nextProfile, isGroup: true);
+      final scopedMoods = await _moodsForConversation(current);
       if (!mounted) return;
       setState(() {
         _characters = remainingCharacters;
         _profile = nextProfile;
         _memories = nextMemories;
         _characterMemories = remainingMemoryMap;
-        _characterMood = nextMood;
-        _characterMoods = remainingMoodMap;
+        _characterMood = scopedMoods[nextProfile.id] ?? '';
+        _characterMoods = scopedMoods;
         _conversations = groups;
         _currentConversation = current;
         _messages = messages;
@@ -2545,13 +2571,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _chatStore.loadConversations(characterId: profile.id),
       _chatStore.loadMemories(characterId: profile.id),
       _chatStore.loadStylePreferences(characterId: profile.id),
-      _chatStore.loadCharacterMood(profile.id),
     ]);
     final conversations = loaded[0] as List<Conversation>;
     final memories = loaded[1] as List<String>;
     final stylePreferences = loaded[2] as List<String>;
-    final mood = _normalizeMood(loaded[3] as String);
     final current = conversations.first;
+    final moods = await _moodsForConversation(current);
+    final mood = moods[profile.id] ?? '';
     final messages = await _messagesWithGreeting(
       current.id,
       profile,
@@ -2571,12 +2597,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _currentConversation = current;
       _messages = messages;
       _characterMood = mood;
-      final moods = Map<String, String>.from(_characterMoods);
-      if (mood.isEmpty) {
-        moods.remove(profile.id);
-      } else {
-        moods[profile.id] = mood;
-      }
       _characterMoods = moods;
       _groupScope = false;
       _resetConversationUiState();
@@ -2591,8 +2611,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final messages = current == null
         ? <ChatMessage>[]
         : await _messagesWithGreeting(current.id, _profile, isGroup: true);
+    final moods = await _moodsForConversation(current);
     if (!mounted) return;
     setState(() {
+      _characterMoods = moods;
+      _characterMood = moods[_profile.id] ?? '';
       _groupScope = true;
       _conversations = conversations;
       _currentConversation = current;
@@ -2750,9 +2773,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final memories =
         _characterMemories[character.id] ??
         await _chatStore.loadMemories(characterId: character.id);
-    final mood =
-        _characterMoods[character.id] ??
-        await _chatStore.loadCharacterMood(character.id);
+    final mood = await _chatStore.loadConversationMood(
+      targetConversation.id, character.id,
+    );
 
     final text = await _auxiliaryAiService.generateProactiveMessage(
       provider: provider,

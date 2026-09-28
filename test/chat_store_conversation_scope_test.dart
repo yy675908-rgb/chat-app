@@ -113,6 +113,29 @@ void main() {
     expect(await store.loadAutoMemoryEnabled(), isFalse);
   });
 
+  test('moods stay in their conversation and legacy mood has one source', () async {
+    final store = ChatStore();
+    await store.saveCharacterMood('旧心绪', 'character-a');
+    await store.saveCharacterMoodSource('character-a', 'conversation-a');
+
+    expect(await store.loadConversationMood('conversation-a', 'character-a'), '旧心绪');
+    expect(await store.loadConversationMood('conversation-b', 'character-a'), isEmpty);
+    expect(await store.loadConversationMood('conversation-a', 'character-b'), isEmpty);
+
+    await store.saveConversationMood('conversation-b', 'character-a', '新心绪');
+    await store.saveConversationMood('conversation-b', 'character-b', '另一心绪');
+    expect(await store.loadConversationMood('conversation-a', 'character-a'), '旧心绪');
+    expect(await store.loadConversationMood('conversation-b', 'character-a'), '新心绪');
+
+    await store.clearConversationDerivedState(
+      conversationId: 'conversation-b',
+      characterIds: const ['character-a', 'character-b'],
+    );
+    expect(await store.loadConversationMood('conversation-b', 'character-a'), isEmpty);
+    expect(await store.loadConversationMood('conversation-b', 'character-b'), isEmpty);
+    expect(await store.loadConversationMood('conversation-a', 'character-a'), '旧心绪');
+  });
+
   test(
     'deleting a conversation clears only data derived from that conversation',
     () async {

@@ -263,7 +263,7 @@ class ConversationDrawer extends StatelessWidget {
                           icon: groupScope
                               ? Icons.people_alt_outlined
                               : Icons.swap_horiz_rounded,
-                          label: groupScope ? '角色与好感度' : '角色切换',
+                          label: groupScope ? '角色与亲密度' : '角色切换',
                           onTap: onCharacterPicker,
                         ),
                       ),
@@ -335,13 +335,13 @@ class _IntimacyControlState extends State<_IntimacyControl> {
             Row(
               children: [
                 const Text(
-                  '用户好感度',
+                  '你对角色的亲密度',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
                 ),
                 const SizedBox(width: 2),
                 Tooltip(
                   message:
-                      '表示你对这个角色的好感，不等于关系类型；角色能感知这个数值，并会按自己的性格决定如何反应。',
+                      '表示你对这个角色的主观亲密感受，与实际关系远近独立；角色知道这个数值，会按自己的性格自然回应。',
                   child: Icon(
                     Icons.info_outline_rounded,
                     size: 15,
