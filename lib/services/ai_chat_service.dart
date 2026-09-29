@@ -18,6 +18,10 @@ class AiChatException implements Exception {
   String toString() => message;
 }
 
+class _IdleStreamException extends AiChatException {
+  const _IdleStreamException() : super('模型暂时没有返回正文');
+}
+
 enum AiStreamEventKind { content, reasoning, usage }
 
 class AiTokenUsage {
@@ -138,7 +142,148 @@ class AiChatService {
             temperature: temperature,
             contextTokenBudget: contextTokenBudget,
           );
-    return _coalesceFastTextEvents(source);
+    return _coalesceFastTextEvents(
+      _recoverEmptyStream(
+        source,
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: systemPrompt,
+        history: history,
+        temperature: temperature,
+        contextTokenBudget: contextTokenBudget,
+      ),
+    );
+  }
+
+  Stream<AiStreamEvent> _recoverEmptyStream(
+    Stream<AiStreamEvent> source, {
+    required ProviderProfile provider,
+    required String apiKey,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+    required double temperature,
+    required int contextTokenBudget,
+  }) async* {
+    var hasContent = false;
+    try {
+      await for (final event in source) {
+        if (event.kind == AiStreamEventKind.content && event.text.isNotEmpty) {
+          hasContent = true;
+        }
+        yield event;
+      }
+    } on _IdleStreamException {
+      if (hasContent) {
+        throw const AiChatException('回复中途停住了，已保留收到的文字，可点重试重新生成');
+      }
+    }
+    if (!hasContent) {
+      yield* _nonStreamingReply(
+        provider: provider,
+        apiKey: apiKey,
+        systemPrompt: systemPrompt,
+        history: history,
+        temperature: temperature,
+        contextTokenBudget: contextTokenBudget,
+      );
+    }
+  }
+
+  Stream<AiStreamEvent> _nonStreamingReply({
+    required ProviderProfile provider,
+    required String apiKey,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+    required double temperature,
+    required int contextTokenBudget,
+  }) async* {
+    final prompt = MemorySelector.compactSystemPrompt(systemPrompt, history);
+    final budget = await _resolveContextBudget(contextTokenBudget);
+    final isAnthropic = provider.protocol == ProviderProtocol.anthropic;
+    final maxOutputTokens = isAnthropic
+        ? provider.maxOutputTokensForModel().clamp(
+            ProviderProfile.minMaxOutputTokens,
+            (budget - 2048).clamp(
+              ProviderProfile.minMaxOutputTokens,
+              ProviderProfile.maxMaxOutputTokens,
+            ),
+          ).toInt()
+        : _defaultOutputReserveTokens;
+    final safeHistory = _historyWithinSafeBudget(
+      prompt,
+      history,
+      budget,
+      outputReserveTokens: maxOutputTokens,
+    );
+    final response = await _send(
+      uri: provider.messagesUri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (isAnthropic) ...{
+          'x-api-key': apiKey.trim(),
+          'anthropic-version': '2023-06-01',
+        } else if (apiKey.trim().isNotEmpty)
+          'Authorization': 'Bearer ${apiKey.trim()}',
+      },
+      body: isAnthropic
+          ? {
+              'model': provider.selectedModel.trim(),
+              'system': prompt,
+              'messages': _historyPayload(safeHistory),
+              'max_tokens': maxOutputTokens,
+              'stream': false,
+              'temperature': temperature,
+            }
+          : {
+              'model': provider.selectedModel.trim(),
+              'messages': [
+                {'role': 'system', 'content': prompt},
+                ..._historyPayload(safeHistory),
+              ],
+              'stream': false,
+              'temperature': temperature,
+            },
+    );
+    late final String body;
+    try {
+      body = await response.stream.bytesToString().timeout(_eventIdleTimeout);
+    } on TimeoutException {
+      throw const AiChatException('自动重试后接口仍没有返回回复，请检查接口或切换模型');
+    }
+    try {
+      final payload = jsonDecode(body) as Map<String, dynamic>;
+      final text = isAnthropic
+          ? (payload['content'] as List<dynamic>? ?? const [])
+                .whereType<Map>()
+                .where((block) => block['type'] == 'text')
+                .map((block) => block['text']?.toString() ?? '')
+                .join()
+          : _openAiMessageText(payload);
+      if (text.trim().isEmpty) {
+        throw const AiChatException('自动重试后接口仍没有返回正文，请检查接口或切换模型');
+      }
+      yield AiStreamEvent(kind: AiStreamEventKind.content, text: text);
+    } on AiChatException {
+      rethrow;
+    } on Object {
+      throw const AiChatException('自动重试后接口没有返回可读取的回复，请检查接口或切换模型');
+    }
+  }
+
+  String _openAiMessageText(Map<String, dynamic> payload) {
+    final choices = payload['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) return '';
+    final message = (choices.first as Map?)?['message'] as Map?;
+    final content = message?['content'];
+    if (content is String) return content;
+    if (content is List) {
+      return content.whereType<Map>().map((part) {
+        final text = part['text'];
+        return text is String ? text : (text as Map?)?['value']?.toString() ?? '';
+      }).join();
+    }
+    return '';
   }
 
   Stream<AiStreamEvent> _streamOpenAi({
@@ -349,9 +494,7 @@ class AiChatService {
       if (finished) return;
       finished = true;
       idleTimer?.cancel();
-      controller.addError(
-        const AiChatException('模型长时间没有返回有效内容，已停止本次生成'),
-      );
+      controller.addError(const _IdleStreamException());
       unawaited(controller.close());
       unawaited(subscription?.cancel() ?? Future<void>.value());
     }
@@ -370,7 +513,7 @@ class AiChatService {
             .listen(
               (line) {
                 if (finished) return;
-                if (_sseData(line) != null) resetTimer();
+                if (_hasReplyProgress(line)) resetTimer();
                 controller.add(line);
               },
               onError: (Object error, StackTrace stackTrace) {
@@ -397,6 +540,33 @@ class AiChatService {
       },
     );
     return controller.stream;
+  }
+
+  bool _hasReplyProgress(String line) {
+    final data = _sseData(line);
+    if (data == null) return false;
+    if (data == '[DONE]') return true;
+    try {
+      final payload = jsonDecode(data) as Map<String, dynamic>;
+      final choices = payload['choices'] as List<dynamic>?;
+      if (choices != null && choices.isNotEmpty) {
+        final delta = (choices.first as Map?)?['delta'] as Map?;
+        return (delta?['content'] is String &&
+                (delta!['content'] as String).isNotEmpty) ||
+            (delta?['reasoning_content'] is String &&
+                (delta!['reasoning_content'] as String).isNotEmpty);
+      }
+      if (payload['type'] == 'content_block_delta') {
+        final delta = payload['delta'] as Map?;
+        return (delta?['text'] is String &&
+                (delta!['text'] as String).isNotEmpty) ||
+            (delta?['thinking'] is String &&
+                (delta!['thinking'] as String).isNotEmpty);
+      }
+    } on Object {
+      // Unrecognized keepalive events are not response progress.
+    }
+    return false;
   }
 
   Stream<AiStreamEvent> _coalesceFastTextEvents(

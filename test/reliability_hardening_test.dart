@@ -25,7 +25,25 @@ void main() {
     selectedModel: 'model',
   );
 
-  test('heartbeat-only stream reports an error instead of hanging', () async {
+  test('heartbeat-only stream automatically retries without streaming', () async {
+    final client = _HeartbeatThenJsonClient();
+    final service = AiChatService(
+      client: client,
+      eventIdleTimeout: const Duration(milliseconds: 80),
+    );
+    addTearDown(service.close);
+
+    final reply = await service.streamReply(
+      provider: provider,
+      apiKey: 'secret',
+      systemPrompt: '测试',
+      history: const [],
+    ).join();
+    expect(reply, '自动恢复的回复');
+    expect(client.streamFlags, [true, false]);
+  });
+
+  test('two stalled requests give an actionable error', () async {
     final service = AiChatService(
       client: _HeartbeatOnlyClient(),
       eventIdleTimeout: const Duration(milliseconds: 80),
@@ -43,10 +61,32 @@ void main() {
         isA<AiChatException>().having(
           (error) => error.message,
           'message',
-          contains('没有返回有效内容'),
+          contains('自动重试后接口仍没有返回回复'),
         ),
       ),
     );
+  });
+
+  test('a stalled stream never retries after receiving reply text', () async {
+    final client = _PartialThenHeartbeatClient();
+    final service = AiChatService(
+      client: client,
+      eventIdleTimeout: const Duration(milliseconds: 80),
+    );
+    addTearDown(service.close);
+    final received = <String>[];
+
+    await expectLater(
+      service.streamReply(
+        provider: provider,
+        apiKey: 'secret',
+        systemPrompt: '测试',
+        history: const [],
+      ).forEach(received.add),
+      throwsA(isA<AiChatException>()),
+    );
+    expect(received.join(), '已收到');
+    expect(client.attempts, 1);
   });
 
   test('429/502/503 is retried once before any streamed reply starts', () async {
@@ -211,5 +251,47 @@ class _HeartbeatOnlyClient extends http.BaseClient {
       200,
       headers: {'content-type': 'text/event-stream'},
     );
+  }
+}
+
+class _HeartbeatThenJsonClient extends http.BaseClient {
+  final streamFlags = <bool>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+    final streaming = body['stream'] == true;
+    streamFlags.add(streaming);
+    if (streaming) {
+      return http.StreamedResponse(
+        Stream.periodic(
+          const Duration(milliseconds: 10),
+          (_) => utf8.encode(': ping\n\n'),
+        ),
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    }
+    return http.StreamedResponse(
+      Stream.value(utf8.encode('{"choices":[{"message":{"content":"自动恢复的回复"}}]}')),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+class _PartialThenHeartbeatClient extends http.BaseClient {
+  int attempts = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    attempts++;
+    Stream<List<int>> body() async* {
+      yield utf8.encode('data: {"choices":[{"delta":{"content":"已收到"}}]}\n\n');
+      await for (final _ in Stream.periodic(const Duration(milliseconds: 10))) {
+        yield utf8.encode(': ping\n\n');
+      }
+    }
+    return http.StreamedResponse(body(), 200);
   }
 }
