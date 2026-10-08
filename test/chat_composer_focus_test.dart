@@ -27,7 +27,11 @@ void main() {
     await tester.pump();
     expect(editable.focusNode.hasFocus, isFalse);
 
-    await tester.tap(find.byType(TextField));
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(TextField)),
+    );
+    await tester.pump(const Duration(milliseconds: 40));
+    await gesture.up();
     await tester.pump();
     expect(editable.focusNode.hasFocus, isTrue);
   });

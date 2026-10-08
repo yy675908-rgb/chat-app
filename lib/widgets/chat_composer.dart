@@ -83,6 +83,9 @@ class _ChatComposerState extends State<ChatComposer>
     if (!widget.enabled) return;
     setState(() => _directFocusRequest = true);
     _focusNode.canRequestFocus = true;
+  }
+
+  void _finishDirectFocusRequest() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_focusNode.hasFocus) {
         _dismissFocus();
@@ -132,6 +135,8 @@ class _ChatComposerState extends State<ChatComposer>
                         Expanded(
                           child: Listener(
                             onPointerDown: (_) => _allowDirectFocus(),
+                            onPointerUp: (_) => _finishDirectFocusRequest(),
+                            onPointerCancel: (_) => _finishDirectFocusRequest(),
                             child: TextField(
                               controller: widget.controller,
                               focusNode: _focusNode,
