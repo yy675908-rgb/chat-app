@@ -27,6 +27,8 @@ class _ChatComposerState extends State<ChatComposer>
     with WidgetsBindingObserver {
   late final FocusNode _focusNode;
   double _keyboardInset = 0;
+  bool _directFocusRequest = false;
+  bool _hadFocus = false;
 
   @override
   void initState() {
@@ -40,12 +42,18 @@ class _ChatComposerState extends State<ChatComposer>
   }
 
   void _guardFocus() {
-    if (!_focusNode.hasFocus && _focusNode.canRequestFocus) {
-      _focusNode.canRequestFocus = false;
+    final previouslyFocused = _hadFocus;
+    _hadFocus = _focusNode.hasFocus;
+    if ((_hadFocus && !_directFocusRequest) ||
+        (!_hadFocus && previouslyFocused)) {
+      _dismissFocus();
     }
   }
 
   void _dismissFocus() {
+    if (_directFocusRequest) {
+      setState(() => _directFocusRequest = false);
+    }
     _focusNode.canRequestFocus = false;
     _focusNode.unfocus();
   }
@@ -65,15 +73,19 @@ class _ChatComposerState extends State<ChatComposer>
   @override
   void didUpdateWidget(covariant ChatComposer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.enabled) _dismissFocus();
+    if (!widget.enabled) {
+      _directFocusRequest = false;
+      _dismissFocus();
+    }
   }
 
   void _allowDirectFocus() {
     if (!widget.enabled) return;
+    setState(() => _directFocusRequest = true);
     _focusNode.canRequestFocus = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_focusNode.hasFocus) {
-        _focusNode.canRequestFocus = false;
+        _dismissFocus();
       }
     });
   }
@@ -124,6 +136,7 @@ class _ChatComposerState extends State<ChatComposer>
                               controller: widget.controller,
                               focusNode: _focusNode,
                               autofocus: false,
+                              canRequestFocus: _directFocusRequest,
                               enabled: widget.enabled,
                               minLines: 1,
                               maxLines: 6,
