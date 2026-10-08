@@ -35,7 +35,9 @@ import 'favorites_screen.dart';
 import 'memory_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  const ChatScreen({super.key, this.replyServiceFactory});
+
+  final AiChatService Function()? replyServiceFactory;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -150,8 +152,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _chatStore.loadStylePreferences(characterId: character.id),
           ]);
           characterMemories[character.id] = results[0] as List<String>;
-          characterStylePreferences[character.id] =
-              results[1] as List<String>;
+          characterStylePreferences[character.id] = results[1] as List<String>;
         }(),
     ]);
     final memories = characterMemories[profile.id] ?? const <String>[];
@@ -762,16 +763,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<bool> _ensureProviderConfigured() async {
     final provider = _selectedProvider;
-    final key = provider == null
-        ? ''
-        : await _loadApiKey(provider);
+    final key = provider == null ? '' : await _loadApiKey(provider);
     if (provider?.isConfigured == true && key.trim().isNotEmpty) return true;
     if (!mounted) return false;
     await _openProviderSettings();
     final updated = _selectedProvider;
-    final updatedKey = updated == null
-        ? ''
-        : await _loadApiKey(updated);
+    final updatedKey = updated == null ? '' : await _loadApiKey(updated);
     return updated?.isConfigured == true && updatedKey.trim().isNotEmpty;
   }
 
@@ -822,7 +819,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _loading || _isBusy || _drainingReplies) return;
+    if (text.isEmpty || _loading || _currentConversation == null) return;
     final userMessage = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       author: MessageAuthor.user,
@@ -837,8 +834,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom(force: true);
     final currentTitle = _currentConversation?.title;
-    final firstMessageTitle =
-        currentTitle == '新对话' || currentTitle == '第一次见面'
+    final firstMessageTitle = currentTitle == '新对话' || currentTitle == '第一次见面'
         ? text.replaceAll(RegExp(r'\s+'), ' ').trim()
         : null;
     unawaited(
@@ -848,17 +844,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         firstMessageTitle: firstMessageTitle,
       ),
     );
-    unawaited(
-      _proactiveCoordinator.postponeCurrent(characters: _characters),
-    );
+    unawaited(_proactiveCoordinator.postponeCurrent(characters: _characters));
     await _queueReply();
   }
 
   Map<String, String> _activeVariantIdsFor(List<ChatMessage> messages) {
     return <String, String>{
       for (final message in messages)
-        if (message.activeVariant case final variant?)
-          message.id: variant.id,
+        if (message.activeVariant case final variant?) message.id: variant.id,
     };
   }
 
@@ -930,12 +923,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ? conversation.participantIds
         : <String>[conversation.characterId];
     final moods = <String, String>{};
-    await Future.wait(ids.map((id) async {
-      final mood = _normalizeMood(
-        await _chatStore.loadConversationMood(conversation.id, id),
-      );
-      if (mood.isNotEmpty) moods[id] = mood;
-    }));
+    await Future.wait(
+      ids.map((id) async {
+        final mood = _normalizeMood(
+          await _chatStore.loadConversationMood(conversation.id, id),
+        );
+        if (mood.isNotEmpty) moods[id] = mood;
+      }),
+    );
     return moods;
   }
 
@@ -964,16 +959,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _replyQueued = true;
     if (_drainingReplies) return;
     _drainingReplies = true;
+    _cancelled = false;
     try {
       while (_replyQueued && mounted) {
         _replyQueued = false;
-        if (!await _ensureProviderConfigured()) return;
+        if (!await _ensureProviderConfigured() || _cancelled || !mounted)
+          return;
         if (_currentConversation?.isGroup == true) {
           await _requestGroupReplies();
         } else {
           await _requestReply();
         }
       }
+    } on Object catch (error) {
+      if (mounted && !_cancelled) _showError('回复未能开始：$error');
     } finally {
       if (mounted) {
         setState(() => _drainingReplies = false);
@@ -1049,6 +1048,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       lastSpeakerId = speaker.id;
       final latestVisible = _visibleMessagesFor(_messages);
       userReplyCovered = !GroupReplyPolicy.latestUserNeedsReply(latestVisible);
+      if (userReplyCovered) _replyQueued = false;
       if (!userReplyCovered) {
         for (var index = latestVisible.length - 1; index >= 0; index--) {
           if (latestVisible[index].author == MessageAuthor.user) {
@@ -1140,6 +1140,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final provider = providerOverride ?? _selectedProvider;
     if (provider == null) return;
     final apiKey = await _loadApiKey(provider);
+    if (!mounted || _cancelled) return;
     if (apiKey.trim().isEmpty) {
       _showError('这个供应商还没有 API Key');
       return;
@@ -1170,6 +1171,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         modelId: provider.selectedModel,
       );
     } else {
+      // Messages sent before this reply starts are already in its context.
+      _replyQueued = false;
       newReply = ChatMessage(
         id: 'reply-${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.character,
@@ -1229,7 +1232,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final recent = _historyForModel(
       _messagesWithinBudget(contextMessages, systemPrompt),
     );
-    final service = AiChatService();
+    final service = widget.replyServiceFactory?.call() ?? AiChatService();
     _activeService = service;
     final streamState = ReplyStreamAccumulator();
     var pendingStreamScroll = false;
@@ -1265,7 +1268,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     void settleFailedReply() {
       _cancelScheduledStreamRender();
       if (isRetry) {
-        setState(() => _messages = retrySnapshot!);
+        setState(() => _messages = _restoreRetryMessages(retrySnapshot!, replyIndex));
       } else if (_splitMoodFromReply(streamState.fullReply).text.isEmpty) {
         if (_messages.length > replyIndex) {
           setState(() => _messages.removeAt(replyIndex));
@@ -1363,7 +1366,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (nextMood.isNotEmpty && replyConversationId.isNotEmpty) {
           final moodSave = _persistQueue.then(
             (_) => _chatStore.saveConversationMood(
-              replyConversationId, speakingCharacter.id, nextMood,
+              replyConversationId,
+              speakingCharacter.id,
+              nextMood,
             ),
           );
           _persistQueue = moodSave.catchError((Object _) {});
@@ -1412,9 +1417,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             !isRetry &&
             replyIndex >= 0 &&
             replyIndex < _messages.length) {
-          unawaited(
-            _persistAppendedMessage(_messages[replyIndex], replyIndex),
-          );
+          unawaited(_persistAppendedMessage(_messages[replyIndex], replyIndex));
         } else {
           unawaited(_persistMessages());
         }
@@ -1439,6 +1442,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _stopGenerating() {
+    _replyQueued = false;
     _cancelled = true;
     _cancelScheduledStreamRender();
     _activeService?.close();
@@ -1450,7 +1454,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (retryIndex != null &&
           retrySnapshot != null &&
           retryIndex < _messages.length) {
-        _messages = retrySnapshot;
+        _messages = _restoreRetryMessages(retrySnapshot, retryIndex);
       } else {
         final activeReplyId = _activeReplyId;
         if (activeReplyId != null) {
@@ -1469,18 +1473,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     unawaited(_persistMessages());
   }
 
+  List<ChatMessage> _restoreRetryMessages(List<ChatMessage> snapshot, int replyIndex) {
+    final original = snapshot[replyIndex];
+    final variantId = original.activeVariant?.id;
+    final appended = _messages.skip(snapshot.length).map((message) {
+      final bindings = {...message.branchBindings};
+      if (bindings.containsKey(original.id)) {
+        if (variantId == null) {
+          bindings.remove(original.id);
+        } else {
+          bindings[original.id] = variantId;
+        }
+      }
+      return message.copyWith(branchBindings: bindings);
+    });
+    return [...snapshot, ...appended];
+  }
+
   Future<void> _retryReply(int replyIndex, RetryModelOption option) async {
     if (_isBusy) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    final source = _providers.firstWhere(
-      (item) => item.id == option.providerId,
-      orElse: () => _providers.first,
-    );
-    final provider = source.copyWith(selectedModel: option.modelId);
-    await _requestReply(
-      providerOverride: provider,
-      targetReplyIndex: replyIndex,
-    );
+    setState(() => _drainingReplies = true);
+    _cancelled = false;
+    try {
+      final source = _providers.firstWhere(
+        (item) => item.id == option.providerId,
+        orElse: () => _providers.first,
+      );
+      final provider = source.copyWith(selectedModel: option.modelId);
+      await _requestReply(providerOverride: provider, targetReplyIndex: replyIndex);
+    } on Object catch (error) {
+      if (mounted && !_cancelled) _showError('重试未能开始：$error');
+    } finally {
+      if (mounted) setState(() => _drainingReplies = false);
+    }
+    if (mounted && _replyQueued && !_cancelled) await _queueReply();
   }
 
   Future<void> _moveVariant(int messageIndex, int delta) async {
@@ -1565,7 +1592,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _sendFromUserMessage(int messageIndex) async {
     if (_isBusy || messageIndex < 0 || messageIndex >= _messages.length) return;
     final source = _messages[messageIndex];
-    if (source.author != MessageAuthor.user || source.text.trim().isEmpty) return;
+    if (source.author != MessageAuthor.user || source.text.trim().isEmpty)
+      return;
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _messages = _messages.take(messageIndex + 1).toList();
@@ -1655,9 +1683,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       for (final conversation in _conversations)
         _chatStore.loadMessages(conversation.id),
     ]);
-    for (var conversationIndex = 0;
-        conversationIndex < _conversations.length;
-        conversationIndex++) {
+    for (
+      var conversationIndex = 0;
+      conversationIndex < _conversations.length;
+      conversationIndex++
+    ) {
       final conversation = _conversations[conversationIndex];
       final messages = loadedMessages[conversationIndex];
       for (final message in messages) {
@@ -1705,10 +1735,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           : firstMessageTitle.characters.length > 18
           ? '${firstMessageTitle.characters.take(18).join()}…'
           : firstMessageTitle;
-      final updated = latest.copyWith(
-        title: title,
-        updatedAt: updatedAt,
-      );
+      final updated = latest.copyWith(title: title, updatedAt: updatedAt);
       await _chatStore.saveConversation(updated);
       if (!mounted || _currentConversation?.id != conversationId) return;
       setState(() {
@@ -1809,10 +1836,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return message.copyWith(text: cleanedText, replyVariants: variants);
   }
 
-  bool _messageMoodMetadataChanged(
-    ChatMessage original,
-    ChatMessage cleaned,
-  ) {
+  bool _messageMoodMetadataChanged(ChatMessage original, ChatMessage cleaned) {
     if (original.text != cleaned.text) return true;
     if (original.replyVariants.length != cleaned.replyVariants.length) {
       return true;
@@ -1903,7 +1927,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           break;
         }
       }
-      if (currentReply == null || currentReply.text.trim() != replyText.trim()) {
+      if (currentReply == null ||
+          currentReply.text.trim() != replyText.trim()) {
         return;
       }
 
@@ -1917,9 +1942,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _characterMoods = {..._characterMoods, character.id: mood};
         if (_profile.id == character.id) _characterMood = mood;
       });
-      await _chatStore.saveConversationMood(
-        conversationId, character.id, mood,
-      );
+      await _chatStore.saveConversationMood(conversationId, character.id, mood);
     } on Object {
       // Keep the last valid mood when the optional repair request fails.
     } finally {
@@ -2043,7 +2066,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     String systemPrompt,
   ) {
     final summarizedThrough =
-        _currentConversation?.summarizedThroughMessageIds[_currentBranchKey()] ??
+        _currentConversation
+            ?.summarizedThroughMessageIds[_currentBranchKey()] ??
         '';
     return ChatContextBuilder.messagesWithinBudget(
       messages: messages,
@@ -2488,7 +2512,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await _chatStore.saveSelectedCharacterId(nextProfile.id);
       nextMood = _normalizeMood(
         await _chatStore.loadConversationMood(
-          _currentConversation?.id ?? '', nextProfile.id,
+          _currentConversation?.id ?? '',
+          nextProfile.id,
         ),
       );
       nextMemories = await _chatStore.loadMemories(characterId: nextProfile.id);
@@ -2643,9 +2668,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           .map((item) => item.id == updated.id ? updated : item)
           .toList();
     });
-    unawaited(
-      _proactiveCoordinator.postponeCurrent(characters: _characters),
-    );
+    unawaited(_proactiveCoordinator.postponeCurrent(characters: _characters));
   }
 
   Future<void> _saveUserIntimacy(int value) async {
@@ -2773,7 +2796,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _characterMemories[character.id] ??
         await _chatStore.loadMemories(characterId: character.id);
     final mood = await _chatStore.loadConversationMood(
-      targetConversation.id, character.id,
+      targetConversation.id,
+      character.id,
     );
 
     final text = await _auxiliaryAiService.generateProactiveMessage(
@@ -2804,14 +2828,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
 
     final updatedConversation = targetConversation.copyWith(updatedAt: now);
-    final updatedConversations = conversations
-        .map(
-          (conversation) => conversation.id == updatedConversation.id
-              ? updatedConversation
-              : conversation,
-        )
-        .toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final updatedConversations =
+        conversations
+            .map(
+              (conversation) => conversation.id == updatedConversation.id
+                  ? updatedConversation
+                  : conversation,
+            )
+            .toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     await _chatStore.saveConversations(
       updatedConversations,
       characterId: character.id,
@@ -2927,7 +2952,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       child: Scaffold(
         key: _scaffoldKey,
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         drawer: ConversationDrawer(
           profile: _profile,
           currentMood: mood,
@@ -2961,13 +2986,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           titleSpacing: 2,
           title: InkWell(
-            onTap: _editCharacter,
+            key: const ValueKey('chat-character-switch'),
+            onTap: _loading ? null : _showCharacterPicker,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  CircleAvatar(
+                    radius: 17,
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .secondaryContainer,
+                    child: isGroup
+                        ? const Icon(Icons.groups_2_outlined, size: 19)
+                        : Text(
+                            _profile.name.isEmpty
+                                ? '林'
+                                : _profile.name.characters.first,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 9),
                   Flexible(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2996,7 +3040,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .onSurfaceVariant,
-                                    fontSize: 11.5,
+                                    fontSize: 12.5,
                                     fontWeight: FontWeight.w400,
                                   ),
                                 ),
@@ -3005,13 +3049,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(width: 2),
-                  Icon(
-                    isGroup
-                        ? Icons.groups_2_outlined
-                        : Icons.swap_horiz_rounded,
-                    size: 17,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  const Icon(Icons.expand_more_rounded, size: 18),
                 ],
               ),
             ),
@@ -3024,7 +3062,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 minimumSize: const Size(0, 40),
               ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 118),
+                constraints: const BoxConstraints(maxWidth: 96),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -3034,7 +3072,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -3045,10 +3083,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
+            IconButton(
+              tooltip: isGroup ? '群聊角色设置' : '角色设置',
+              onPressed: _loading ? null : _editCharacter,
+              icon: const Icon(Icons.tune_rounded, size: 21),
+            ),
           ],
         ),
-        body: _KeyboardStableBody(
+        body: ColoredBox(
           color: Theme.of(context).colorScheme.surface,
           child: Column(
             children: [
@@ -3079,12 +3121,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               ),
                               const SizedBox(height: 5),
                               Text(
-                                '从左侧会话栏创建一个群聊',
+                                '创建后就可以开始聊天',
                                 style: TextStyle(
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurfaceVariant,
                                 ),
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: _newGroupConversation,
+                                icon: const Icon(Icons.add_rounded),
+                                label: const Text('新建群聊'),
                               ),
                             ],
                           ),
@@ -3115,7 +3163,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         onLike: _toggleLike,
                         onLearnStyle: _extractStylePreference,
                         onRetryWithModel: _retryReply,
-                      )
+                      ),
               ),
               ChatComposer(
                 controller: _controller,
@@ -3128,44 +3176,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     : _newConversation,
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _KeyboardStableBody extends StatelessWidget {
-  const _KeyboardStableBody({
-    required this.color,
-    required this.child,
-  });
-
-  final Color color;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    return ColoredBox(
-      color: color,
-      child: ClipRect(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: mediaQuery.viewInsets.bottom),
-          duration: const Duration(milliseconds: 48),
-          curve: Curves.easeOutCubic,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: mediaQuery.viewPadding.bottom),
-            child: MediaQuery(
-              data: mediaQuery
-                  .removeViewInsets(removeBottom: true)
-                  .removePadding(removeBottom: true),
-              child: child,
-            ),
-          ),
-          builder: (context, bottomInset, child) => Transform.translate(
-            offset: Offset(0, -bottomInset),
-            child: child,
           ),
         ),
       ),

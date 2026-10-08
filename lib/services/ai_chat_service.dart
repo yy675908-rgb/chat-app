@@ -47,16 +47,16 @@ class AiTokenUsage {
 
   AiTokenUsage merge(AiTokenUsage other) {
     return AiTokenUsage(
-      promptTokens:
-          other.promptTokens > 0 ? other.promptTokens : promptTokens,
+      promptTokens: other.promptTokens > 0 ? other.promptTokens : promptTokens,
       completionTokens: other.completionTokens > 0
           ? other.completionTokens
           : completionTokens,
       reasoningTokens: other.reasoningTokens > 0
           ? other.reasoningTokens
           : reasoningTokens,
-      cacheHitTokens:
-          other.cacheHitTokens > 0 ? other.cacheHitTokens : cacheHitTokens,
+      cacheHitTokens: other.cacheHitTokens > 0
+          ? other.cacheHitTokens
+          : cacheHitTokens,
       cacheMissTokens: other.cacheMissTokens > 0
           ? other.cacheMissTokens
           : cacheMissTokens,
@@ -68,11 +68,7 @@ class AiTokenUsage {
 }
 
 class AiStreamEvent {
-  const AiStreamEvent({
-    required this.kind,
-    this.text = '',
-    this.usage,
-  });
+  const AiStreamEvent({required this.kind, this.text = '', this.usage});
 
   final AiStreamEventKind kind;
   final String text;
@@ -201,13 +197,16 @@ class AiChatService {
     final budget = await _resolveContextBudget(contextTokenBudget);
     final isAnthropic = provider.protocol == ProviderProtocol.anthropic;
     final maxOutputTokens = isAnthropic
-        ? provider.maxOutputTokensForModel().clamp(
-            ProviderProfile.minMaxOutputTokens,
-            (budget - 2048).clamp(
-              ProviderProfile.minMaxOutputTokens,
-              ProviderProfile.maxMaxOutputTokens,
-            ),
-          ).toInt()
+        ? provider
+              .maxOutputTokensForModel()
+              .clamp(
+                ProviderProfile.minMaxOutputTokens,
+                (budget - 2048).clamp(
+                  ProviderProfile.minMaxOutputTokens,
+                  ProviderProfile.maxMaxOutputTokens,
+                ),
+              )
+              .toInt()
         : _defaultOutputReserveTokens;
     final safeHistory = _historyWithinSafeBudget(
       prompt,
@@ -280,7 +279,9 @@ class AiChatService {
     if (content is List) {
       return content.whereType<Map>().map((part) {
         final text = part['text'];
-        return text is String ? text : (text as Map?)?['value']?.toString() ?? '';
+        return text is String
+            ? text
+            : (text as Map?)?['value']?.toString() ?? '';
       }).join();
     }
     return '';
@@ -325,12 +326,25 @@ class AiChatService {
       },
     );
 
+    if ((response.headers['content-type'] ?? '').toLowerCase().contains(
+      'application/json',
+    )) {
+      yield* _jsonReplyEvents(
+        response,
+        isAnthropic: provider.protocol == ProviderProtocol.anthropic,
+      );
+      return;
+    }
+
     await for (final line in _streamLines(response)) {
       final data = _sseData(line);
       if (data == null) continue;
       if (data == '[DONE]') break;
       try {
         final payload = jsonDecode(data) as Map<String, dynamic>;
+        if (payload['error'] != null) {
+          throw AiChatException(_readError(data));
+        }
         final usage = payload['usage'];
         if (usage is Map<String, dynamic>) {
           final details =
@@ -341,10 +355,8 @@ class AiChatService {
               promptTokens: usage['prompt_tokens'] as int? ?? 0,
               completionTokens: usage['completion_tokens'] as int? ?? 0,
               reasoningTokens: details?['reasoning_tokens'] as int? ?? 0,
-              cacheHitTokens:
-                  usage['prompt_cache_hit_tokens'] as int? ?? 0,
-              cacheMissTokens:
-                  usage['prompt_cache_miss_tokens'] as int? ?? 0,
+              cacheHitTokens: usage['prompt_cache_hit_tokens'] as int? ?? 0,
+              cacheMissTokens: usage['prompt_cache_miss_tokens'] as int? ?? 0,
               reportedTotalTokens: usage['total_tokens'] as int? ?? 0,
             ),
           );
@@ -362,11 +374,10 @@ class AiChatService {
         }
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) {
-          yield AiStreamEvent(
-            kind: AiStreamEventKind.content,
-            text: content,
-          );
+          yield AiStreamEvent(kind: AiStreamEventKind.content, text: content);
         }
+      } on AiChatException {
+        rethrow;
       } on Object {
         continue;
       }
@@ -420,6 +431,16 @@ class AiChatService {
       },
     );
 
+    if ((response.headers['content-type'] ?? '').toLowerCase().contains(
+      'application/json',
+    )) {
+      yield* _jsonReplyEvents(
+        response,
+        isAnthropic: provider.protocol == ProviderProtocol.anthropic,
+      );
+      return;
+    }
+
     await for (final line in _streamLines(response)) {
       final data = _sseData(line);
       if (data == null) continue;
@@ -431,6 +452,7 @@ class AiChatService {
             error?['message']?.toString() ?? 'Anthropic 返回了未知错误',
           );
         }
+        if (payload['type'] == 'message_stop') break;
         if (payload['type'] == 'message_start') {
           final message = payload['message'] as Map<String, dynamic>?;
           final usage = message?['usage'] as Map<String, dynamic>?;
@@ -470,10 +492,7 @@ class AiChatService {
         } else if (delta?['type'] == 'text_delta') {
           final text = delta?['text'];
           if (text is String && text.isNotEmpty) {
-            yield AiStreamEvent(
-              kind: AiStreamEventKind.content,
-              text: text,
-            );
+            yield AiStreamEvent(kind: AiStreamEventKind.content, text: text);
           }
         }
       } on AiChatException {
@@ -499,7 +518,17 @@ class AiChatService {
       unawaited(subscription?.cancel() ?? Future<void>.value());
     }
 
+    void finishNormally() {
+      if (finished) return;
+      finished = true;
+      idleTimer?.cancel();
+      unawaited(controller.close());
+      unawaited(subscription?.cancel() ?? Future<void>.value());
+    }
+
+    var replyEnded = false;
     void resetTimer() {
+      if (replyEnded) return;
       idleTimer?.cancel();
       idleTimer = Timer(_eventIdleTimeout, finishWithError);
     }
@@ -515,6 +544,14 @@ class AiChatService {
                 if (finished) return;
                 if (_hasReplyProgress(line)) resetTimer();
                 controller.add(line);
+                if (!replyEnded && _hasReplyEnd(line)) {
+                  replyEnded = true;
+                  idleTimer?.cancel();
+                  idleTimer = Timer(
+                    const Duration(milliseconds: 300),
+                    finishNormally,
+                  );
+                }
               },
               onError: (Object error, StackTrace stackTrace) {
                 if (finished) return;
@@ -540,6 +577,67 @@ class AiChatService {
       },
     );
     return controller.stream;
+  }
+
+  bool _hasReplyEnd(String line) {
+    final data = _sseData(line);
+    if (data == null) return false;
+    if (data == '[DONE]') return true;
+    try {
+      final payload = jsonDecode(data) as Map<String, dynamic>;
+      if (payload['type'] == 'message_stop') return true;
+      final choices = payload['choices'] as List<dynamic>?;
+      return choices != null &&
+          choices.isNotEmpty &&
+          (choices.first as Map?)?['finish_reason'] != null;
+    } on Object {
+      return false;
+    }
+  }
+
+  Stream<AiStreamEvent> _jsonReplyEvents(
+    http.StreamedResponse response, {
+    required bool isAnthropic,
+  }) async* {
+    final body = await response.stream.bytesToString().timeout(
+      _eventIdleTimeout,
+      onTimeout: () => throw const AiChatException('接口没有返回完整回复，请重试或切换模型'),
+    );
+    try {
+      final payload = jsonDecode(body) as Map<String, dynamic>;
+      if (payload['error'] != null) throw AiChatException(_readError(body));
+      final text = isAnthropic
+          ? (payload['content'] as List<dynamic>? ?? const [])
+                .whereType<Map>()
+                .where((block) => block['type'] == 'text')
+                .map((block) => block['text']?.toString() ?? '')
+                .join()
+          : _openAiMessageText(payload);
+      if (text.isNotEmpty)
+        yield AiStreamEvent(kind: AiStreamEventKind.content, text: text);
+      final usage = payload['usage'] as Map?;
+      if (usage != null) {
+        yield AiStreamEvent(
+          kind: AiStreamEventKind.usage,
+          usage: AiTokenUsage(
+            promptTokens:
+                (usage[isAnthropic ? 'input_tokens' : 'prompt_tokens'] as num?)
+                    ?.toInt() ??
+                0,
+            completionTokens:
+                (usage[isAnthropic ? 'output_tokens' : 'completion_tokens']
+                        as num?)
+                    ?.toInt() ??
+                0,
+            reportedTotalTokens: (usage['total_tokens'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      }
+    } on AiChatException {
+      rethrow;
+    } on Object {
+      throw const AiChatException('接口返回格式无法读取，请检查接口类型');
+    }
   }
 
   bool _hasReplyProgress(String line) {
@@ -569,9 +667,7 @@ class AiChatService {
     return false;
   }
 
-  Stream<AiStreamEvent> _coalesceFastTextEvents(
-    Stream<AiStreamEvent> source,
-  ) {
+  Stream<AiStreamEvent> _coalesceFastTextEvents(Stream<AiStreamEvent> source) {
     late final StreamController<AiStreamEvent> controller;
     StreamSubscription<AiStreamEvent>? subscription;
     Timer? flushTimer;
@@ -590,7 +686,9 @@ class AiChatService {
         return;
       }
       cancelFlushTimer();
-      controller.add(AiStreamEvent(kind: bufferedKind!, text: buffer.toString()));
+      controller.add(
+        AiStreamEvent(kind: bufferedKind!, text: buffer.toString()),
+      );
       buffer.clear();
       bufferedKind = null;
       lastFlush = DateTime.now();
@@ -734,7 +832,10 @@ class AiChatService {
         return response;
       }
 
-      final responseBody = await response.stream.bytesToString();
+      final responseBody = await response.stream.bytesToString().timeout(
+        _eventIdleTimeout,
+        onTimeout: () => '接口返回错误，但没有提供完整错误信息',
+      );
       if (attempt == 0 && _retryableStatusCodes.contains(response.statusCode)) {
         await Future<void>.delayed(_retryDelayFor(response));
         continue;

@@ -208,7 +208,7 @@ Future<ConversationSpaceChoice?> showConversationSpacePickerSheet({
               const Padding(
                 padding: EdgeInsets.fromLTRB(10, 0, 10, 8),
                 child: Text(
-                  '切换对话空间',
+                  '切换角色',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),

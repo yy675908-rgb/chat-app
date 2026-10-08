@@ -61,6 +61,7 @@ class ChatMessageList extends StatefulWidget {
 
 class _ChatMessageListState extends State<ChatMessageList> {
   final Map<String, GlobalKey> _messageKeys = {};
+  final Map<String, ({Object signature, Widget child})> _bubbleCache = {};
   String? _highlightedMessageId;
   int _highlightGeneration = 0;
   Timer? _highlightTimer;
@@ -75,6 +76,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (widget.messages.length < oldWidget.messages.length) {
       final liveIds = widget.messages.map((message) => message.id).toSet();
       _messageKeys.removeWhere((messageId, _) => !liveIds.contains(messageId));
+      _bubbleCache.removeWhere((messageId, _) => !liveIds.contains(messageId));
     }
     if (widget.targetMessageId != null &&
         (widget.targetRequest != oldWidget.targetRequest ||
@@ -215,10 +217,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
             ? 1.0
             : (targetVisibleIndex < minBuilt ? -1.0 : 0.0);
         if (direction == 0) break;
-        final fallback = (currentOffset +
-                direction * position.viewportDimension * 0.75)
-            .clamp(0.0, maxExtent)
-            .toDouble();
+        final fallback =
+            (currentOffset + direction * position.viewportDimension * 0.75)
+                .clamp(0.0, maxExtent)
+                .toDouble();
         if ((fallback - currentOffset).abs() < 1) break;
         widget.controller.jumpTo(fallback);
       } else {
@@ -293,7 +295,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
               child: ListView.builder(
                 controller: widget.controller,
                 addAutomaticKeepAlives: false,
-                addRepaintBoundaries: false,
+                addRepaintBoundaries: true,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
@@ -304,8 +306,21 @@ class _ChatMessageListState extends State<ChatMessageList> {
                   final isHighlighted = message.id == _highlightedMessageId;
                   final key = _keyFor(message.id);
 
+                  final speaker = widget.speakerName(message);
+                  final signature = (
+                    message,
+                    index,
+                    speaker,
+                    widget.reasoningExpanded,
+                    widget.providers,
+                    widget.generating && message.id == widget.activeReplyId,
+                    widget.activeRetryIndex != null,
+                  );
+                  final cached = _bubbleCache[message.id];
                   Widget child;
-                  if (widget.generating &&
+                  if (cached?.signature == signature) {
+                    child = cached!.child;
+                  } else if (widget.generating &&
                       widget.activeRetryIndex == null &&
                       message.id == widget.activeReplyId &&
                       message.author == MessageAuthor.character &&
@@ -314,8 +329,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     child = _ThinkingRow(name: widget.speakerName(message));
                   } else {
                     final isActiveReply =
-                        widget.generating &&
-                        message.id == widget.activeReplyId;
+                        widget.generating && message.id == widget.activeReplyId;
                     final canUseCharacterActions =
                         message.author == MessageAuthor.character &&
                         message.text.isNotEmpty &&
@@ -337,7 +351,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
                           widget.generating &&
                           message.id == widget.activeReplyId,
                       onEdit: canEdit ? () => widget.onEdit(index) : null,
-                      onSendEdited: message.author == MessageAuthor.user && canEdit
+                      onSendEdited:
+                          message.author == MessageAuthor.user && canEdit
                           ? () => widget.onSendEdited?.call(index)
                           : null,
                       onPreviousVariant:
@@ -364,6 +379,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     );
                   }
 
+                  _bubbleCache[message.id] = (
+                    signature: signature,
+                    child: child,
+                  );
                   final anchoredChild = Container(
                     key: key,
                     decoration: BoxDecoration(
@@ -376,12 +395,11 @@ class _ChatMessageListState extends State<ChatMessageList> {
                   );
                   final isFreshMessage =
                       visibleIndex == widget.visibleMessageIndices.length - 1 &&
-                      message.sentAt
-                              .isAfter(
-                                DateTime.now().subtract(
-                                  const Duration(milliseconds: 700),
-                                ),
-                              );
+                      message.sentAt.isAfter(
+                        DateTime.now().subtract(
+                          const Duration(milliseconds: 700),
+                        ),
+                      );
                   return KeyedSubtree(
                     key: ValueKey<String>('chat-message-${message.id}'),
                     child: isFreshMessage
