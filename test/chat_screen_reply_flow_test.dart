@@ -59,6 +59,7 @@ void main() {
   }
 
   Future<void> send(WidgetTester tester, String text) async {
+    await tester.tap(find.byType(TextField));
     await tester.enterText(find.byType(TextField), text);
     await tester.tap(find.byTooltip('发送'));
     await tester.pump();

@@ -133,6 +133,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didChangeMetrics() {
+    if (!_loading && _followStreamingOutput && !_pointerHoldingMessages) {
+      _scrollToBottom();
+    }
+  }
+
   Future<void> _restore() async {
     _clearApiKeyCache();
     final characters = await _chatStore.loadCharacters();
