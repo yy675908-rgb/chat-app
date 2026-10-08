@@ -613,8 +613,9 @@ class AiChatService {
                 .map((block) => block['text']?.toString() ?? '')
                 .join()
           : _openAiMessageText(payload);
-      if (text.isNotEmpty)
+      if (text.isNotEmpty) {
         yield AiStreamEvent(kind: AiStreamEventKind.content, text: text);
+      }
       final usage = payload['usage'] as Map?;
       if (usage != null) {
         yield AiStreamEvent(

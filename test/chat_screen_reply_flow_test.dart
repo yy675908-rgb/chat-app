@@ -6,6 +6,7 @@ import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/screens/chat_screen.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
+import 'package:character_chat_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +112,33 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('messages sent during a cancelled retry remain in the conversation', (tester) async {
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '原消息');
+    services.first.finish('原回复');
+    await tester.pumpAndSettle();
+    final retryButton = find.byTooltip('选择模型重新生成').last;
+    await tester.ensureVisible(retryButton);
+    await tester.tap(retryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(PopupMenuItem<RetryModelOption>), matching: find.text('model')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(services.length, 2);
+    await send(tester, '重试时追加');
+    expect(services.length, 2);
+    await tester.tap(find.byTooltip('停止当前回复'));
+    await tester.pumpAndSettle();
+    await send(tester, '取消后继续');
+    expect(services.length, 3);
+    expect(services.last.history.map((m) => m.text), contains('重试时追加'));
+    expect(services.last.history.map((m) => m.text), contains('原回复'));
+    services.last.finish('收到追加');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'top character button opens the picker and keyboard keeps the composer visible',

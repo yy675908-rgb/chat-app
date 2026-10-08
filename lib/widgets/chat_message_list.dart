@@ -391,7 +391,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: RepaintBoundary(child: child),
+                    child: child,
                   );
                   final isFreshMessage =
                       visibleIndex == widget.visibleMessageIndices.length - 1 &&

@@ -970,8 +970,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       while (_replyQueued && mounted) {
         _replyQueued = false;
-        if (!await _ensureProviderConfigured() || _cancelled || !mounted)
+        if (!await _ensureProviderConfigured() || _cancelled || !mounted) {
           return;
+        }
         if (_currentConversation?.isGroup == true) {
           await _requestGroupReplies();
         } else {
@@ -1599,8 +1600,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _sendFromUserMessage(int messageIndex) async {
     if (_isBusy || messageIndex < 0 || messageIndex >= _messages.length) return;
     final source = _messages[messageIndex];
-    if (source.author != MessageAuthor.user || source.text.trim().isEmpty)
+    if (source.author != MessageAuthor.user || source.text.trim().isEmpty) {
       return;
+    }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _messages = _messages.take(messageIndex + 1).toList();
