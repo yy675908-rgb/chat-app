@@ -107,7 +107,7 @@ class MessageBubble extends StatelessWidget {
                       message.isRetracted ? '撤回了一句话' : message.text,
                       style: TextStyle(
                         color: scheme.onPrimaryContainer,
-                        fontSize: 15.5,
+                        fontSize: 16,
                         height: 1.38,
                       ),
                     ),
@@ -208,61 +208,80 @@ class MessageBubble extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  if (message.reasoning.trim().isNotEmpty) ...[
-                    _ReasoningPanel(
-                      key: ValueKey(
-                        'reasoning-${message.activeVariant?.id ?? message.id}',
-                      ),
-                      reasoning: message.reasoning,
-                      reasoningDurationMs: message.usedReasoningDurationMs,
-                      initiallyExpanded: reasoningInitiallyExpanded,
-                    ),
-                    const SizedBox(height: 9),
-                  ],
-                  if (streaming)
-                    Text(
-                      message.text,
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 15.5,
-                        height: 1.46,
-                      ),
-                    )
-                  else
-                    MarkdownBody(
-                      data: message.text,
-                      selectable: true,
-                      styleSheet: MarkdownStyleSheet(
-                        p: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 15.5,
-                          height: 1.46,
-                        ),
-                        code: TextStyle(
-                          color: scheme.onSurface,
-                          backgroundColor: scheme.surfaceContainerHighest,
-                          fontSize: 13,
-                        ),
-                        codeblockPadding: const EdgeInsets.all(12),
-                        codeblockDecoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        blockquotePadding: const EdgeInsets.fromLTRB(
-                          12,
-                          7,
-                          10,
-                          7,
-                        ),
-                        blockquoteDecoration: BoxDecoration(
-                          color: scheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border(
-                            left: BorderSide(color: scheme.primary, width: 3),
-                          ),
-                        ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainer,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(7),
+                        topRight: Radius.circular(22),
+                        bottomLeft: Radius.circular(22),
+                        bottomRight: Radius.circular(22),
                       ),
                     ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (message.reasoning.trim().isNotEmpty) ...[
+                            _ReasoningPanel(
+                              key: ValueKey(
+                                'reasoning-${message.activeVariant?.id ?? message.id}',
+                              ),
+                              reasoning: message.reasoning,
+                              reasoningDurationMs: message.usedReasoningDurationMs,
+                              initiallyExpanded: reasoningInitiallyExpanded,
+                            ),
+                            const SizedBox(height: 9),
+                          ],
+                          if (streaming)
+                            Text(
+                              message.text,
+                              style: TextStyle(
+                                color: scheme.onSurface,
+                                fontSize: 16,
+                                height: 1.46,
+                              ),
+                            )
+                          else
+                            MarkdownBody(
+                              data: message.text,
+                              selectable: true,
+                              styleSheet: MarkdownStyleSheet(
+                                p: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontSize: 16,
+                                  height: 1.46,
+                                ),
+                                code: TextStyle(
+                                  color: scheme.onSurface,
+                                  backgroundColor: scheme.surfaceContainerHighest,
+                                  fontSize: 13,
+                                ),
+                                codeblockPadding: const EdgeInsets.all(12),
+                                codeblockDecoration: BoxDecoration(
+                                  color: scheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                blockquotePadding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  7,
+                                  10,
+                                  7,
+                                ),
+                                blockquoteDecoration: BoxDecoration(
+                                  color: scheme.surfaceContainerLow,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border(
+                                    left: BorderSide(color: scheme.primary, width: 3),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (message.usedTotalTokens > 0) ...[
                     const SizedBox(height: 8),
                     _TokenUsage(message: message),
