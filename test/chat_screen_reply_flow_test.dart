@@ -69,6 +69,33 @@ void main() {
   }
 
   testWidgets(
+    'streamed text leaves header and composer mounted without rebuilding them',
+    (tester) async {
+      final services = <_ControlledReply>[];
+      await openChat(tester, services);
+      await send(tester, '测试逐字回复');
+      await tester.pump(const Duration(milliseconds: 180));
+      final appBar = tester.widget<AppBar>(find.byType(AppBar));
+      final field = tester.widget<TextField>(find.byType(TextField));
+      services.first.fragment('回复第一段');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(
+        identical(tester.widget<AppBar>(find.byType(AppBar)), appBar),
+        isTrue,
+      );
+      expect(
+        identical(tester.widget<TextField>(find.byType(TextField)), field),
+        isTrue,
+      );
+      expect(find.text('回复第一段'), findsOneWidget);
+      services.first.finish('继续');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'sending during generation is retained and receives the next reply',
     (tester) async {
       final services = <_ControlledReply>[];
@@ -114,32 +141,40 @@ void main() {
     },
   );
 
-  testWidgets('messages sent during a cancelled retry remain in the conversation', (tester) async {
-    final services = <_ControlledReply>[];
-    await openChat(tester, services);
-    await send(tester, '原消息');
-    services.first.finish('原回复');
-    await tester.pumpAndSettle();
-    final retryButton = find.byTooltip('选择模型重新生成').last;
-    await tester.ensureVisible(retryButton);
-    await tester.tap(retryButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of: find.byType(PopupMenuItem<RetryModelOption>), matching: find.text('model')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-    expect(services.length, 2);
-    await send(tester, '重试时追加');
-    expect(services.length, 2);
-    await tester.tap(find.byTooltip('停止当前回复'));
-    await tester.pumpAndSettle();
-    await send(tester, '取消后继续');
-    expect(services.length, 3);
-    expect(services.last.history.map((m) => m.text), contains('重试时追加'));
-    expect(services.last.history.map((m) => m.text), contains('原回复'));
-    services.last.finish('收到追加');
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'messages sent during a cancelled retry remain in the conversation',
+    (tester) async {
+      final services = <_ControlledReply>[];
+      await openChat(tester, services);
+      await send(tester, '原消息');
+      services.first.finish('原回复');
+      await tester.pumpAndSettle();
+      final retryButton = find.byTooltip('选择模型重新生成').last;
+      await tester.ensureVisible(retryButton);
+      await tester.tap(retryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(PopupMenuItem<RetryModelOption>),
+          matching: find.text('model'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(services.length, 2);
+      await send(tester, '重试时追加');
+      expect(services.length, 2);
+      await tester.tap(find.byTooltip('停止当前回复'));
+      await tester.pumpAndSettle();
+      await send(tester, '取消后继续');
+      expect(services.length, 3);
+      expect(services.last.history.map((m) => m.text), contains('重试时追加'));
+      expect(services.last.history.map((m) => m.text), contains('原回复'));
+      services.last.finish('收到追加');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'top character button opens the picker and keyboard keeps the composer visible',
@@ -190,6 +225,10 @@ class _ControlledReply extends AiChatService {
       AiStreamEvent(kind: AiStreamEventKind.content, text: '$text\n[[心绪:平静]]'),
     );
     unawaited(_events.close());
+  }
+
+  void fragment(String text) {
+    _events.add(AiStreamEvent(kind: AiStreamEventKind.content, text: text));
   }
 
   @override

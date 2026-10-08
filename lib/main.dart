@@ -54,15 +54,9 @@ class _LinjianPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final enter = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeInOutCubic,
-      reverseCurve: Curves.easeInOutCubic,
-    );
-    final exit = CurvedAnimation(
-      parent: secondaryAnimation,
-      curve: Curves.easeInOutCubic,
-      reverseCurve: Curves.easeInOutCubic,
+    final enter = animation.drive(CurveTween(curve: Curves.easeInOutCubic));
+    final exit = secondaryAnimation.drive(
+      CurveTween(curve: Curves.easeInOutCubic),
     );
     return SlideTransition(
       position: Tween<Offset>(

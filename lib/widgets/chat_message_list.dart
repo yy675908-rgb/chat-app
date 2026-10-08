@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
 import 'message_bubble.dart';
+import 'chat_viewport.dart';
 
 class ChatMessageList extends StatefulWidget {
   const ChatMessageList({
@@ -65,6 +66,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   String? _highlightedMessageId;
   int _highlightGeneration = 0;
   Timer? _highlightTimer;
+  bool _pointerHolding = false;
 
   GlobalKey _keyFor(String messageId) {
     return _messageKeys.putIfAbsent(messageId, GlobalKey.new);
@@ -273,12 +275,17 @@ class _ChatMessageListState extends State<ChatMessageList> {
       children: [
         Positioned.fill(
           child: Listener(
-            onPointerDown: (_) => widget.onPointerHoldingChanged(true),
+            onPointerDown: (_) {
+              _pointerHolding = true;
+              widget.onPointerHoldingChanged(true);
+            },
             onPointerUp: (_) {
+              _pointerHolding = false;
               widget.onPointerHoldingChanged(false);
               widget.onScrollActivity();
             },
             onPointerCancel: (_) {
+              _pointerHolding = false;
               widget.onPointerHoldingChanged(false);
               widget.onScrollActivity();
             },
@@ -294,6 +301,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
               },
               child: ListView.builder(
                 controller: widget.controller,
+                physics: ChatScrollPhysics(
+                  shouldFollow: () =>
+                      widget.followStreamingOutput && !_pointerHolding,
+                ),
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
                 keyboardDismissBehavior:
@@ -393,30 +404,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     ),
                     child: child,
                   );
-                  final isFreshMessage =
-                      visibleIndex == widget.visibleMessageIndices.length - 1 &&
-                      message.sentAt.isAfter(
-                        DateTime.now().subtract(
-                          const Duration(milliseconds: 700),
-                        ),
-                      );
                   return KeyedSubtree(
                     key: ValueKey<String>('chat-message-${message.id}'),
-                    child: isFreshMessage
-                        ? TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0, end: 1),
-                            duration: const Duration(milliseconds: 160),
-                            curve: Curves.easeOutCubic,
-                            builder: (context, value, child) => Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 5 * (1 - value)),
-                                child: child,
-                              ),
-                            ),
-                            child: anchoredChild,
-                          )
-                        : anchoredChild,
+                    child: anchoredChild,
                   );
                 },
               ),

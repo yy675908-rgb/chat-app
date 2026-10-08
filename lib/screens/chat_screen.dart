@@ -23,6 +23,7 @@ import '../services/provider_store.dart';
 import '../services/reply_stream_accumulator.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/chat_message_list.dart';
+import '../widgets/chat_viewport.dart';
 import '../widgets/chat_picker_sheets.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/group_conversation_sheet.dart';
@@ -90,6 +91,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _followStreamingOutput = true;
   bool _streamScrollScheduled = false;
   Timer? _streamRenderTimer;
+  final _streamRevision = ValueNotifier<int>(0);
   String? _searchTargetMessageId;
   int _searchTargetRequest = 0;
   bool _checkingProactiveMessage = false;
@@ -130,13 +132,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_loading) {
       unawaited(_syncProactiveSchedule());
-    }
-  }
-
-  @override
-  void didChangeMetrics() {
-    if (!_loading && _followStreamingOutput && !_pointerHoldingMessages) {
-      _scrollToBottom();
     }
   }
 
@@ -1252,31 +1247,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final reasoningDurationMs = streamState.reasoningDurationMs();
       final visibleReply = _visibleReplyWhileStreaming(streamState.fullReply);
       final reasoning = streamState.fullReasoning;
-      setState(() {
-        if (isRetry) {
-          final current = _messages[replyIndex];
-          final variants = [...current.replyVariants];
-          variants[current.activeVariantIndex] = streamingVariant!.copyWith(
-            text: visibleReply,
-            reasoning: reasoning,
-            reasoningDurationMs: reasoningDurationMs,
-          );
-          _messages[replyIndex] = current.copyWith(replyVariants: variants);
-        } else {
-          _messages[replyIndex] = newReply!.copyWith(
-            text: visibleReply,
-            reasoning: reasoning,
-            reasoningDurationMs: reasoningDurationMs,
-          );
-        }
-      });
+      if (isRetry) {
+        final current = _messages[replyIndex];
+        final variants = [...current.replyVariants];
+        variants[current.activeVariantIndex] = streamingVariant!.copyWith(
+          text: visibleReply,
+          reasoning: reasoning,
+          reasoningDurationMs: reasoningDurationMs,
+        );
+        _messages[replyIndex] = current.copyWith(replyVariants: variants);
+      } else {
+        _messages[replyIndex] = newReply!.copyWith(
+          text: visibleReply,
+          reasoning: reasoning,
+          reasoningDurationMs: reasoningDurationMs,
+        );
+      }
+      _streamRevision.value++;
       if (shouldScroll) _scrollToBottom();
     }
 
     void settleFailedReply() {
       _cancelScheduledStreamRender();
       if (isRetry) {
-        setState(() => _messages = _restoreRetryMessages(retrySnapshot!, replyIndex));
+        setState(
+          () => _messages = _restoreRetryMessages(retrySnapshot!, replyIndex),
+        );
       } else if (_splitMoodFromReply(streamState.fullReply).text.isEmpty) {
         if (_messages.length > replyIndex) {
           setState(() => _messages.removeAt(replyIndex));
@@ -1481,7 +1477,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     unawaited(_persistMessages());
   }
 
-  List<ChatMessage> _restoreRetryMessages(List<ChatMessage> snapshot, int replyIndex) {
+  List<ChatMessage> _restoreRetryMessages(
+    List<ChatMessage> snapshot,
+    int replyIndex,
+  ) {
     final original = snapshot[replyIndex];
     final variantId = original.activeVariant?.id;
     final appended = _messages.skip(snapshot.length).map((message) {
@@ -1509,7 +1508,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         orElse: () => _providers.first,
       );
       final provider = source.copyWith(selectedModel: option.modelId);
-      await _requestReply(providerOverride: provider, targetReplyIndex: replyIndex);
+      await _requestReply(
+        providerOverride: provider,
+        targetReplyIndex: replyIndex,
+      );
     } on Object catch (error) {
       if (mounted && !_cancelled) _showError('重试未能开始：$error');
     } finally {
@@ -2893,7 +2895,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scheduleStreamRender(VoidCallback render) {
     if (_streamRenderTimer != null) return;
-    _streamRenderTimer = Timer(const Duration(milliseconds: 64), () {
+    _streamRenderTimer = Timer(const Duration(milliseconds: 32), () {
       _streamRenderTimer = null;
       if (mounted) render();
     });
@@ -2926,6 +2928,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _proactiveTimer?.cancel();
     _cancelled = true;
     _cancelScheduledStreamRender();
+    _streamRevision.dispose();
     _activeService?.close();
     _groupIntentEvaluator.dispose();
     _controller.dispose();
@@ -2961,7 +2964,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       child: Scaffold(
         key: _scaffoldKey,
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         drawer: ConversationDrawer(
           profile: _profile,
           currentMood: mood,
@@ -3099,92 +3102,97 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        body: ColoredBox(
-          color: Theme.of(context).colorScheme.surface,
-          child: Column(
-            children: [
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _currentConversation == null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.groups_2_outlined,
-                                size: 42,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                '还没有群聊',
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                '创建后就可以开始聊天',
-                                style: TextStyle(
+        body: ChatViewport(
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.surface,
+            child: Column(
+              children: [
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _currentConversation == null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.groups_2_outlined,
+                                  size: 42,
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurfaceVariant,
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              FilledButton.icon(
-                                onPressed: _newGroupConversation,
-                                icon: const Icon(Icons.add_rounded),
-                                label: const Text('新建群聊'),
-                              ),
-                            ],
+                                const SizedBox(height: 12),
+                                const Text(
+                                  '还没有群聊',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '创建后就可以开始聊天',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: _newGroupConversation,
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('新建群聊'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ValueListenableBuilder<int>(
+                          valueListenable: _streamRevision,
+                          builder: (context, _, child) => ChatMessageList(
+                            key: ValueKey(_currentConversation?.id),
+                            controller: _scrollController,
+                            messages: _messages,
+                            visibleMessageIndices: visibleMessageIndices,
+                            generating: _generating,
+                            activeRetryIndex: _activeRetryIndex,
+                            activeReplyId: _activeReplyId,
+                            reasoningExpanded: _reasoningExpanded,
+                            providers: _providers,
+                            speakerName: _speakerName,
+                            followStreamingOutput: _followStreamingOutput,
+                            targetMessageId: _searchTargetMessageId,
+                            targetRequest: _searchTargetRequest,
+                            onPointerHoldingChanged: (value) {
+                              _pointerHoldingMessages = value;
+                            },
+                            onScrollActivity: _updateStreamingFollow,
+                            onResumeStreamingFollow: _resumeStreamingFollow,
+                            onEdit: _editMessage,
+                            onSendEdited: _sendFromUserMessage,
+                            onMoveVariant: _moveVariant,
+                            onLike: _toggleLike,
+                            onLearnStyle: _extractStylePreference,
+                            onRetryWithModel: _retryReply,
                           ),
                         ),
-                      )
-                    : ChatMessageList(
-                        key: ValueKey(_currentConversation?.id),
-                        controller: _scrollController,
-                        messages: _messages,
-                        visibleMessageIndices: visibleMessageIndices,
-                        generating: _generating,
-                        activeRetryIndex: _activeRetryIndex,
-                        activeReplyId: _activeReplyId,
-                        reasoningExpanded: _reasoningExpanded,
-                        providers: _providers,
-                        speakerName: _speakerName,
-                        followStreamingOutput: _followStreamingOutput,
-                        targetMessageId: _searchTargetMessageId,
-                        targetRequest: _searchTargetRequest,
-                        onPointerHoldingChanged: (value) {
-                          _pointerHoldingMessages = value;
-                        },
-                        onScrollActivity: _updateStreamingFollow,
-                        onResumeStreamingFollow: _resumeStreamingFollow,
-                        onEdit: _editMessage,
-                        onSendEdited: _sendFromUserMessage,
-                        onMoveVariant: _moveVariant,
-                        onLike: _toggleLike,
-                        onLearnStyle: _extractStylePreference,
-                        onRetryWithModel: _retryReply,
-                      ),
-              ),
-              ChatComposer(
-                controller: _controller,
-                enabled: !_loading && _currentConversation != null,
-                generating: _isBusy,
-                onSend: _send,
-                onStop: _stopGenerating,
-                onNewConversation: _groupScope
-                    ? _newGroupConversation
-                    : _newConversation,
-              ),
-            ],
+                ),
+                ChatComposer(
+                  controller: _controller,
+                  enabled: !_loading && _currentConversation != null,
+                  generating: _isBusy,
+                  onSend: _send,
+                  onStop: _stopGenerating,
+                  onNewConversation: _groupScope
+                      ? _newGroupConversation
+                      : _newConversation,
+                ),
+              ],
+            ),
           ),
         ),
       ),

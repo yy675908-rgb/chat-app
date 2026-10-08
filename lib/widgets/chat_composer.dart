@@ -23,39 +23,64 @@ class ChatComposer extends StatefulWidget {
   State<ChatComposer> createState() => _ChatComposerState();
 }
 
-class _ChatComposerState extends State<ChatComposer> {
+class _ChatComposerState extends State<ChatComposer>
+    with WidgetsBindingObserver {
   late final FocusNode _focusNode;
-  bool _directFocusRequest = false;
+  double _keyboardInset = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _focusNode = FocusNode(
       debugLabel: 'chat-composer',
       skipTraversal: true,
+      canRequestFocus: false,
     )..addListener(_guardFocus);
   }
 
   void _guardFocus() {
-    if (_focusNode.hasFocus && !_directFocusRequest) {
-      _focusNode.unfocus();
-    } else if (!_focusNode.hasFocus) {
-      _directFocusRequest = false;
+    if (!_focusNode.hasFocus && _focusNode.canRequestFocus) {
+      _focusNode.canRequestFocus = false;
     }
+  }
+
+  void _dismissFocus() {
+    _focusNode.canRequestFocus = false;
+    _focusNode.unfocus();
+  }
+
+  @override
+  void didChangeMetrics() {
+    final inset = View.of(context).viewInsets.bottom;
+    if (_keyboardInset > 0 && inset == 0) _dismissFocus();
+    _keyboardInset = inset;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _dismissFocus();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) _dismissFocus();
   }
 
   void _allowDirectFocus() {
     if (!widget.enabled) return;
-    _directFocusRequest = true;
+    _focusNode.canRequestFocus = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_focusNode.hasFocus) {
-        _directFocusRequest = false;
+        _focusNode.canRequestFocus = false;
       }
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focusNode.removeListener(_guardFocus);
     _focusNode.dispose();
     super.dispose();
@@ -103,7 +128,7 @@ class _ChatComposerState extends State<ChatComposer> {
                               minLines: 1,
                               maxLines: 6,
                               textInputAction: TextInputAction.newline,
-                              onTapOutside: (_) => _focusNode.unfocus(),
+                              onTapOutside: (_) => _dismissFocus(),
                               decoration: InputDecoration(
                                 hintText: widget.generating
                                     ? '可以继续说…'
@@ -132,7 +157,10 @@ class _ChatComposerState extends State<ChatComposer> {
                                     HapticFeedback.selectionClick();
                                     widget.onStop();
                                   },
-                                  icon: const Icon(Icons.stop_rounded, size: 20),
+                                  icon: const Icon(
+                                    Icons.stop_rounded,
+                                    size: 20,
+                                  ),
                                 )
                               : const SizedBox.shrink(key: ValueKey('idle')),
                         ),
@@ -140,8 +168,7 @@ class _ChatComposerState extends State<ChatComposer> {
                           valueListenable: widget.controller,
                           builder: (context, value, _) {
                             final canSend =
-                                widget.enabled &&
-                                value.text.trim().isNotEmpty;
+                                widget.enabled && value.text.trim().isNotEmpty;
                             return IconButton(
                               tooltip: '发送',
                               onPressed: canSend
