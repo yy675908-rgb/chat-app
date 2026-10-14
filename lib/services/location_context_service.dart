@@ -61,8 +61,11 @@ class LocationContextService {
     } on Object {
       // A temporarily unavailable fix should not disrupt a normal reply.
     }
-    if (cachedAt == null || _cachedPlace == null ||
-        now.difference(cachedAt) >= const Duration(minutes: 15)) return null;
+    if (cachedAt == null ||
+        _cachedPlace == null ||
+        now.difference(cachedAt) >= const Duration(minutes: 15)) {
+      return null;
+    }
     final minutes = now.difference(cachedAt).inMinutes;
     return '${_cachedPlace!}（约$minutes 分钟前取得，非实时）';
   }
