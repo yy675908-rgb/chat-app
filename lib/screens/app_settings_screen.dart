@@ -44,6 +44,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool _backupBusy = false;
   bool _locationEnabled = false;
   bool _locationBusy = false;
+  bool _checkingLocation = false;
+  String? _locationPreview;
   final _locationService = const LocationContextService();
   final _backupService = BackupService();
   late final TextEditingController _userNameController;
@@ -77,7 +79,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Future<void> _loadLocationSetting() async {
     final enabled = await _locationService.isEnabled();
-    if (mounted) setState(() => _locationEnabled = enabled);
+    if (!mounted) return;
+    setState(() => _locationEnabled = enabled);
+    if (enabled) await _checkLocation();
   }
 
   Future<void> _setLocationEnabled(bool enabled) async {
@@ -89,15 +93,27 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
         return;
       }
       await _locationService.setEnabled(enabled);
-      if (mounted) setState(() => _locationEnabled = enabled);
+      if (mounted) {
+        setState(() {
+          _locationEnabled = enabled;
+          if (!enabled) _locationPreview = null;
+        });
+        if (enabled) await _checkLocation();
+      }
     } finally {
       if (mounted) setState(() => _locationBusy = false);
     }
   }
 
   Future<void> _checkLocation() async {
+    if (_checkingLocation) return;
+    setState(() => _checkingLocation = true);
     final place = await _locationService.currentPlace();
-    _notice(place == null ? '暂未获取到地点，请检查系统定位开关后重试' : '当前识别：$place');
+    if (!mounted) return;
+    setState(() {
+      _checkingLocation = false;
+      _locationPreview = place ?? '暂未获取到位置，请检查定位权限和系统定位开关';
+    });
   }
 
   UserProfile get _userProfileDraft => UserProfile(
@@ -334,8 +350,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _checkLocation,
-                      child: const Text('查看识别位置'),
+                      onPressed: _checkingLocation ? null : _checkLocation,
+                      child: Text(_checkingLocation ? '定位中…' : '查看识别位置'),
+                    ),
+                  ),
+                if (_locationEnabled && _locationPreview != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('当前识别：$_locationPreview'),
                     ),
                   ),
               ],
