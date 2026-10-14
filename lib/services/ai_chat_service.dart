@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import 'api_error_diagnostics.dart';
 import '../models/provider_profile.dart';
-import 'memory_selector.dart';
 
 class AiChatException implements Exception {
   const AiChatException(this.message);
@@ -193,7 +192,7 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
-    final prompt = MemorySelector.compactSystemPrompt(systemPrompt, history);
+    final prompt = systemPrompt;
     final budget = await _resolveContextBudget(contextTokenBudget);
     final isAnthropic = provider.protocol == ProviderProtocol.anthropic;
     final maxOutputTokens = isAnthropic
@@ -295,10 +294,7 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
-    final requestSystemPrompt = MemorySelector.compactSystemPrompt(
-      systemPrompt,
-      history,
-    );
+    final requestSystemPrompt = systemPrompt;
     final budget = await _resolveContextBudget(contextTokenBudget);
     final safeHistory = _historyWithinSafeBudget(
       requestSystemPrompt,
@@ -392,10 +388,7 @@ class AiChatService {
     required double temperature,
     required int contextTokenBudget,
   }) async* {
-    final requestSystemPrompt = MemorySelector.compactSystemPrompt(
-      systemPrompt,
-      history,
-    );
+    final requestSystemPrompt = systemPrompt;
     final budget = await _resolveContextBudget(contextTokenBudget);
     final availableOutputBudget = (budget - 2048)
         .clamp(

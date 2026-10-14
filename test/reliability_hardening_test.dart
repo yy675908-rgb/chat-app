@@ -26,6 +26,44 @@ void main() {
     selectedModel: 'model',
   );
 
+  test('outgoing request preserves saved memory without matching words', () async {
+    Map<String, dynamic>? body;
+    final service = AiChatService(
+      client: MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response.bytes(
+          utf8.encode(
+            'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'
+            'data: [DONE]\n\n',
+          ),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      }),
+    );
+    addTearDown(service.close);
+
+    await service
+        .streamReply(
+          provider: provider,
+          apiKey: 'secret',
+          systemPrompt: '你和用户的共同记忆（仅属于你们这段关系）：\n'
+              '- 角色有用户家里的钥匙，可以自行开门进屋',
+          history: [
+            ChatMessage(
+              id: 'now',
+              author: MessageAuthor.user,
+              text: '快进来，别在外面等。',
+              sentAt: DateTime.utc(2026),
+            ),
+          ],
+        )
+        .join();
+
+    final messages = body!['messages'] as List<dynamic>;
+    expect(messages.first['content'], contains('角色有用户家里的钥匙'));
+  });
+
   test(
     'heartbeat-only stream automatically retries without streaming',
     () async {

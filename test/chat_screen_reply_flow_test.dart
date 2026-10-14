@@ -6,6 +6,7 @@ import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/screens/chat_screen.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
+import 'package:character_chat_app/services/chat_store.dart';
 import 'package:character_chat_app/services/location_context_service.dart';
 import 'package:character_chat_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
@@ -68,6 +69,27 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
   }
+
+  testWidgets('a saved fact reaches the model without keyword overlap', (
+    tester,
+  ) async {
+    const memory = '角色有用户家里的钥匙，可以自行开门进屋';
+    final store = ChatStore();
+    final characters = await store.loadCharacters();
+    expect(
+      await store.saveMemories([memory], characterId: characters.first.id),
+      isTrue,
+    );
+
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '快进来，别在外面等。');
+    expect(services, hasLength(1));
+    expect(services.first.systemPrompt, contains(memory));
+    expect(services.first.systemPrompt, contains('情境相关时据此行动'));
+    services.first.finish('我自己开门进来了');
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
     'character refreshes location after the settings preview',

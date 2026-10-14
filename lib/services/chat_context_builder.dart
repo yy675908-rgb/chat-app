@@ -4,7 +4,6 @@ import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/user_profile.dart';
 import '../models/world_book_entry.dart';
-import 'memory_selector.dart';
 
 class ChatContextBuilder {
   const ChatContextBuilder._();
@@ -39,14 +38,12 @@ class ChatContextBuilder {
               '这次定位不代表能持续追踪用户移动，不能声称知道接下来会去哪里。'
               '如果只有坐标而没有地点名称，不要凭空说出具体街道或建筑。'
               '其他时候仅在对话确有意义时自然使用，不必每次提地点。';
-    final selectedMemories = MemorySelector.selectRelevant(
-      activeMemories,
-      visibleMessages,
-    );
-    final memoryText = selectedMemories.isEmpty
+    final memoryText = activeMemories.isEmpty
         ? ''
         : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
-              '${selectedMemories.map((memory) => '- $memory').join('\n')}';
+              '${activeMemories.map((memory) => '- $memory').join('\n')}\n'
+              '这些是已保存的事实。情境相关时据此行动，不能因近期聊天没提到就当作不存在；'
+              '不要机械复述。若用户在当前对话明确更新事实，以新信息为准。';
     final preferenceText = stylePreferences.isEmpty
         ? ''
         : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
