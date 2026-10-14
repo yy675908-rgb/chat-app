@@ -29,9 +29,10 @@ class ChatContextBuilder {
         '\n\n当前本地日期和时间（以此为准）：${formatPromptTime(now)}';
     final locationText = currentPlace == null || currentPlace.trim().isEmpty
         ? ''
-        : '\n\n应用已取得用户设备当前的大致位置：${currentPlace.trim()}。'
+        : '\n\n应用提供的用户位置情境：${currentPlace.trim()}。'
               '这是用户的位置，不代表你也在那里；不能据此推断用户正在做什么、住在哪里或周围环境。'
               '如果用户问你是否知道他/她的位置，直接据此回答，不要说自己无法读取。'
+              '如果注明非实时，必须说明这是先前的位置，不要称为现在所在地点。'
               '如果只有坐标而没有地点名称，不要凭空说出具体街道或建筑。'
               '其他时候仅在对话确有意义时自然使用，不必每次提地点。';
     final selectedMemories = MemorySelector.selectRelevant(
