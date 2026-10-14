@@ -1236,6 +1236,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       character: speakingCharacter,
       currentPlace: currentPlace,
     );
+    _locationService.markSharedWithCharacter(currentPlace);
     final recent = _historyForModel(
       _messagesWithinBudget(contextMessages, systemPrompt),
     );
@@ -2817,6 +2818,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       character.id,
     );
     final currentPlace = await _locationService.currentPlace();
+    _locationService.markSharedWithCharacter(currentPlace);
 
     final text = await _auxiliaryAiService.generateProactiveMessage(
       provider: provider,

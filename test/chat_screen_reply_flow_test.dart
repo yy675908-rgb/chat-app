@@ -6,6 +6,7 @@ import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/screens/chat_screen.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
+import 'package:character_chat_app/services/location_context_service.dart';
 import 'package:character_chat_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -67,6 +68,43 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
   }
+
+  testWidgets(
+    'location shown in settings reaches the next character request',
+    (tester) async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('location_context_enabled_v1', true);
+      var locationCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('linjian/location'),
+            (call) async {
+              if (call.method == 'currentPlace') {
+                locationCalls++;
+                return '北京市 朝阳区';
+              }
+              return true;
+            },
+          );
+      addTearDown(() async {
+        await const LocationContextService().setEnabled(false);
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(const MethodChannel('linjian/location'), null);
+      });
+      const location = LocationContextService();
+      expect(await location.currentPlace(forceRefresh: true), '北京市 朝阳区');
+
+      final services = <_ControlledReply>[];
+      await openChat(tester, services);
+      await send(tester, '你知道我在哪吗？');
+      expect(services, hasLength(1));
+      expect(services.first.systemPrompt, contains('北京市 朝阳区'));
+      expect(location.lastSharedPlace, '北京市 朝阳区');
+      expect(locationCalls, 1);
+      services.first.finish('你在朝阳区');
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets(
     'streamed text leaves header and composer mounted without rebuilding them',
@@ -206,6 +244,7 @@ void main() {
 class _ControlledReply extends AiChatService {
   final _events = StreamController<AiStreamEvent>();
   List<ChatMessage> history = const [];
+  String systemPrompt = '';
 
   @override
   Stream<AiStreamEvent> streamEvents({
@@ -217,6 +256,7 @@ class _ControlledReply extends AiChatService {
     int contextTokenBudget = 0,
   }) {
     this.history = history;
+    this.systemPrompt = systemPrompt;
     return _events.stream;
   }
 
