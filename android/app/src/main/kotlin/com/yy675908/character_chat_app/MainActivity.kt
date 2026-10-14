@@ -14,6 +14,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -118,6 +119,8 @@ class MainActivity : FlutterActivity() {
         handler.postDelayed({ finish(coordinateFallback) }, 9000L)
 
         fun resolve(location: Location) {
+            val fixAgeNanos = SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos
+            if (fixAgeNanos !in 0L..15_000_000_000L) return
             if (!fixResolved.compareAndSet(false, true)) return
             stopUpdates()
             coordinateFallback = String.format(
@@ -149,28 +152,21 @@ class MainActivity : FlutterActivity() {
         }
 
         try {
-            val recent = providers.mapNotNull { manager.getLastKnownLocation(it) }
-                .filter { System.currentTimeMillis() - it.time in 0L..120000L }
-                .maxByOrNull { it.time }
-            if (recent != null) {
-                resolve(recent)
-            } else {
-                providers.forEach { provider ->
-                    val listener = object : LocationListener {
-                        override fun onLocationChanged(location: Location) {
-                            resolve(location)
-                        }
-                    }
-                    listeners.add(listener)
-                    try {
-                        @Suppress("DEPRECATION")
-                        manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
-                    } catch (_: IllegalArgumentException) {
-                        listeners.remove(listener)
+            providers.forEach { provider ->
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        resolve(location)
                     }
                 }
-                if (listeners.isEmpty()) finish(null)
+                listeners.add(listener)
+                try {
+                    @Suppress("DEPRECATION")
+                    manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+                } catch (_: IllegalArgumentException) {
+                    listeners.remove(listener)
+                }
             }
+            if (listeners.isEmpty()) finish(null)
         } catch (_: SecurityException) {
             finish(null)
         } catch (_: IllegalArgumentException) {
