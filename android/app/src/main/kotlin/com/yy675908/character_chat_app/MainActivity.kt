@@ -91,7 +91,7 @@ class MainActivity : FlutterActivity() {
         val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
             .filter { provider -> manager.isProviderEnabled(provider) }
-        if (providers.isEmpty) {
+        if (providers.isEmpty()) {
             result.success(null)
             return
         }
