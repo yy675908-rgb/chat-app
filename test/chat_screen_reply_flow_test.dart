@@ -6,6 +6,7 @@ import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/screens/chat_screen.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
+import 'package:character_chat_app/services/chat_store.dart';
 import 'package:character_chat_app/services/location_context_service.dart';
 import 'package:character_chat_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
@@ -68,6 +69,34 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
   }
+
+  testWidgets('a saved fact reaches the model without keyword overlap', (
+    tester,
+  ) async {
+    const memory = '你有用户家的钥匙，不需要敲门，也不需要用户开门，直接进';
+    const anotherMemory = '我们约好明年一起看海';
+    final store = ChatStore();
+    final characters = await store.loadCharacters();
+    expect(
+      await store.saveMemories(
+        [memory, anotherMemory],
+        characterId: characters.first.id,
+      ),
+      isTrue,
+    );
+
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '今天怎么样？');
+    expect(services, hasLength(1));
+    expect(services.first.systemPrompt, contains(memory));
+    expect(services.first.systemPrompt, contains(anotherMemory));
+    expect(services.first.systemPrompt, contains('情境相关时据此行动'));
+    expect(services.first.systemPrompt, contains('不得按惯常情节要求用户做那个动作'));
+    expect(services.first.systemPrompt, contains('都用“你”指代正在聊天的用户'));
+    services.first.finish('我自己开门进来了');
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
     'character refreshes location after the settings preview',

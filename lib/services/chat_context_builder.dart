@@ -4,7 +4,6 @@ import '../models/conversation.dart';
 import '../models/provider_profile.dart';
 import '../models/user_profile.dart';
 import '../models/world_book_entry.dart';
-import 'memory_selector.dart';
 
 class ChatContextBuilder {
   const ChatContextBuilder._();
@@ -39,14 +38,13 @@ class ChatContextBuilder {
               '这次定位不代表能持续追踪用户移动，不能声称知道接下来会去哪里。'
               '如果只有坐标而没有地点名称，不要凭空说出具体街道或建筑。'
               '其他时候仅在对话确有意义时自然使用，不必每次提地点。';
-    final selectedMemories = MemorySelector.selectRelevant(
-      activeMemories,
-      visibleMessages,
-    );
-    final memoryText = selectedMemories.isEmpty
+    final memoryText = activeMemories.isEmpty
         ? ''
         : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
-              '${selectedMemories.map((memory) => '- $memory').join('\n')}';
+              '${activeMemories.map((memory) => '- $memory').join('\n')}\n'
+              '这些是已保存的事实。情境相关时据此行动，不能因近期聊天没提到就当作不存在；'
+              '记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。'
+              '不要机械复述。若用户在当前对话明确更新事实，以新信息为准。';
     final preferenceText = stylePreferences.isEmpty
         ? ''
         : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
@@ -128,7 +126,10 @@ class ChatContextBuilder {
         '$intimacyInstruction'
         '$groupInstruction$userProfileText'
         '$memoryText$preferenceText$worldBookText'
-        '$summaryText$context$locationText$stateInstruction';
+        '$summaryText$context$locationText$stateInstruction'
+        '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
+        '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
+        '提及真正的第三方时才用第三人称。';
   }
 
   static String matchedWorldBookPrompt({

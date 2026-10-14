@@ -86,7 +86,7 @@ void main() {
       expect(prompt, contains('关系亲近时也可能很低'));
       expect(prompt, contains('名字：小元'));
       expect(prompt, contains('用户喝咖啡通常不加糖'));
-      expect(prompt, isNot(contains('用户喜欢陶瓷')));
+      expect(prompt, contains('用户喜欢陶瓷'));
       expect(prompt, contains('遇到明确问题时直接回答'));
       expect(prompt, contains('【咖啡店】\n这是一家安静的店。'));
       expect(prompt, contains('当前对话较早内容的摘要：\n较早内容摘要。'));
