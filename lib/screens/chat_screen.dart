@@ -1230,11 +1230,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final contextMessages = _visibleMessagesFor(
       _messages.take(replyIndex).toList(),
     );
+    final locationEnabled = await _locationService.isEnabled();
     final currentPlace = await _locationService.currentPlace();
     final systemPrompt = _assembledSystemPrompt(
       contextMessages: contextMessages,
       character: speakingCharacter,
       currentPlace: currentPlace,
+      locationEnabled: locationEnabled,
     );
     _locationService.markSharedWithCharacter(currentPlace);
     final recent = _historyForModel(
@@ -1814,6 +1816,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     List<ChatMessage>? contextMessages,
     CharacterProfile? character,
     String? currentPlace,
+    bool locationEnabled = false,
   }) {
     final activeCharacter = character ?? _profile;
     return ChatContextBuilder.buildSystemPrompt(
@@ -1836,6 +1839,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       contextMessages: contextMessages,
       now: DateTime.now().toLocal(),
       currentPlace: currentPlace,
+      locationEnabled: locationEnabled,
     );
   }
 
@@ -2817,6 +2821,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       targetConversation.id,
       character.id,
     );
+    final locationEnabled = await _locationService.isEnabled();
     final currentPlace = await _locationService.currentPlace();
     _locationService.markSharedWithCharacter(currentPlace);
 
@@ -2829,6 +2834,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       recentTranscript: transcript,
       currentMood: mood,
       currentPlace: currentPlace,
+      locationEnabled: locationEnabled,
     );
     if (text.trim().isEmpty) return;
 

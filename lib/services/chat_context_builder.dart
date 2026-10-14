@@ -24,15 +24,19 @@ class ChatContextBuilder {
     required List<ChatMessage>? contextMessages,
     required DateTime now,
     String? currentPlace,
+    bool locationEnabled = false,
   }) {
     final context =
         '\n\n当前本地日期和时间（以此为准）：${formatPromptTime(now)}';
-    final locationText = currentPlace == null || currentPlace.trim().isEmpty
+    final locationText = !locationEnabled
         ? ''
-        : '\n\n应用提供的用户位置情境：${currentPlace.trim()}。'
+        : currentPlace == null || currentPlace.trim().isEmpty
+        ? '\n\n本次回复前未能取得用户设备的实时位置。历史对话中提到的地点不能当作用户现在的位置；被问到当前位置时如实说明这次未取得。'
+        : '\n\n应用在本次回复前获取的用户设备位置：${currentPlace.trim()}。'
               '这是用户的位置，不代表你也在那里；不能据此推断用户正在做什么、住在哪里或周围环境。'
+              '这次获取的地点优先于历史对话里提过的地点，不要称它为先前的定位。'
               '如果用户问你是否知道他/她的位置，直接据此回答，不要说自己无法读取。'
-              '如果注明非实时，必须说明这是先前的位置，不要称为现在所在地点。'
+              '这次定位不代表能持续追踪用户移动，不能声称知道接下来会去哪里。'
               '如果只有坐标而没有地点名称，不要凭空说出具体街道或建筑。'
               '其他时候仅在对话确有意义时自然使用，不必每次提地点。';
     final selectedMemories = MemorySelector.selectRelevant(

@@ -70,7 +70,7 @@ void main() {
   }
 
   testWidgets(
-    'location shown in settings reaches the next character request',
+    'character refreshes location after the settings preview',
     (tester) async {
       final preferences = await SharedPreferences.getInstance();
       await preferences.setBool('location_context_enabled_v1', true);
@@ -81,7 +81,7 @@ void main() {
             (call) async {
               if (call.method == 'currentPlace') {
                 locationCalls++;
-                return '北京市 朝阳区';
+                return locationCalls == 1 ? '北京市 朝阳区' : '北京市 海淀区';
               }
               return true;
             },
@@ -92,19 +92,56 @@ void main() {
             .setMockMethodCallHandler(const MethodChannel('linjian/location'), null);
       });
       const location = LocationContextService();
-      expect(await location.currentPlace(forceRefresh: true), '北京市 朝阳区');
+      expect(await location.currentPlace(), '北京市 朝阳区');
 
       final services = <_ControlledReply>[];
       await openChat(tester, services);
       await send(tester, '你知道我在哪吗？');
       expect(services, hasLength(1));
-      expect(services.first.systemPrompt, contains('北京市 朝阳区'));
-      expect(location.lastSharedPlace, '北京市 朝阳区');
-      expect(locationCalls, 1);
-      services.first.finish('你在朝阳区');
+      expect(services.first.systemPrompt, contains('本次回复前获取'));
+      expect(services.first.systemPrompt, contains('北京市 海淀区'));
+      expect(location.lastSharedPlace, '北京市 海淀区');
+      expect(locationCalls, 2);
+      services.first.finish('你在海淀区');
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets('failed fresh fix does not share the previous location', (
+    tester,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('location_context_enabled_v1', true);
+    var locationCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('linjian/location'), (
+          call,
+        ) async {
+          if (call.method == 'currentPlace') {
+            locationCalls++;
+            return locationCalls == 1 ? '北京市 朝阳区' : null;
+          }
+          return true;
+        });
+    addTearDown(() async {
+      await const LocationContextService().setEnabled(false);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('linjian/location'), null);
+    });
+    const location = LocationContextService();
+    expect(await location.currentPlace(), '北京市 朝阳区');
+
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '你知道我现在在哪吗？');
+    expect(services, hasLength(1));
+    expect(services.first.systemPrompt, contains('本次回复前未能取得'));
+    expect(services.first.systemPrompt, isNot(contains('北京市 朝阳区')));
+    expect(location.lastSharedPlace, isNull);
+    expect(locationCalls, 2);
+    services.first.finish('本次没有取得定位');
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
     'streamed text leaves header and composer mounted without rebuilding them',

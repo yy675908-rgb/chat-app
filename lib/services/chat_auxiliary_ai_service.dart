@@ -125,6 +125,7 @@ class ChatAuxiliaryAiService {
     required String recentTranscript,
     required String currentMood,
     String? currentPlace,
+    bool locationEnabled = false,
   }) async {
     final service = AiChatService();
     var raw = '';
@@ -162,7 +163,7 @@ class ChatAuxiliaryAiService {
             '不要机械说“系统让我主动联系你”，不要解释机制，不要为了显得亲密而强行暧昧。'
             '用户对你的亲密度为${character.userIntimacy}/100。这是用户的主观感受，与实际关系远近独立；你知道它，可自然回应，但不要据此推断关系。'
             '你上一轮心绪是“${currentMood.trim().isEmpty ? '未记录' : currentMood.trim()}”。'
-            '${currentPlace == null || currentPlace.trim().isEmpty ? '' : '应用已取得用户设备当前的大致位置：${currentPlace.trim()}。这只是用户的位置，不是你的位置；只在自然合适时才据此关心或开启话题，不要每次报地点，不要推断用户具体行为；只有坐标时不要臆测具体地名。'}'
+            '${!locationEnabled ? '' : currentPlace == null || currentPlace.trim().isEmpty ? '本次未取得用户设备的实时位置，不要沿用历史对话中的地点当作现在的位置。' : '应用在本次生成前取得用户设备的大致位置：${currentPlace.trim()}。这次获取的地点优先于历史对话中的地点；这只是用户的位置，不是你的位置；只在自然合适时才据此关心或开启话题，不要每次报地点，不要推断用户具体行为；只有坐标时不要臆测具体地名。'}'
             '只输出一条自然聊天正文，不加姓名前缀，不输出心绪标记，不超过80个汉字。',
         history: [request],
         temperature: 0.8,

@@ -94,7 +94,7 @@ void main() {
       expect(prompt, contains('2026-09-18 14:30'));
       expect(prompt, isNot(contains('拉长回复')));
       expect(prompt, isNot(contains('自行增加回复长度')));
-      expect(prompt, isNot(contains('应用提供的用户位置情境')));
+      expect(prompt, isNot(contains('应用在本次回复前获取')));
     });
 
     test('location context belongs to the user and is only included when given', () {
@@ -114,8 +114,9 @@ void main() {
         contextMessages: const [],
         now: now,
         currentPlace: '北京市 朝阳区',
+        locationEnabled: true,
       );
-      expect(prompt, contains('位置情境：北京市 朝阳区'));
+      expect(prompt, contains('用户设备位置：北京市 朝阳区'));
       expect(prompt, contains('不代表你也在那里'));
       expect(prompt, contains('不要说自己无法读取'));
     });

@@ -108,7 +108,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   Future<void> _checkLocation() async {
     if (_checkingLocation) return;
     setState(() => _checkingLocation = true);
-    final place = await _locationService.currentPlace(forceRefresh: true);
+    final place = await _locationService.currentPlace();
     if (!mounted) return;
     setState(() {
       _checkingLocation = false;
@@ -368,7 +368,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '上次提供给角色：${_locationService.lastSharedPlace ?? '暂无'}',
+                        '上次提供给角色：${_locationService.lastSharedPlace ?? (_locationService.hasSharedWithCharacter ? '本次未取得实时位置' : '暂无')}',
                       ),
                     ),
                   ),
