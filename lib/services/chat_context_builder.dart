@@ -43,6 +43,7 @@ class ChatContextBuilder {
         : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
               '${activeMemories.map((memory) => '- $memory').join('\n')}\n'
               '这些是已保存的事实。情境相关时据此行动，不能因近期聊天没提到就当作不存在；'
+              '记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。'
               '不要机械复述。若用户在当前对话明确更新事实，以新信息为准。';
     final preferenceText = stylePreferences.isEmpty
         ? ''

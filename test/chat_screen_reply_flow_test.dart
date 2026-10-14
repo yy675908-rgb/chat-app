@@ -73,7 +73,7 @@ void main() {
   testWidgets('a saved fact reaches the model without keyword overlap', (
     tester,
   ) async {
-    const memory = '角色有用户家里的钥匙，可以自行开门进屋';
+    const memory = '你有用户家的钥匙，不需要敲门，也不需要用户开门，直接进';
     final store = ChatStore();
     final characters = await store.loadCharacters();
     expect(
@@ -87,6 +87,7 @@ void main() {
     expect(services, hasLength(1));
     expect(services.first.systemPrompt, contains(memory));
     expect(services.first.systemPrompt, contains('情境相关时据此行动'));
+    expect(services.first.systemPrompt, contains('不得按惯常情节要求用户做那个动作'));
     services.first.finish('我自己开门进来了');
     await tester.pumpAndSettle();
   });

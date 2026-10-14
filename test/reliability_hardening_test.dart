@@ -48,7 +48,7 @@ void main() {
           provider: provider,
           apiKey: 'secret',
           systemPrompt: '你和用户的共同记忆（仅属于你们这段关系）：\n'
-              '- 角色有用户家里的钥匙，可以自行开门进屋',
+              '- 你有用户家的钥匙，不需要敲门，也不需要用户开门，直接进',
           history: [
             ChatMessage(
               id: 'now',
@@ -61,7 +61,7 @@ void main() {
         .join();
 
     final messages = body!['messages'] as List<dynamic>;
-    expect(messages.first['content'], contains('角色有用户家里的钥匙'));
+    expect(messages.first['content'], contains('不需要敲门，也不需要用户开门，直接进'));
   });
 
   test(
