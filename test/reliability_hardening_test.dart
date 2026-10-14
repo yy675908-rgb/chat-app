@@ -53,7 +53,7 @@ void main() {
             ChatMessage(
               id: 'now',
               author: MessageAuthor.user,
-              text: '快进来，别在外面等。',
+              text: '今天怎么样？',
               sentAt: DateTime.utc(2026),
             ),
           ],

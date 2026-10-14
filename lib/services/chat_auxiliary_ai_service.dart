@@ -8,7 +8,9 @@ import 'ai_chat_service.dart';
 import 'mood_codec.dart';
 
 class ChatAuxiliaryAiService {
-  const ChatAuxiliaryAiService();
+  const ChatAuxiliaryAiService({this.proactiveServiceFactory});
+
+  final AiChatService Function()? proactiveServiceFactory;
 
   Future<String> suggestRelationshipMemory({
     required ProviderProfile provider,
@@ -127,7 +129,7 @@ class ChatAuxiliaryAiService {
     String? currentPlace,
     bool locationEnabled = false,
   }) async {
-    final service = AiChatService();
+    final service = proactiveServiceFactory?.call() ?? AiChatService();
     var raw = '';
     try {
       final userFields = <String>[
@@ -144,8 +146,6 @@ class ChatAuxiliaryAiService {
         text:
             '最近单聊：\n'
             '${recentTranscript.trim().isEmpty ? '暂无最近对话' : recentTranscript.trim()}\n\n'
-            '共同记忆：\n'
-            '${memories.isEmpty ? '暂无' : memories.map((item) => '- $item').join('\n')}\n\n'
             '用户资料：\n'
             '${userFields.isEmpty ? '暂无' : userFields.join('\n')}',
         sentAt: DateTime.now(),
@@ -157,6 +157,7 @@ class ChatAuxiliaryAiService {
         systemPrompt:
             '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
             '${character.systemPrompt}\n\n'
+            '${memories.isEmpty ? '' : '你和用户的共同记忆（仅属于你们这段关系）：\n${memories.map((item) => '- $item').join('\n')}\n这些是已保存的事实，始终已知；情境相关时据此行动，不要等用户再次提及。记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。\n\n'}'
             '【主动消息】现在不是在回复用户刚发来的新消息，而是你隔了一段时间后自然地主动找用户。'
             '根据你的性格、共同记忆和最近单聊，决定此刻最自然的一句话。'
             '可以接续未完话题、问候、想起某件事、表达惦记或提出新的小话题；'
@@ -164,6 +165,7 @@ class ChatAuxiliaryAiService {
             '用户对你的亲密度为${character.userIntimacy}/100。这是用户的主观感受，与实际关系远近独立；你知道它，可自然回应，但不要据此推断关系。'
             '你上一轮心绪是“${currentMood.trim().isEmpty ? '未记录' : currentMood.trim()}”。'
             '${!locationEnabled ? '' : currentPlace == null || currentPlace.trim().isEmpty ? '本次未取得用户设备的实时位置，不要沿用历史对话中的地点当作现在的位置。' : '应用在本次生成前取得用户设备的大致位置：${currentPlace.trim()}。这次获取的地点优先于历史对话中的地点；这只是用户的位置，不是你的位置；只在自然合适时才据此关心或开启话题，不要每次报地点，不要推断用户具体行为；只有坐标时不要臆测具体地名。'}'
+            '你是直接给用户发消息，用“你”称呼对方；不要用“她”“他”或“用户”代指对方。'
             '只输出一条自然聊天正文，不加姓名前缀，不输出心绪标记，不超过80个汉字。',
         history: [request],
         temperature: 0.8,

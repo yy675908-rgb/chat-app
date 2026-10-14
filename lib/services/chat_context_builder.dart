@@ -126,7 +126,10 @@ class ChatContextBuilder {
         '$intimacyInstruction'
         '$groupInstruction$userProfileText'
         '$memoryText$preferenceText$worldBookText'
-        '$summaryText$context$locationText$stateInstruction';
+        '$summaryText$context$locationText$stateInstruction'
+        '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
+        '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
+        '提及真正的第三方时才用第三人称。';
   }
 
   static String matchedWorldBookPrompt({

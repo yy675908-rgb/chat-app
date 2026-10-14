@@ -74,20 +74,26 @@ void main() {
     tester,
   ) async {
     const memory = '你有用户家的钥匙，不需要敲门，也不需要用户开门，直接进';
+    const anotherMemory = '我们约好明年一起看海';
     final store = ChatStore();
     final characters = await store.loadCharacters();
     expect(
-      await store.saveMemories([memory], characterId: characters.first.id),
+      await store.saveMemories(
+        [memory, anotherMemory],
+        characterId: characters.first.id,
+      ),
       isTrue,
     );
 
     final services = <_ControlledReply>[];
     await openChat(tester, services);
-    await send(tester, '快进来，别在外面等。');
+    await send(tester, '今天怎么样？');
     expect(services, hasLength(1));
     expect(services.first.systemPrompt, contains(memory));
+    expect(services.first.systemPrompt, contains(anotherMemory));
     expect(services.first.systemPrompt, contains('情境相关时据此行动'));
     expect(services.first.systemPrompt, contains('不得按惯常情节要求用户做那个动作'));
+    expect(services.first.systemPrompt, contains('都用“你”指代正在聊天的用户'));
     services.first.finish('我自己开门进来了');
     await tester.pumpAndSettle();
   });
