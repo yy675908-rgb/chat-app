@@ -94,7 +94,7 @@ void main() {
       expect(prompt, contains('2026-09-18 14:30'));
       expect(prompt, isNot(contains('拉长回复')));
       expect(prompt, isNot(contains('自行增加回复长度')));
-      expect(prompt, isNot(contains('设备当前定位')));
+      expect(prompt, isNot(contains('应用已取得用户设备当前的大致位置')));
     });
 
     test('location context belongs to the user and is only included when given', () {
@@ -115,9 +115,9 @@ void main() {
         now: now,
         currentPlace: '北京市 朝阳区',
       );
-      expect(prompt, contains('大致地点：北京市 朝阳区'));
+      expect(prompt, contains('大致位置：北京市 朝阳区'));
       expect(prompt, contains('不代表你也在那里'));
-      expect(prompt, contains('不必每次提地点'));
+      expect(prompt, contains('不要说自己无法读取'));
     });
 
     test('drops current summary when its marker is outside current context', () {

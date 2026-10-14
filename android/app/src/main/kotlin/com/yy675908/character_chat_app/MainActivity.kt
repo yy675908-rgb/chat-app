@@ -96,17 +96,36 @@ class MainActivity : FlutterActivity() {
             return
         }
         val completed = AtomicBoolean(false)
+        val fixResolved = AtomicBoolean(false)
         val handler = Handler(Looper.getMainLooper())
-        var listener: LocationListener? = null
+        val listeners = mutableListOf<LocationListener>()
+        var coordinateFallback: String? = null
+        fun stopUpdates() {
+            listeners.forEach { listener ->
+                try {
+                    manager.removeUpdates(listener)
+                } catch (_: SecurityException) {
+                    // Permission may have been revoked while a fix was pending.
+                }
+            }
+        }
         fun finish(place: String?) {
             if (completed.compareAndSet(false, true)) {
-                listener?.let { manager.removeUpdates(it) }
+                stopUpdates()
                 result.success(place)
             }
         }
-        handler.postDelayed({ finish(null) }, 9000L)
+        handler.postDelayed({ finish(coordinateFallback) }, 9000L)
 
         fun resolve(location: Location) {
+            if (!fixResolved.compareAndSet(false, true)) return
+            stopUpdates()
+            coordinateFallback = String.format(
+                Locale.US,
+                "约纬度 %.2f，经度 %.2f（地点名称暂不可用）",
+                location.latitude,
+                location.longitude
+            )
             Thread {
                 val place = try {
                     if (!Geocoder.isPresent()) null else {
@@ -125,7 +144,7 @@ class MainActivity : FlutterActivity() {
                 } catch (_: Exception) {
                     null
                 }
-                handler.post { finish(place) }
+                handler.post { finish(place ?: coordinateFallback) }
             }.start()
         }
 
@@ -136,14 +155,21 @@ class MainActivity : FlutterActivity() {
             if (recent != null) {
                 resolve(recent)
             } else {
-                listener = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        manager.removeUpdates(this)
-                        resolve(location)
+                providers.forEach { provider ->
+                    val listener = object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            resolve(location)
+                        }
+                    }
+                    listeners.add(listener)
+                    try {
+                        @Suppress("DEPRECATION")
+                        manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+                    } catch (_: IllegalArgumentException) {
+                        listeners.remove(listener)
                     }
                 }
-                @Suppress("DEPRECATION")
-                manager.requestSingleUpdate(providers.first(), listener!!, Looper.getMainLooper())
+                if (listeners.isEmpty()) finish(null)
             }
         } catch (_: SecurityException) {
             finish(null)
