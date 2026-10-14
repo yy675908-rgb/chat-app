@@ -17,6 +17,7 @@ import '../services/chat_context_builder.dart';
 import '../services/chat_store.dart';
 import '../services/group_intent_evaluator.dart';
 import '../services/group_reply_policy.dart';
+import '../services/location_context_service.dart';
 import '../services/mood_codec.dart';
 import '../services/proactive_message_coordinator.dart';
 import '../services/provider_store.dart';
@@ -52,6 +53,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _providerStore = ProviderStore();
   final _auxiliaryAiService = const ChatAuxiliaryAiService();
   final _proactiveCoordinator = const ProactiveMessageCoordinator();
+  final _locationService = const LocationContextService();
 
   CharacterProfile _profile = CharacterProfile.lin(DateTime.now());
   List<CharacterProfile> _characters = const [];
@@ -1228,9 +1230,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final contextMessages = _visibleMessagesFor(
       _messages.take(replyIndex).toList(),
     );
+    final currentPlace = await _locationService.currentPlace();
     final systemPrompt = _assembledSystemPrompt(
       contextMessages: contextMessages,
       character: speakingCharacter,
+      currentPlace: currentPlace,
     );
     final recent = _historyForModel(
       _messagesWithinBudget(contextMessages, systemPrompt),
@@ -1808,6 +1812,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _assembledSystemPrompt({
     List<ChatMessage>? contextMessages,
     CharacterProfile? character,
+    String? currentPlace,
   }) {
     final activeCharacter = character ?? _profile;
     return ChatContextBuilder.buildSystemPrompt(
@@ -1829,6 +1834,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       savedMood: _moodForCharacter(activeCharacter.id),
       contextMessages: contextMessages,
       now: DateTime.now().toLocal(),
+      currentPlace: currentPlace,
     );
   }
 
@@ -2810,6 +2816,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       targetConversation.id,
       character.id,
     );
+    final currentPlace = await _locationService.currentPlace();
 
     final text = await _auxiliaryAiService.generateProactiveMessage(
       provider: provider,
@@ -2819,6 +2826,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       memories: memories,
       recentTranscript: transcript,
       currentMood: mood,
+      currentPlace: currentPlace,
     );
     if (text.trim().isEmpty) return;
 

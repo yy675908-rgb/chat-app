@@ -94,6 +94,30 @@ void main() {
       expect(prompt, contains('2026-09-18 14:30'));
       expect(prompt, isNot(contains('拉长回复')));
       expect(prompt, isNot(contains('自行增加回复长度')));
+      expect(prompt, isNot(contains('设备当前定位')));
+    });
+
+    test('location context belongs to the user and is only included when given', () {
+      final now = DateTime(2026, 10, 14, 9);
+      final prompt = ChatContextBuilder.buildSystemPrompt(
+        activeCharacter: CharacterProfile.lin(now),
+        selectedProvider: null,
+        userProfile: const UserProfile(),
+        activeMemories: const [],
+        stylePreferences: const [],
+        worldBooks: const [],
+        visibleMessages: const [],
+        currentConversation: null,
+        branchKey: 'root',
+        groupParticipants: const [],
+        savedMood: '',
+        contextMessages: const [],
+        now: now,
+        currentPlace: '北京市 朝阳区',
+      );
+      expect(prompt, contains('大致地点：北京市 朝阳区'));
+      expect(prompt, contains('不代表你也在那里'));
+      expect(prompt, contains('不必每次提地点'));
     });
 
     test('drops current summary when its marker is outside current context', () {

@@ -23,9 +23,15 @@ class ChatContextBuilder {
     required String savedMood,
     required List<ChatMessage>? contextMessages,
     required DateTime now,
+    String? currentPlace,
   }) {
     final context =
         '\n\n当前本地日期和时间（以此为准）：${formatPromptTime(now)}';
+    final locationText = currentPlace == null || currentPlace.trim().isEmpty
+        ? ''
+        : '\n\n用户设备当前定位所显示的大致地点：${currentPlace.trim()}。'
+              '这是用户的位置，不代表你也在那里；不能据此推断用户正在做什么、住在哪里或周围环境。'
+              '仅在对话或主动关心时确有意义才自然使用；不必每次提地点，也不要复述定位数据。';
     final selectedMemories = MemorySelector.selectRelevant(
       activeMemories,
       visibleMessages,
@@ -115,7 +121,7 @@ class ChatContextBuilder {
         '$intimacyInstruction'
         '$groupInstruction$userProfileText'
         '$memoryText$preferenceText$worldBookText'
-        '$summaryText$context$stateInstruction';
+        '$summaryText$context$locationText$stateInstruction';
   }
 
   static String matchedWorldBookPrompt({

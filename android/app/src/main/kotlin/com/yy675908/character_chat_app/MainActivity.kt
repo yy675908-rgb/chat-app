@@ -7,20 +7,30 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "linjian/proactive_notifications"
         private const val NOTIFICATION_PERMISSION_REQUEST = 7302
+        private const val LOCATION_PERMISSION_REQUEST = 7303
     }
 
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingLocationPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -35,6 +45,110 @@ class MainActivity : FlutterActivity() {
                 "cancel" -> cancelNotification(call, result)
                 else -> result.notImplemented()
             }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "linjian/location"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestPermission" -> requestLocationPermission(result)
+                "currentPlace" -> currentPlace(result)
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestLocationPermission(result: MethodChannel.Result) {
+        if (hasLocationPermission()) {
+            result.success(true)
+            return
+        }
+        if (pendingLocationPermissionResult != null) {
+            result.success(false)
+            return
+        }
+        pendingLocationPermissionResult = result
+        requestPermissions(
+            arrayOf(
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ),
+            LOCATION_PERMISSION_REQUEST
+        )
+    }
+
+    private fun currentPlace(result: MethodChannel.Result) {
+        if (!hasLocationPermission()) {
+            result.success(null)
+            return
+        }
+        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .filter { provider -> manager.isProviderEnabled(provider) }
+        if (providers.isEmpty()) {
+            result.success(null)
+            return
+        }
+        val completed = AtomicBoolean(false)
+        val handler = Handler(Looper.getMainLooper())
+        var listener: LocationListener? = null
+        fun finish(place: String?) {
+            if (completed.compareAndSet(false, true)) {
+                listener?.let { manager.removeUpdates(it) }
+                result.success(place)
+            }
+        }
+        handler.postDelayed({ finish(null) }, 9000L)
+
+        fun resolve(location: Location) {
+            Thread {
+                val place = try {
+                    if (!Geocoder.isPresent()) null else {
+                        @Suppress("DEPRECATION")
+                        val address = Geocoder(this, Locale.SIMPLIFIED_CHINESE)
+                            .getFromLocation(location.latitude, location.longitude, 1)
+                            ?.firstOrNull()
+                        listOfNotNull(
+                            address?.adminArea,
+                            address?.locality,
+                            address?.subAdminArea,
+                            address?.subLocality
+                        ).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                            .joinToString(" ").ifEmpty { null }
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+                handler.post { finish(place) }
+            }.start()
+        }
+
+        try {
+            val recent = providers.mapNotNull { manager.getLastKnownLocation(it) }
+                .filter { System.currentTimeMillis() - it.time in 0L..120000L }
+                .maxByOrNull { it.time }
+            if (recent != null) {
+                resolve(recent)
+            } else {
+                listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        manager.removeUpdates(this)
+                        resolve(location)
+                    }
+                }
+                @Suppress("DEPRECATION")
+                manager.requestSingleUpdate(providers.first(), listener!!, Looper.getMainLooper())
+            }
+        } catch (_: SecurityException) {
+            finish(null)
+        } catch (_: IllegalArgumentException) {
+            finish(null)
         }
     }
 
@@ -78,6 +192,11 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCATION_PERMISSION_REQUEST) {
+            pendingLocationPermissionResult?.success(hasLocationPermission())
+            pendingLocationPermissionResult = null
+            return
+        }
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return
         val granted = grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
