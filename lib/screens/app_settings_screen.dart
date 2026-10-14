@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
 import '../services/backup_service.dart';
+import '../services/location_context_service.dart';
 import 'model_output_settings_screen.dart';
 import 'proactive_message_settings_screen.dart';
 
@@ -41,6 +42,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   late bool _autoMemoryEnabled;
   bool _saving = false;
   bool _backupBusy = false;
+  bool _locationEnabled = false;
+  bool _locationBusy = false;
+  final _locationService = const LocationContextService();
   final _backupService = BackupService();
   late final TextEditingController _userNameController;
   late final TextEditingController _userGenderController;
@@ -68,6 +72,32 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     _userDescriptionController = TextEditingController(
       text: widget.userProfile.description,
     );
+    _loadLocationSetting();
+  }
+
+  Future<void> _loadLocationSetting() async {
+    final enabled = await _locationService.isEnabled();
+    if (mounted) setState(() => _locationEnabled = enabled);
+  }
+
+  Future<void> _setLocationEnabled(bool enabled) async {
+    if (_locationBusy) return;
+    setState(() => _locationBusy = true);
+    try {
+      if (enabled && !await _locationService.requestPermission()) {
+        _notice('未获得定位权限，可在系统设置中允许后再开启');
+        return;
+      }
+      await _locationService.setEnabled(enabled);
+      if (mounted) setState(() => _locationEnabled = enabled);
+    } finally {
+      if (mounted) setState(() => _locationBusy = false);
+    }
+  }
+
+  Future<void> _checkLocation() async {
+    final place = await _locationService.currentPlace();
+    _notice(place == null ? '暂未获取到地点，请检查系统定位开关后重试' : '当前识别：$place');
   }
 
   UserProfile get _userProfileDraft => UserProfile(
@@ -287,6 +317,28 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               onChanged: (value) {
                 setState(() => _autoMemoryEnabled = value);
               },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            elevation: 0,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('让角色感知我的位置'),
+                  subtitle: const Text('开启后，回复和主动消息会参考当前位置的大致区域；仅使用时获取，关闭即停止。位置会随对话发给所选模型。'),
+                  value: _locationEnabled,
+                  onChanged: _locationBusy ? null : _setLocationEnabled,
+                ),
+                if (_locationEnabled)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _checkLocation,
+                      child: const Text('查看识别位置'),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 10),
