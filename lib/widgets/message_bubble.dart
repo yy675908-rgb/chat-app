@@ -27,6 +27,8 @@ class MessageBubble extends StatelessWidget {
     this.onNextVariant,
     this.onLike,
     this.onLearnStyle,
+    this.styleExtractionPending = false,
+    this.styleExtractionLearned = false,
     this.onEdit,
     this.onSendEdited,
     this.retryModels = const [],
@@ -43,6 +45,8 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onNextVariant;
   final VoidCallback? onLike;
   final VoidCallback? onLearnStyle;
+  final bool styleExtractionPending;
+  final bool styleExtractionLearned;
   final VoidCallback? onEdit;
   final VoidCallback? onSendEdited;
   final List<RetryModelOption> retryModels;
@@ -277,6 +281,11 @@ class MessageBubble extends StatelessWidget {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        _BubbleAction(
+                          tooltip: '编辑',
+                          icon: Icons.edit_outlined,
+                          onPressed: onEdit,
+                        ),
                         if (message.variantCount > 1)
                           _VersionControl(
                             current: message.variantNumber,
@@ -290,11 +299,6 @@ class MessageBubble extends StatelessWidget {
                           onPressed: () => _copy(context),
                         ),
                         _BubbleAction(
-                          tooltip: '编辑',
-                          icon: Icons.edit_outlined,
-                          onPressed: onEdit,
-                        ),
-                        _BubbleAction(
                           tooltip: message.isLiked ? '取消收藏' : '收藏',
                           icon: message.isLiked
                               ? Icons.favorite_rounded
@@ -303,9 +307,20 @@ class MessageBubble extends StatelessWidget {
                           onPressed: onLike,
                         ),
                         _BubbleAction(
-                          tooltip: '学习这条回复风格',
+                          tooltip: styleExtractionPending
+                              ? '正在提炼回应偏好'
+                              : styleExtractionLearned
+                              ? '已提炼回应偏好'
+                              : '学习这条回复风格',
                           icon: Icons.auto_awesome_outlined,
-                          onPressed: onLearnStyle,
+                          onPressed:
+                              styleExtractionPending || styleExtractionLearned
+                              ? null
+                              : onLearnStyle,
+                          selected:
+                              styleExtractionPending || styleExtractionLearned,
+                          filled: true,
+                          busy: styleExtractionPending,
                         ),
                         _RetryPicker(
                           options: retryModels,
@@ -374,21 +389,25 @@ class _BubbleAction extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.selected = false,
+    this.filled = false,
+    this.busy = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
   final bool selected;
+  final bool filled;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
-    final foreground = !enabled
-        ? scheme.onSurface.withValues(alpha: 0.26)
-        : selected
+    final foreground = selected
         ? scheme.primary
+        : !enabled
+        ? scheme.onSurface.withValues(alpha: 0.26)
         : scheme.onSurfaceVariant.withValues(alpha: 0.88);
 
     return Tooltip(
@@ -398,10 +417,26 @@ class _BubbleAction extends StatelessWidget {
         radius: 20,
         containedInkWell: true,
         highlightShape: BoxShape.circle,
-        child: SizedBox(
+        child: Container(
           width: 34,
           height: 32,
-          child: Icon(icon, size: 17, color: foreground),
+          decoration: BoxDecoration(
+            color: filled && selected
+                ? scheme.primary.withValues(alpha: 0.22)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: busy
+              ? SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: foreground,
+                  ),
+                )
+              : Icon(icon, size: 17, color: foreground),
         ),
       ),
     );

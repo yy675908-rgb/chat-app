@@ -64,6 +64,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Map<String, List<String>> _characterMemories = {};
   List<String> _stylePreferences = [];
   Map<String, List<String>> _characterStylePreferences = {};
+  final Set<String> _styleExtractionPending = {};
+  final Set<String> _styleExtractionLearned = {};
   List<WorldBookEntry> _worldBooks = [];
   String _characterMood = '';
   Map<String, String> _characterMoods = {};
@@ -1667,41 +1669,59 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ? _profile.id
         : likedReply.speakerCharacterId;
     if (sourceConversationId.isEmpty || sourceCharacterId.isEmpty) return;
-    var userContext = '';
-    for (var index = messageIndex - 1; index >= 0; index--) {
-      if (_messages[index].author == MessageAuthor.user) {
-        userContext = _messages[index].text;
-        break;
-      }
+    final styleKey =
+        '${likedReply.id}/${likedReply.activeVariant?.id ?? 'original'}';
+    if (_styleExtractionPending.contains(styleKey) ||
+        _styleExtractionLearned.contains(styleKey)) {
+      return;
     }
-    final variant = likedReply.activeVariant;
-    ProviderProfile? provider;
-    if (variant != null && variant.providerId.isNotEmpty) {
-      for (final item in _providers) {
-        if (item.id == variant.providerId) {
-          provider = item;
+    setState(() => _styleExtractionPending.add(styleKey));
+    try {
+      var userContext = '';
+      for (var index = messageIndex - 1; index >= 0; index--) {
+        if (_messages[index].author == MessageAuthor.user) {
+          userContext = _messages[index].text;
           break;
         }
       }
-    }
-    provider ??= _selectedProvider;
-    if (provider == null) return;
-    if (variant != null && variant.modelId.isNotEmpty) {
-      provider = provider.copyWith(selectedModel: variant.modelId);
-    }
-    final apiKey = await _loadApiKey(provider);
-    if (apiKey.trim().isEmpty || !mounted) return;
-
-    try {
+      final variant = likedReply.activeVariant;
+      ProviderProfile? provider;
+      if (variant != null && variant.providerId.isNotEmpty) {
+        for (final item in _providers) {
+          if (item.id == variant.providerId) {
+            provider = item;
+            break;
+          }
+        }
+      }
+      provider ??= _selectedProvider;
+      if (provider == null) {
+        _showMessage('请先选择模型');
+        return;
+      }
+      if (variant != null && variant.modelId.isNotEmpty) {
+        provider = provider.copyWith(selectedModel: variant.modelId);
+      }
+      final apiKey = await _loadApiKey(provider);
+      if (!mounted) return;
+      if (apiKey.trim().isEmpty) {
+        _showMessage('请先设置 API Key');
+        return;
+      }
       final rule = await _auxiliaryAiService.extractStylePreference(
         provider: provider,
         apiKey: apiKey,
         userContext: userContext,
         likedReplyText: likedReply.text,
       );
-      if (rule.isEmpty) return;
+      if (rule.isEmpty) {
+        if (mounted) _showMessage('没有提炼出可复用的回应偏好');
+        return;
+      }
       final conversations = await _chatStore.loadConversations();
-      if (!conversations.any((item) => item.id == sourceConversationId)) return;
+      if (!conversations.any((item) => item.id == sourceConversationId)) {
+        return;
+      }
       final added = await _chatStore.addStylePreference(
         rule,
         sourceConversationId: sourceConversationId,
@@ -1716,6 +1736,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       setState(() {
+        _styleExtractionLearned.add(styleKey);
         _characterStylePreferences = {
           ..._characterStylePreferences,
           sourceCharacterId: latest,
@@ -1727,6 +1748,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         _showMessage('偏好提炼失败，可在“记忆与世界”中手动添加');
       }
+    } finally {
+      if (mounted) setState(() => _styleExtractionPending.remove(styleKey));
     }
   }
 
@@ -3039,6 +3062,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       child: Scaffold(
         key: _scaffoldKey,
         resizeToAvoidBottomInset: false,
+        drawerEnableOpenDragGesture: true,
+        drawerEdgeDragWidth: 36,
         drawer: ConversationDrawer(
           profile: _profile,
           currentMood: mood,
@@ -3251,6 +3276,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             onMoveVariant: _moveVariant,
                             onLike: _toggleLike,
                             onLearnStyle: _extractStylePreference,
+                            styleExtractionPending: _styleExtractionPending,
+                            styleExtractionLearned: _styleExtractionLearned,
                             onRetryWithModel: _retryReply,
                           ),
                         ),

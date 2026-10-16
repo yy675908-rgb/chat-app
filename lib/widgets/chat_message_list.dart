@@ -30,6 +30,8 @@ class ChatMessageList extends StatefulWidget {
     required this.onMoveVariant,
     required this.onLike,
     required this.onLearnStyle,
+    this.styleExtractionPending = const {},
+    this.styleExtractionLearned = const {},
     required this.onRetryWithModel,
   });
 
@@ -53,6 +55,8 @@ class ChatMessageList extends StatefulWidget {
   final Future<void> Function(int index, int delta) onMoveVariant;
   final Future<void> Function(int index) onLike;
   final Future<void> Function(int index, ChatMessage message) onLearnStyle;
+  final Set<String> styleExtractionPending;
+  final Set<String> styleExtractionLearned;
   final Future<void> Function(int index, RetryModelOption option)
   onRetryWithModel;
 
@@ -318,6 +322,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
                   final key = _keyFor(message.id);
 
                   final speaker = widget.speakerName(message);
+                  final styleExtractionKey =
+                      '${message.id}/${message.activeVariant?.id ?? 'original'}';
+                  final stylePending = widget.styleExtractionPending.contains(
+                    styleExtractionKey,
+                  );
+                  final styleLearned = widget.styleExtractionLearned.contains(
+                    styleExtractionKey,
+                  );
                   final signature = (
                     message,
                     index,
@@ -326,6 +338,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
                     widget.providers,
                     widget.generating && message.id == widget.activeReplyId,
                     widget.activeRetryIndex != null,
+                    stylePending,
+                    styleLearned,
                   );
                   final cached = _bubbleCache[message.id];
                   Widget child;
@@ -383,6 +397,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
                       onLearnStyle: canUseCharacterActions
                           ? () => widget.onLearnStyle(index, message)
                           : null,
+                      styleExtractionPending: stylePending,
+                      styleExtractionLearned: styleLearned,
                       retryModels: retryModels,
                       onRetryWithModel: canUseCharacterActions
                           ? (option) => widget.onRetryWithModel(index, option)
