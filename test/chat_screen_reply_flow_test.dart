@@ -63,6 +63,15 @@ void main() {
     expect(tester.takeException(), isNull);
   }
 
+  Future<void> send(WidgetTester tester, String text) async {
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), text);
+    await tester.pump();
+    await tester.tap(find.byTooltip('发送'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+  }
+
   testWidgets('a preparation failure clears the blank reply and can retry', (
     tester,
   ) async {
@@ -96,15 +105,6 @@ void main() {
     expect(find.text('我在'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
-  Future<void> send(WidgetTester tester, String text) async {
-    await tester.tap(find.byType(TextField));
-    await tester.enterText(find.byType(TextField), text);
-    await tester.pump();
-    await tester.tap(find.byTooltip('发送'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 80));
-  }
 
   testWidgets('a saved fact reaches the model without keyword overlap', (
     tester,
