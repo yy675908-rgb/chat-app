@@ -19,6 +19,7 @@ class _FakeAiChatService extends AiChatService {
     required List<ChatMessage> history,
     double temperature = 0.85,
     int contextTokenBudget = 0,
+    bool recoverPartialContent = true,
   }) {
     return Stream<AiStreamEvent>.fromIterable(events);
   }
