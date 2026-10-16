@@ -45,7 +45,7 @@ void main() {
     WidgetTester tester,
     List<_ControlledReply> services, {
     AiChatService Function()? replyServiceFactory,
-  ) async {
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: ChatScreen(
