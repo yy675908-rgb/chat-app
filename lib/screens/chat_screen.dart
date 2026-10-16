@@ -1227,22 +1227,50 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom();
 
-    final contextMessages = _visibleMessagesFor(
-      _messages.take(replyIndex).toList(),
-    );
-    final locationEnabled = await _locationService.isEnabled();
-    final currentPlace = await _locationService.currentPlace();
-    final systemPrompt = _assembledSystemPrompt(
-      contextMessages: contextMessages,
-      character: speakingCharacter,
-      currentPlace: currentPlace,
-      locationEnabled: locationEnabled,
-    );
-    _locationService.markSharedWithCharacter(currentPlace);
-    final recent = _historyForModel(
-      _messagesWithinBudget(contextMessages, systemPrompt),
-    );
-    final service = widget.replyServiceFactory?.call() ?? AiChatService();
+    late final List<ChatMessage> contextMessages;
+    late final String systemPrompt;
+    late final List<ChatMessage> recent;
+    late final AiChatService service;
+    try {
+      contextMessages = _visibleMessagesFor(
+        _messages.take(replyIndex).toList(),
+      );
+      final locationEnabled = await _locationService.isEnabled();
+      final currentPlace = await _locationService.currentPlace();
+      if (!mounted || _cancelled) return;
+      systemPrompt = _assembledSystemPrompt(
+        contextMessages: contextMessages,
+        character: speakingCharacter,
+        currentPlace: currentPlace,
+        locationEnabled: locationEnabled,
+      );
+      _locationService.markSharedWithCharacter(currentPlace);
+      recent = _historyForModel(
+        _messagesWithinBudget(contextMessages, systemPrompt),
+      );
+      service = widget.replyServiceFactory?.call() ?? AiChatService();
+    } on Object catch (error) {
+      if (mounted && !_cancelled) {
+        setState(() {
+          if (isRetry) {
+            _messages = _restoreRetryMessages(retrySnapshot!, replyIndex);
+          } else {
+            _messages.removeWhere((message) => message.id == newReply!.id);
+          }
+          _generating = false;
+          _activeReplyId = null;
+          _activeRetryIndex = null;
+          _activeRetrySnapshot = null;
+        });
+        if (isRetry) {
+          _showError('回复未能开始：$error');
+        } else {
+          _showReplyError('回复未能开始：$error', replyConversationId);
+        }
+        unawaited(_persistMessages());
+      }
+      return;
+    }
     _activeService = service;
     final streamState = ReplyStreamAccumulator();
     var pendingStreamScroll = false;
@@ -1401,12 +1429,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } on AiChatException catch (error) {
       if (!_cancelled && mounted) {
         settleFailedReply();
-        _showError(error.message);
+        if (isRetry) {
+          _showError(error.message);
+        } else {
+          _showReplyError(error.message, replyConversationId);
+        }
       }
     } on Object catch (error) {
       if (!_cancelled && mounted) {
         settleFailedReply();
-        _showError('回复失败：$error');
+        if (isRetry) {
+          _showError('回复失败：$error');
+        } else {
+          _showReplyError('回复失败：$error', replyConversationId);
+        }
       }
     } finally {
       _cancelScheduledStreamRender();
@@ -2271,6 +2307,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(label: '设置', onPressed: _openProviderSettings),
+      ),
+    );
+  }
+
+  void _showReplyError(String message, String conversationId) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: '重试',
+          onPressed: () {
+            if (mounted &&
+                !_isBusy &&
+                _currentConversation?.id == conversationId) {
+              unawaited(_queueReply());
+            }
+          },
+        ),
       ),
     );
   }

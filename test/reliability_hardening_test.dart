@@ -137,6 +137,76 @@ void main() {
     expect(client.attempts, 1);
   });
 
+  test('a disconnected stream before text falls back to a full reply', () async {
+    final client = _BrokenStreamThenJsonClient();
+    final service = AiChatService(client: client);
+    addTearDown(service.close);
+
+    final reply = await service
+        .streamReply(
+          provider: provider,
+          apiKey: 'secret',
+          systemPrompt: '测试',
+          history: const [],
+        )
+        .join();
+    expect(reply, '断线后恢复');
+    expect(client.streamFlags, [true, false]);
+  });
+
+  test('a connection failure before headers retries once', () async {
+    var attempts = 0;
+    final service = AiChatService(
+      client: MockClient((request) async {
+        attempts++;
+        if (attempts == 1) throw http.ClientException('connection reset');
+        return http.Response.bytes(
+          utf8.encode(
+            'data: {"choices":[{"delta":{"content":"已恢复"}}]}\n\n'
+            'data: [DONE]\n\n',
+          ),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      }),
+    );
+    addTearDown(service.close);
+
+    expect(
+      await service
+          .streamReply(
+            provider: provider,
+            apiKey: 'secret',
+            systemPrompt: '测试',
+            history: const [],
+          )
+          .join(),
+      '已恢复',
+    );
+    expect(attempts, 2);
+  });
+
+  test('endless reasoning eventually requests a visible answer', () async {
+    final client = _ReasoningThenJsonClient();
+    final service = AiChatService(
+      client: client,
+      eventIdleTimeout: const Duration(milliseconds: 80),
+      firstContentTimeout: const Duration(milliseconds: 100),
+    );
+    addTearDown(service.close);
+
+    final reply = await service
+        .streamReply(
+          provider: provider,
+          apiKey: 'secret',
+          systemPrompt: '测试',
+          history: const [],
+        )
+        .join();
+    expect(reply, '终于有正文');
+    expect(client.streamFlags, [true, false]);
+  });
+
   test(
     'finish reason releases a connection that keeps sending heartbeats',
     () async {
@@ -489,6 +559,61 @@ class _FinishedThenHeartbeatClient extends http.BaseClient {
       controller.stream,
       200,
       headers: {'content-type': 'text/event-stream'},
+    );
+  }
+}
+
+class _BrokenStreamThenJsonClient extends http.BaseClient {
+  final streamFlags = <bool>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+    final streaming = body['stream'] == true;
+    streamFlags.add(streaming);
+    if (streaming) {
+      return http.StreamedResponse(
+        Stream<List<int>>.error(http.ClientException('connection reset')),
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    }
+    return http.StreamedResponse(
+      Stream.value(
+        utf8.encode('{"choices":[{"message":{"content":"断线后恢复"}}]}'),
+      ),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+class _ReasoningThenJsonClient extends http.BaseClient {
+  final streamFlags = <bool>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+    final streaming = body['stream'] == true;
+    streamFlags.add(streaming);
+    if (streaming) {
+      return http.StreamedResponse(
+        Stream.periodic(
+          const Duration(milliseconds: 10),
+          (_) => utf8.encode(
+            'data: {"choices":[{"delta":{"reasoning_content":"思考中"}}]}\n\n',
+          ),
+        ),
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    }
+    return http.StreamedResponse(
+      Stream.value(
+        utf8.encode('{"choices":[{"message":{"content":"终于有正文"}}]}'),
+      ),
+      200,
+      headers: {'content-type': 'application/json'},
     );
   }
 }
