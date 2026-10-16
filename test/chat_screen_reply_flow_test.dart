@@ -72,12 +72,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
   }
 
-  testWidgets('swiping from the left edge opens conversations', (tester) async {
+  testWidgets('swiping right inside the chat opens conversations', (tester) async {
     await openChat(tester, <_ControlledReply>[]);
     final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold));
     expect(scaffold.isDrawerOpen, isFalse);
 
-    await tester.dragFrom(const Offset(28, 320), const Offset(250, 0));
+    await tester.dragFrom(const Offset(28, 320), const Offset(220, 0));
+    await tester.pumpAndSettle();
+    expect(scaffold.isDrawerOpen, isFalse);
+
+    // Start beyond Android's system Back gesture area.
+    await tester.dragFrom(const Offset(120, 320), const Offset(220, 0));
     await tester.pumpAndSettle();
     expect(scaffold.isDrawerOpen, isTrue);
   });

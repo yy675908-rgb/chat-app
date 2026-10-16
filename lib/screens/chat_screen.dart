@@ -47,6 +47,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  double? _conversationSwipeStartX;
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatStore = ChatStore();
@@ -3062,8 +3063,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       child: Scaffold(
         key: _scaffoldKey,
         resizeToAvoidBottomInset: false,
-        drawerEnableOpenDragGesture: true,
-        drawerEdgeDragWidth: 36,
+        // Android reserves the screen edge for Back. Use a swipe that starts
+        // inside the conversation instead of competing for that edge.
+        drawerEnableOpenDragGesture: false,
         drawer: ConversationDrawer(
           profile: _profile,
           currentMood: mood,
@@ -3207,7 +3209,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             child: Column(
               children: [
                 Expanded(
-                  child: _loading
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragDown: (details) {
+                      _conversationSwipeStartX = details.globalPosition.dx;
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      final startX = _conversationSwipeStartX;
+                      if (startX == null || startX < 48) return;
+                      if (details.globalPosition.dx - startX < 76) return;
+                      _conversationSwipeStartX = null;
+                      _scaffoldKey.currentState?.openDrawer();
+                    },
+                    onHorizontalDragEnd: (_) => _conversationSwipeStartX = null,
+                    onHorizontalDragCancel: () => _conversationSwipeStartX = null,
+                    child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _currentConversation == null
                       ? Center(
@@ -3281,6 +3297,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             onRetryWithModel: _retryReply,
                           ),
                         ),
+                  ),
                 ),
                 ChatComposer(
                   controller: _controller,
