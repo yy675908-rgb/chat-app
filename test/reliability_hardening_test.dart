@@ -160,9 +160,11 @@ void main() {
       client: MockClient((request) async {
         attempts++;
         if (attempts == 1) throw http.ClientException('connection reset');
-        return http.Response(
-          'data: {"choices":[{"delta":{"content":"已恢复"}}]}\n\n'
-          'data: [DONE]\n\n',
+        return http.Response.bytes(
+          utf8.encode(
+            'data: {"choices":[{"delta":{"content":"已恢复"}}]}\n\n'
+            'data: [DONE]\n\n',
+          ),
           200,
           headers: {'content-type': 'text/event-stream'},
         );
