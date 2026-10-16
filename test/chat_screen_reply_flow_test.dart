@@ -356,6 +356,7 @@ class _ControlledReply extends AiChatService {
     required List<ChatMessage> history,
     double temperature = 0.85,
     int contextTokenBudget = 0,
+    bool recoverPartialContent = true,
   }) {
     this.history = history;
     this.systemPrompt = systemPrompt;

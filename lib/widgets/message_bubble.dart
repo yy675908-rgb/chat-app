@@ -221,9 +221,11 @@ class MessageBubble extends StatelessWidget {
                   ],
                   if (streaming)
                     Text(
-                      message.text,
+                      message.text.isEmpty ? '正在等待回复…' : message.text,
                       style: TextStyle(
-                        color: scheme.onSurface,
+                        color: message.text.isEmpty
+                            ? scheme.onSurfaceVariant
+                            : scheme.onSurface,
                         fontSize: 16,
                         height: 1.46,
                       ),

@@ -7,6 +7,7 @@ import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
 import 'package:character_chat_app/services/backup_service.dart';
 import 'package:character_chat_app/services/chat_store.dart';
+import 'package:character_chat_app/services/reply_stream_accumulator.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -151,6 +152,24 @@ void main() {
         )
         .join();
     expect(reply, '断线后恢复');
+    expect(client.streamFlags, [true, false]);
+  });
+
+  test('a broken partial stream replaces its fragment with a full reply', () async {
+    final client = _PartialDisconnectThenJsonClient();
+    final service = AiChatService(client: client);
+    addTearDown(service.close);
+    final state = ReplyStreamAccumulator();
+
+    await for (final event in service.streamEvents(
+      provider: provider,
+      apiKey: 'secret',
+      systemPrompt: '测试',
+      history: const [],
+    )) {
+      state.add(event);
+    }
+    expect(state.fullReply, '完整的重新生成回复');
     expect(client.streamFlags, [true, false]);
   });
 
@@ -611,6 +630,37 @@ class _ReasoningThenJsonClient extends http.BaseClient {
     return http.StreamedResponse(
       Stream.value(
         utf8.encode('{"choices":[{"message":{"content":"终于有正文"}}]}'),
+      ),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+class _PartialDisconnectThenJsonClient extends http.BaseClient {
+  final streamFlags = <bool>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+    final streaming = body['stream'] == true;
+    streamFlags.add(streaming);
+    if (streaming) {
+      Stream<List<int>> reply() async* {
+        yield utf8.encode(
+          'data: {"choices":[{"delta":{"content":"片段"}}]}\n\n',
+        );
+        throw http.ClientException('connection reset');
+      }
+      return http.StreamedResponse(
+        reply(),
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    }
+    return http.StreamedResponse(
+      Stream.value(
+        utf8.encode('{"choices":[{"message":{"content":"完整的重新生成回复"}}]}'),
       ),
       200,
       headers: {'content-type': 'application/json'},

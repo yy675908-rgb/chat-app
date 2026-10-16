@@ -1,8 +1,8 @@
 import 'ai_chat_service.dart';
 
 class ReplyStreamAccumulator {
-  final StringBuffer _reply = StringBuffer();
-  final StringBuffer _reasoning = StringBuffer();
+  StringBuffer _reply = StringBuffer();
+  StringBuffer _reasoning = StringBuffer();
   AiTokenUsage usage = const AiTokenUsage();
   DateTime? reasoningStartedAt;
   DateTime? answerStartedAt;
@@ -12,7 +12,13 @@ class ReplyStreamAccumulator {
   bool get hasReply => _reply.length > 0;
 
   void add(AiStreamEvent event, {DateTime? now}) {
-    if (event.kind == AiStreamEventKind.content) {
+    if (event.kind == AiStreamEventKind.replaceContent) {
+      _reply = StringBuffer()..write(event.text);
+      _reasoning = StringBuffer();
+      reasoningStartedAt = null;
+      answerStartedAt = now ?? DateTime.now();
+      usage = event.usage ?? const AiTokenUsage();
+    } else if (event.kind == AiStreamEventKind.content) {
       answerStartedAt ??= now ?? DateTime.now();
       _reply.write(event.text);
     } else if (event.kind == AiStreamEventKind.reasoning) {

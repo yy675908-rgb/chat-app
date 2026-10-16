@@ -21,7 +21,7 @@ class _IdleStreamException extends AiChatException {
   const _IdleStreamException() : super('模型暂时没有返回正文');
 }
 
-enum AiStreamEventKind { content, reasoning, usage }
+enum AiStreamEventKind { content, reasoning, usage, replaceContent }
 
 class AiTokenUsage {
   const AiTokenUsage({
@@ -111,6 +111,7 @@ class AiChatService {
       history: history,
       temperature: temperature,
       contextTokenBudget: contextTokenBudget,
+      recoverPartialContent: false,
     )) {
       if (event.kind == AiStreamEventKind.content && event.text.isNotEmpty) {
         yield event.text;
@@ -125,6 +126,7 @@ class AiChatService {
     required List<ChatMessage> history,
     double temperature = 0.85,
     int contextTokenBudget = 0,
+    bool recoverPartialContent = true,
   }) {
     final source = provider.protocol == ProviderProtocol.anthropic
         ? _streamAnthropic(
@@ -152,6 +154,7 @@ class AiChatService {
         history: history,
         temperature: temperature,
         contextTokenBudget: contextTokenBudget,
+        recoverPartialContent: recoverPartialContent,
       ),
     );
   }
@@ -164,8 +167,10 @@ class AiChatService {
     required List<ChatMessage> history,
     required double temperature,
     required int contextTokenBudget,
+    required bool recoverPartialContent,
   }) async* {
     var hasContent = false;
+    var interrupted = false;
     try {
       await for (final event in source) {
         if (event.kind == AiStreamEventKind.content && event.text.isNotEmpty) {
@@ -175,18 +180,24 @@ class AiChatService {
       }
     } on _IdleStreamException {
       if (hasContent) {
-        throw const AiChatException('回复中途停住了，已保留收到的文字，可点重试重新生成');
+        if (!recoverPartialContent) {
+          throw const AiChatException('回复中途停住了，请重新生成');
+        }
+        interrupted = true;
       }
     } on Exception catch (error) {
       if (error is AiChatException) rethrow;
       if (hasContent) {
-        throw const AiChatException('连接中断，已保留收到的文字，可点重试重新生成');
+        if (!recoverPartialContent) {
+          throw const AiChatException('连接中断，请重新生成');
+        }
+        interrupted = true;
       }
       // The connection ended before any answer text arrived. Try once with
       // a regular JSON response using the same prompt and conversation.
     }
-    if (!hasContent) {
-      yield* _nonStreamingReply(
+    if (!hasContent || interrupted) {
+      final recovery = _nonStreamingReply(
         provider: provider,
         apiKey: apiKey,
         systemPrompt: systemPrompt,
@@ -194,6 +205,24 @@ class AiChatService {
         temperature: temperature,
         contextTokenBudget: contextTokenBudget,
       );
+      if (!interrupted) {
+        yield* recovery;
+        return;
+      }
+      try {
+        await for (final event in recovery) {
+          if (event.kind == AiStreamEventKind.content) {
+            yield AiStreamEvent(
+              kind: AiStreamEventKind.replaceContent,
+              text: event.text,
+            );
+          } else {
+            yield event;
+          }
+        }
+      } on Object {
+        throw const AiChatException('连接中断且自动恢复失败，已保留收到的文字，可点重试重新生成');
+      }
     }
   }
 
