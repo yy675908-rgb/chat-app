@@ -75,9 +75,14 @@ class AiStreamEvent {
 }
 
 class AiChatService {
-  AiChatService({http.Client? client, Duration? eventIdleTimeout})
+  AiChatService({
+    http.Client? client,
+    Duration? eventIdleTimeout,
+    Duration? firstContentTimeout,
+  })
     : _client = client ?? http.Client(),
-      _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60);
+      _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60),
+      _firstContentTimeout = firstContentTimeout ?? const Duration(seconds: 120);
 
   static const _connectTimeout = Duration(seconds: 20);
   static const _retryDelay = Duration(milliseconds: 700);
@@ -89,6 +94,7 @@ class AiChatService {
 
   final http.Client _client;
   final Duration _eventIdleTimeout;
+  final Duration _firstContentTimeout;
 
   Stream<String> streamReply({
     required ProviderProfile provider,
@@ -171,6 +177,13 @@ class AiChatService {
       if (hasContent) {
         throw const AiChatException('回复中途停住了，已保留收到的文字，可点重试重新生成');
       }
+    } on Exception catch (error) {
+      if (error is AiChatException) rethrow;
+      if (hasContent) {
+        throw const AiChatException('连接中断，已保留收到的文字，可点重试重新生成');
+      }
+      // The connection ended before any answer text arrived. Try once with
+      // a regular JSON response using the same prompt and conversation.
     }
     if (!hasContent) {
       yield* _nonStreamingReply(
@@ -500,12 +513,14 @@ class AiChatService {
     late final StreamController<String> controller;
     StreamSubscription<String>? subscription;
     Timer? idleTimer;
+    Timer? firstContentTimer;
     var finished = false;
 
     void finishWithError() {
       if (finished) return;
       finished = true;
       idleTimer?.cancel();
+      firstContentTimer?.cancel();
       controller.addError(const _IdleStreamException());
       unawaited(controller.close());
       unawaited(subscription?.cancel() ?? Future<void>.value());
@@ -515,6 +530,7 @@ class AiChatService {
       if (finished) return;
       finished = true;
       idleTimer?.cancel();
+      firstContentTimer?.cancel();
       unawaited(controller.close());
       unawaited(subscription?.cancel() ?? Future<void>.value());
     }
@@ -529,6 +545,7 @@ class AiChatService {
     controller = StreamController<String>(
       onListen: () {
         resetTimer();
+        firstContentTimer = Timer(_firstContentTimeout, finishWithError);
         subscription = response.stream
             .transform(utf8.decoder)
             .transform(const LineSplitter())
@@ -536,6 +553,7 @@ class AiChatService {
               (line) {
                 if (finished) return;
                 if (_hasReplyProgress(line)) resetTimer();
+                if (_hasReplyContent(line)) firstContentTimer?.cancel();
                 controller.add(line);
                 if (!replyEnded && _hasReplyEnd(line)) {
                   replyEnded = true;
@@ -550,6 +568,7 @@ class AiChatService {
                 if (finished) return;
                 finished = true;
                 idleTimer?.cancel();
+                firstContentTimer?.cancel();
                 controller.addError(error, stackTrace);
                 unawaited(controller.close());
               },
@@ -557,6 +576,7 @@ class AiChatService {
                 if (finished) return;
                 finished = true;
                 idleTimer?.cancel();
+                firstContentTimer?.cancel();
                 unawaited(controller.close());
               },
             );
@@ -566,6 +586,7 @@ class AiChatService {
       onCancel: () {
         finished = true;
         idleTimer?.cancel();
+        firstContentTimer?.cancel();
         unawaited(subscription?.cancel() ?? Future<void>.value());
       },
     );
@@ -657,6 +678,28 @@ class AiChatService {
       }
     } on Object {
       // Unrecognized keepalive events are not response progress.
+    }
+    return false;
+  }
+
+  bool _hasReplyContent(String line) {
+    final data = _sseData(line);
+    if (data == null || data == '[DONE]') return false;
+    try {
+      final payload = jsonDecode(data) as Map<String, dynamic>;
+      final choices = payload['choices'] as List<dynamic>?;
+      if (choices != null && choices.isNotEmpty) {
+        final delta = (choices.first as Map?)?['delta'] as Map?;
+        return delta?['content'] is String &&
+            (delta!['content'] as String).isNotEmpty;
+      }
+      if (payload['type'] == 'content_block_delta') {
+        final delta = payload['delta'] as Map?;
+        return delta?['text'] is String &&
+            (delta!['text'] as String).isNotEmpty;
+      }
+    } on Object {
+      // Unknown SSE payloads cannot confirm visible answer text.
     }
     return false;
   }
@@ -819,6 +862,10 @@ class AiChatService {
         }
         throw const AiChatException('连接模型服务超时，请检查网络或接口状态');
       } on Exception catch (error) {
+        if (attempt == 0) {
+          await Future<void>.delayed(_retryDelay);
+          continue;
+        }
         throw AiChatException('无法连接模型服务：$error');
       }
 

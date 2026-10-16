@@ -43,16 +43,18 @@ void main() {
 
   Future<void> openChat(
     WidgetTester tester,
-    List<_ControlledReply> services,
+    List<_ControlledReply> services, {
+    AiChatService Function()? replyServiceFactory,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: ChatScreen(
-          replyServiceFactory: () {
-            final service = _ControlledReply();
-            services.add(service);
-            return service;
-          },
+          replyServiceFactory: replyServiceFactory ??
+              () {
+                final service = _ControlledReply();
+                services.add(service);
+                return service;
+              },
         ),
       ),
     );
@@ -60,6 +62,40 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     expect(tester.takeException(), isNull);
   }
+
+  testWidgets('a preparation failure clears the blank reply and can retry', (
+    tester,
+  ) async {
+    final services = <_ControlledReply>[];
+    var starts = 0;
+    await openChat(
+      tester,
+      services,
+      replyServiceFactory: () {
+        starts++;
+        if (starts == 1) throw StateError('preparation failed');
+        final service = _ControlledReply();
+        services.add(service);
+        return service;
+      },
+    );
+    await send(tester, '还在吗');
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byTooltip('停止当前回复'), findsNothing);
+    expect(find.text('重试'), findsOneWidget);
+    expect(find.textContaining('回复未能开始'), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(services, hasLength(1));
+    expect(
+      services.first.history.map((message) => message.text),
+      contains('还在吗'),
+    );
+    services.first.finish('我在');
+    await tester.pumpAndSettle();
+    expect(find.text('我在'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   Future<void> send(WidgetTester tester, String text) async {
     await tester.tap(find.byType(TextField));
