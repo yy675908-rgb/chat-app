@@ -1940,7 +1940,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return _TaggedReply(
       text: parsed.text.trim(),
       mood: parsed.mood,
-      status: '',
     );
   }
 
@@ -3327,10 +3326,8 @@ class _TaggedReply {
   const _TaggedReply({
     required this.text,
     required this.mood,
-    this.status = '',
   });
 
   final String text;
   final String mood;
-  final String status;
 }
