@@ -88,7 +88,7 @@ class AiChatService {
           eventIdleTimeout ?? const Duration(seconds: 35),
       _firstContentTimeout = firstContentTimeout ?? const Duration(seconds: 120),
       _recoveryTimeout = recoveryTimeout ??
-          eventIdleTimeout ?? const Duration(seconds: 60);
+          eventIdleTimeout ?? const Duration(seconds: 45);
 
   static const _connectTimeout = Duration(seconds: 20);
   static const _retryDelay = Duration(milliseconds: 700);
@@ -212,11 +212,6 @@ class AiChatService {
         history: history,
         temperature: temperature,
         contextTokenBudget: contextTokenBudget,
-      ).timeout(
-        _recoveryTimeout,
-        onTimeout: (sink) => sink.addError(
-          const AiChatException('自动重试后接口仍没有返回回复，请检查接口或切换模型'),
-        ),
       );
       if (!interrupted) {
         yield* recovery;
@@ -300,8 +295,8 @@ class AiChatService {
     );
     late final String body;
     try {
-      body = await response.stream.bytesToString().timeout(_eventIdleTimeout);
-    } on TimeoutException {
+      body = await _readResponseBody(response, _recoveryTimeout);
+    } on _IdleStreamException {
       throw const AiChatException('自动重试后接口仍没有返回回复，请检查接口或切换模型');
     }
     try {
@@ -643,6 +638,34 @@ class AiChatService {
       },
     );
     return controller.stream;
+  }
+
+  Future<String> _readResponseBody(
+    http.StreamedResponse response,
+    Duration timeout,
+  ) {
+    final result = Completer<String>();
+    final bytes = <int>[];
+    StreamSubscription<List<int>>? subscription;
+    late final Timer timer;
+    timer = Timer(timeout, () {
+      if (result.isCompleted) return;
+      result.completeError(const _IdleStreamException());
+      unawaited(subscription?.cancel() ?? Future<void>.value());
+    });
+    subscription = response.stream.listen(
+      bytes.addAll,
+      onError: (Object error, StackTrace stackTrace) {
+        timer.cancel();
+        if (!result.isCompleted) result.completeError(error, stackTrace);
+      },
+      onDone: () {
+        timer.cancel();
+        if (!result.isCompleted) result.complete(utf8.decode(bytes));
+      },
+      cancelOnError: true,
+    );
+    return result.future;
   }
 
   bool _hasReplyEnd(String line) {
