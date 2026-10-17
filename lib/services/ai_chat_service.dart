@@ -86,11 +86,13 @@ class AiChatService {
       _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60),
       _firstProgressTimeout = firstProgressTimeout ??
           eventIdleTimeout ?? const Duration(seconds: 35),
-      _firstContentTimeout = firstContentTimeout ?? const Duration(seconds: 120),
+      // A live SSE connection may carry keep-alives while DeepSeek queues
+      // inference. Do not discard that request and start the same work again.
+      _firstContentTimeout = firstContentTimeout ?? const Duration(minutes: 11),
       _recoveryTimeout = recoveryTimeout ??
           eventIdleTimeout ?? const Duration(seconds: 45);
 
-  static const _connectTimeout = Duration(seconds: 20);
+  static const _connectTimeout = Duration(seconds: 45);
   static const _retryDelay = Duration(milliseconds: 700);
   static const _uiFlushInterval = Duration(milliseconds: 32);
   static const _retryableStatusCodes = <int>{429, 502, 503};
@@ -593,10 +595,10 @@ class AiChatService {
             .listen(
               (line) {
                 if (finished) return;
-                if (_hasReplyProgress(line)) {
-                  firstProgressTimer?.cancel();
-                  resetTimer();
-                }
+                // SSE comments and empty lines are transport activity too.
+                // DeepSeek uses comments while its model is queued.
+                firstProgressTimer?.cancel();
+                resetTimer();
                 if (_hasReplyContent(line)) firstContentTimer?.cancel();
                 controller.add(line);
                 if (!replyEnded && _hasReplyEnd(line)) {
@@ -728,33 +730,6 @@ class AiChatService {
     } on Object {
       throw const AiChatException('接口返回格式无法读取，请检查接口类型');
     }
-  }
-
-  bool _hasReplyProgress(String line) {
-    final data = _sseData(line);
-    if (data == null) return false;
-    if (data == '[DONE]') return true;
-    try {
-      final payload = jsonDecode(data) as Map<String, dynamic>;
-      final choices = payload['choices'] as List<dynamic>?;
-      if (choices != null && choices.isNotEmpty) {
-        final delta = (choices.first as Map?)?['delta'] as Map?;
-        return (delta?['content'] is String &&
-                (delta!['content'] as String).isNotEmpty) ||
-            (delta?['reasoning_content'] is String &&
-                (delta!['reasoning_content'] as String).isNotEmpty);
-      }
-      if (payload['type'] == 'content_block_delta') {
-        final delta = payload['delta'] as Map?;
-        return (delta?['text'] is String &&
-                (delta!['text'] as String).isNotEmpty) ||
-            (delta?['thinking'] is String &&
-                (delta!['thinking'] as String).isNotEmpty);
-      }
-    } on Object {
-      // Unrecognized keepalive events are not response progress.
-    }
-    return false;
   }
 
   bool _hasReplyContent(String line) {
