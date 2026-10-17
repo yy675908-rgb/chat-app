@@ -66,7 +66,7 @@ void main() {
   });
 
   test(
-    'heartbeat-only stream automatically retries without streaming',
+    'a stream that closes without text retries without streaming',
     () async {
       final client = _HeartbeatThenJsonClient();
       final service = AiChatService(
@@ -88,12 +88,12 @@ void main() {
     },
   );
 
-  test('no first token starts recovery before the normal idle timeout', () async {
-    final client = _HeartbeatThenJsonClient();
+  test('DeepSeek keep-alives preserve one request until text arrives', () async {
+    final client = _DelayedKeepAliveReplyClient();
     final service = AiChatService(
       client: client,
-      eventIdleTimeout: const Duration(seconds: 2),
-      firstProgressTimeout: const Duration(milliseconds: 80),
+      eventIdleTimeout: const Duration(milliseconds: 70),
+      firstProgressTimeout: const Duration(milliseconds: 60),
     );
     addTearDown(service.close);
 
@@ -106,8 +106,8 @@ void main() {
         )
         .join()
         .timeout(const Duration(seconds: 1));
-    expect(reply, '自动恢复的回复');
-    expect(client.streamFlags, [true, false]);
+    expect(reply, '正常回复');
+    expect(client.attempts, 1);
   });
 
   test('a stalled recovery ends with a visible error', () async {
@@ -539,11 +539,13 @@ void main() {
 class _HeartbeatOnlyClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+    final streaming = body['stream'] == true;
     return http.StreamedResponse(
       Stream.periodic(
         const Duration(milliseconds: 10),
         (_) => utf8.encode(': ping\n\n'),
-      ),
+      ).take(streaming ? 3 : 1000000),
       200,
       headers: {'content-type': 'text/event-stream'},
     );
@@ -564,7 +566,7 @@ class _HeartbeatThenJsonClient extends http.BaseClient {
         Stream.periodic(
           const Duration(milliseconds: 10),
           (_) => utf8.encode(': ping\n\n'),
-        ),
+        ).take(3),
         200,
         headers: {'content-type': 'text/event-stream'},
       );
@@ -579,6 +581,27 @@ class _HeartbeatThenJsonClient extends http.BaseClient {
   }
 }
 
+class _DelayedKeepAliveReplyClient extends http.BaseClient {
+  int attempts = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    attempts++;
+    Stream<List<int>> body() async* {
+      await for (final _ in Stream.periodic(const Duration(milliseconds: 10)).take(15)) {
+        yield utf8.encode(': keep-alive\n\n');
+      }
+      yield utf8.encode('data: {"choices":[{"delta":{"content":"正常回复"}}]}\n\n');
+      yield utf8.encode('data: [DONE]\n\n');
+    }
+    return http.StreamedResponse(
+      body(),
+      200,
+      headers: {'content-type': 'text/event-stream'},
+    );
+  }
+}
+
 class _PartialThenHeartbeatClient extends http.BaseClient {
   int attempts = 0;
 
@@ -587,9 +610,10 @@ class _PartialThenHeartbeatClient extends http.BaseClient {
     attempts++;
     Stream<List<int>> body() async* {
       yield utf8.encode('data: {"choices":[{"delta":{"content":"已收到"}}]}\n\n');
-      await for (final _ in Stream.periodic(const Duration(milliseconds: 10))) {
+      await for (final _ in Stream.periodic(const Duration(milliseconds: 10)).take(3)) {
         yield utf8.encode(': ping\n\n');
       }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
     }
 
     return http.StreamedResponse(body(), 200);
