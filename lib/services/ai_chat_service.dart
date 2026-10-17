@@ -78,11 +78,17 @@ class AiChatService {
   AiChatService({
     http.Client? client,
     Duration? eventIdleTimeout,
+    Duration? firstProgressTimeout,
     Duration? firstContentTimeout,
+    Duration? recoveryTimeout,
   })
     : _client = client ?? http.Client(),
       _eventIdleTimeout = eventIdleTimeout ?? const Duration(seconds: 60),
-      _firstContentTimeout = firstContentTimeout ?? const Duration(seconds: 120);
+      _firstProgressTimeout = firstProgressTimeout ??
+          eventIdleTimeout ?? const Duration(seconds: 35),
+      _firstContentTimeout = firstContentTimeout ?? const Duration(seconds: 120),
+      _recoveryTimeout = recoveryTimeout ??
+          eventIdleTimeout ?? const Duration(seconds: 45);
 
   static const _connectTimeout = Duration(seconds: 20);
   static const _retryDelay = Duration(milliseconds: 700);
@@ -94,7 +100,9 @@ class AiChatService {
 
   final http.Client _client;
   final Duration _eventIdleTimeout;
+  final Duration _firstProgressTimeout;
   final Duration _firstContentTimeout;
+  final Duration _recoveryTimeout;
 
   Stream<String> streamReply({
     required ProviderProfile provider,
@@ -287,8 +295,8 @@ class AiChatService {
     );
     late final String body;
     try {
-      body = await response.stream.bytesToString().timeout(_eventIdleTimeout);
-    } on TimeoutException {
+      body = await _readResponseBody(response, _recoveryTimeout);
+    } on _IdleStreamException {
       throw const AiChatException('自动重试后接口仍没有返回回复，请检查接口或切换模型');
     }
     try {
@@ -542,6 +550,7 @@ class AiChatService {
     late final StreamController<String> controller;
     StreamSubscription<String>? subscription;
     Timer? idleTimer;
+    Timer? firstProgressTimer;
     Timer? firstContentTimer;
     var finished = false;
 
@@ -549,6 +558,7 @@ class AiChatService {
       if (finished) return;
       finished = true;
       idleTimer?.cancel();
+      firstProgressTimer?.cancel();
       firstContentTimer?.cancel();
       controller.addError(const _IdleStreamException());
       unawaited(controller.close());
@@ -559,6 +569,7 @@ class AiChatService {
       if (finished) return;
       finished = true;
       idleTimer?.cancel();
+      firstProgressTimer?.cancel();
       firstContentTimer?.cancel();
       unawaited(controller.close());
       unawaited(subscription?.cancel() ?? Future<void>.value());
@@ -574,6 +585,7 @@ class AiChatService {
     controller = StreamController<String>(
       onListen: () {
         resetTimer();
+        firstProgressTimer = Timer(_firstProgressTimeout, finishWithError);
         firstContentTimer = Timer(_firstContentTimeout, finishWithError);
         subscription = response.stream
             .transform(utf8.decoder)
@@ -581,7 +593,10 @@ class AiChatService {
             .listen(
               (line) {
                 if (finished) return;
-                if (_hasReplyProgress(line)) resetTimer();
+                if (_hasReplyProgress(line)) {
+                  firstProgressTimer?.cancel();
+                  resetTimer();
+                }
                 if (_hasReplyContent(line)) firstContentTimer?.cancel();
                 controller.add(line);
                 if (!replyEnded && _hasReplyEnd(line)) {
@@ -597,6 +612,7 @@ class AiChatService {
                 if (finished) return;
                 finished = true;
                 idleTimer?.cancel();
+                firstProgressTimer?.cancel();
                 firstContentTimer?.cancel();
                 controller.addError(error, stackTrace);
                 unawaited(controller.close());
@@ -605,6 +621,7 @@ class AiChatService {
                 if (finished) return;
                 finished = true;
                 idleTimer?.cancel();
+                firstProgressTimer?.cancel();
                 firstContentTimer?.cancel();
                 unawaited(controller.close());
               },
@@ -615,11 +632,40 @@ class AiChatService {
       onCancel: () {
         finished = true;
         idleTimer?.cancel();
+        firstProgressTimer?.cancel();
         firstContentTimer?.cancel();
         unawaited(subscription?.cancel() ?? Future<void>.value());
       },
     );
     return controller.stream;
+  }
+
+  Future<String> _readResponseBody(
+    http.StreamedResponse response,
+    Duration timeout,
+  ) {
+    final result = Completer<String>();
+    final bytes = <int>[];
+    StreamSubscription<List<int>>? subscription;
+    late final Timer timer;
+    timer = Timer(timeout, () {
+      if (result.isCompleted) return;
+      result.completeError(const _IdleStreamException());
+      unawaited(subscription?.cancel() ?? Future<void>.value());
+    });
+    subscription = response.stream.listen(
+      bytes.addAll,
+      onError: (Object error, StackTrace stackTrace) {
+        timer.cancel();
+        if (!result.isCompleted) result.completeError(error, stackTrace);
+      },
+      onDone: () {
+        timer.cancel();
+        if (!result.isCompleted) result.complete(utf8.decode(bytes));
+      },
+      cancelOnError: true,
+    );
+    return result.future;
   }
 
   bool _hasReplyEnd(String line) {

@@ -88,6 +88,57 @@ void main() {
     },
   );
 
+  test('no first token starts recovery before the normal idle timeout', () async {
+    final client = _HeartbeatThenJsonClient();
+    final service = AiChatService(
+      client: client,
+      eventIdleTimeout: const Duration(seconds: 2),
+      firstProgressTimeout: const Duration(milliseconds: 80),
+    );
+    addTearDown(service.close);
+
+    final reply = await service
+        .streamReply(
+          provider: provider,
+          apiKey: 'secret',
+          systemPrompt: '测试',
+          history: const [],
+        )
+        .join()
+        .timeout(const Duration(seconds: 1));
+    expect(reply, '自动恢复的回复');
+    expect(client.streamFlags, [true, false]);
+  });
+
+  test('a stalled recovery ends with a visible error', () async {
+    final service = AiChatService(
+      client: _HeartbeatOnlyClient(),
+      eventIdleTimeout: const Duration(seconds: 2),
+      firstProgressTimeout: const Duration(milliseconds: 60),
+      recoveryTimeout: const Duration(milliseconds: 100),
+    );
+    addTearDown(service.close);
+
+    await expectLater(
+      service
+          .streamReply(
+            provider: provider,
+            apiKey: 'secret',
+            systemPrompt: '测试',
+            history: const [],
+          )
+          .drain<void>()
+          .timeout(const Duration(seconds: 1)),
+      throwsA(
+        isA<AiChatException>().having(
+          (error) => error.message,
+          'message',
+          contains('自动重试后接口仍没有返回回复'),
+        ),
+      ),
+    );
+  });
+
   test('two stalled requests give an actionable error', () async {
     final service = AiChatService(
       client: _HeartbeatOnlyClient(),
