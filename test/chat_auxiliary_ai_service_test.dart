@@ -49,6 +49,7 @@ void main() {
       ],
       recentTranscript: '今天天气不错。',
       currentMood: '',
+      conversationSummary: '此前约好周六看展。',
     );
 
     expect(message, '我到了');
@@ -58,6 +59,8 @@ void main() {
     expect(reply.systemPrompt, contains('用“你”称呼对方'));
     expect(reply.systemPrompt, contains('当用户说晚安时：简短回应'));
     expect(reply.systemPrompt, contains('约定下雨时带伞'));
+    expect(reply.systemPrompt, contains('此前约好周六看展。'));
+    expect(reply.systemPrompt, contains('当前角色的名字是“林”'));
   });
 
   group('ChatAuxiliaryAiService normalization', () {

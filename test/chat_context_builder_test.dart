@@ -194,6 +194,36 @@ void main() {
       expect(trimmed.map((message) => message.id).toList(), ['latest']);
     });
 
+    test('a missing summary keeps earlier conversation messages', () {
+      final now = DateTime.utc(2026);
+      final conversation = Conversation(
+        id: 'c',
+        characterId: 'role',
+        title: '聊天',
+        createdAt: now,
+        updatedAt: now,
+        summarizedThroughMessageIds: const {'root': 'old'},
+      );
+      final messages = [
+        ChatMessage(id: 'old', author: MessageAuthor.user, text: '旧事实', sentAt: now),
+        ChatMessage(id: 'new', author: MessageAuthor.user, text: '继续', sentAt: now),
+      ];
+      expect(
+        ChatContextBuilder.summaryForContext(
+          conversation: conversation,
+          branchKey: 'root',
+          messages: messages,
+        ),
+        isEmpty,
+      );
+      final trimmed = ChatContextBuilder.messagesWithinBudget(
+        messages: messages,
+        systemPrompt: '',
+        contextTokenBudget: 4096,
+      );
+      expect(trimmed.map((message) => message.id), ['old', 'new']);
+    });
+
     test('intimacy labels keep existing thresholds', () {
       expect(ChatContextBuilder.intimacyLabel(19), '很低');
       expect(ChatContextBuilder.intimacyLabel(20), '偏低');

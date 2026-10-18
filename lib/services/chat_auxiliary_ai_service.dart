@@ -131,6 +131,7 @@ class ChatAuxiliaryAiService {
     required List<ChatMessage> visibleMessages,
     required String recentTranscript,
     required String currentMood,
+    String conversationSummary = '',
     String? currentPlace,
     bool locationEnabled = false,
   }) async {
@@ -159,7 +160,9 @@ class ChatAuxiliaryAiService {
         systemPrompt:
             '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
             '${character.systemPrompt}\n\n'
+            '当前角色的名字是“${character.name}”，以角色资料中的名字为准。\n\n'
             '$characterFacts\n\n'
+            '${conversationSummary.trim().isEmpty ? '' : '当前对话较早内容的摘要：\n${conversationSummary.trim()}\n\n'}'
             '${memories.isEmpty ? '' : '共同记忆始终已知，情境相关时据此行动，不要等用户再次提及。'}'
             '当前本地日期和时间（以此为准）：${ChatContextBuilder.formatPromptTime(DateTime.now().toLocal())}。'
             '【主动消息】现在不是在回复用户刚发来的新消息，而是你隔了一段时间后自然地主动找用户。'

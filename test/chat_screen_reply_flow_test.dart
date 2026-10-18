@@ -150,6 +150,71 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('a newly selected character uses its own identity and memory', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026);
+    final lin = CharacterProfile.lin(now);
+    final other = CharacterProfile.newCharacter(now).copyWith(
+      name: '阿野',
+      greeting: '来了',
+      systemPrompt: '喜欢慢慢说话。',
+    );
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      'character_profiles_v2',
+      jsonEncode([lin.toJson(), other.toJson()]),
+    );
+    await preferences.setString('selected_character_v2', other.id);
+    await preferences.setStringList(
+      'relationship_memories_v1_${other.id}',
+      ['约好周六看展'],
+    );
+    await preferences.setStringList(
+      'relationship_memories_v1_${lin.id}',
+      ['林自己的记忆'],
+    );
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '继续说');
+    expect(services.single.systemPrompt, contains('当前角色的名字是“阿野”'));
+    expect(services.single.systemPrompt, contains('约好周六看展'));
+    expect(services.single.systemPrompt, isNot(contains('林自己的记忆')));
+    services.single.finish('周六见');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('retry uses the requested model prompt', (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    final multiModel = provider.copyWith(
+      models: ['model', 'other'],
+      modelSystemPrompts: {'model': '原模型规则', 'other': '目标模型规则'},
+    );
+    await preferences.setString('providers_v2', jsonEncode([multiModel.toJson()]));
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '在吗');
+    expect(services.single.systemPrompt, contains('原模型规则'));
+    services.single.finish('在');
+    await tester.pumpAndSettle();
+    final retryButton = find.byTooltip('选择模型重新生成').last;
+    await tester.ensureVisible(retryButton);
+    await tester.tap(retryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(PopupMenuItem<RetryModelOption>),
+        matching: find.text('other'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(services, hasLength(2));
+    expect(services.last.systemPrompt, contains('目标模型规则'));
+    expect(services.last.systemPrompt, isNot(contains('原模型规则')));
+    services.last.finish('还在');
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('world-book match uses four real messages before the blank reply', (
     tester,
   ) async {

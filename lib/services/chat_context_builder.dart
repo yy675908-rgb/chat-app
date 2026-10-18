@@ -46,16 +46,11 @@ class ChatContextBuilder {
       visibleMessages: visibleMessages,
     );
 
-    var currentSummary =
-        currentConversation?.branchSummaries[branchKey] ?? '';
-    final summarizedThrough =
-        currentConversation?.summarizedThroughMessageIds[branchKey] ?? '';
-    if (currentSummary.isNotEmpty &&
-        summarizedThrough.isNotEmpty &&
-        contextMessages != null &&
-        !contextMessages.any((message) => message.id == summarizedThrough)) {
-      currentSummary = '';
-    }
+    final currentSummary = summaryForContext(
+      conversation: currentConversation,
+      branchKey: branchKey,
+      messages: contextMessages ?? visibleMessages,
+    );
     final summaryText = currentSummary.isEmpty
         ? ''
         : '\n\n当前对话较早内容的摘要：\n$currentSummary';
@@ -101,6 +96,7 @@ class ChatContextBuilder {
         : '';
 
     return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
+        '\n\n当前角色的名字是“${activeCharacter.name}”，以角色资料中的名字为准。'
         '$intimacyInstruction'
         '$groupInstruction$characterFacts'
         '$summaryText$context$locationText$stateInstruction'
@@ -110,6 +106,22 @@ class ChatContextBuilder {
             : '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
                   '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
                   '提及真正的第三方时才用第三人称。'}';
+  }
+
+  static String summaryForContext({
+    required Conversation? conversation,
+    required String branchKey,
+    required List<ChatMessage> messages,
+  }) {
+    final summary = conversation?.branchSummaries[branchKey]?.trim() ?? '';
+    final marker =
+        conversation?.summarizedThroughMessageIds[branchKey] ?? '';
+    if (summary.isEmpty ||
+        marker.isEmpty ||
+        !messages.any((message) => message.id == marker)) {
+      return '';
+    }
+    return summary;
   }
 
   static String buildCharacterFacts({
