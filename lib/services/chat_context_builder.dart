@@ -38,19 +38,10 @@ class ChatContextBuilder {
               '这次定位不代表能持续追踪用户移动，不能声称知道接下来会去哪里。'
               '如果只有坐标而没有地点名称，不要凭空说出具体街道或建筑。'
               '其他时候仅在对话确有意义时自然使用，不必每次提地点。';
-    final memoryText = activeMemories.isEmpty
-        ? ''
-        : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
-              '${activeMemories.map((memory) => '- $memory').join('\n')}\n'
-              '这些是已保存的事实。情境相关时据此行动，不能因近期聊天没提到就当作不存在；'
-              '记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。'
-              '不要机械复述。若用户在当前对话明确更新事实，以新信息为准。';
-    final preferenceText = stylePreferences.isEmpty
-        ? ''
-        : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
-              '不得覆盖角色设定或固有语气）：\n'
-              '${stylePreferences.map((item) => '- $item').join('\n')}';
-    final worldBookText = matchedWorldBookPrompt(
+    final characterFacts = buildCharacterFacts(
+      userProfile: userProfile,
+      activeMemories: activeMemories,
+      stylePreferences: stylePreferences,
       worldBooks: worldBooks,
       visibleMessages: visibleMessages,
     );
@@ -71,7 +62,7 @@ class ChatContextBuilder {
 
     final previousMood = savedMood.isEmpty ? '未记录' : savedMood;
     final stateInstruction =
-        '\n\n角色心绪协议（强制）：读完用户最新消息并完成正文回复后，'
+        '\n\n角色心绪协议（强制）：读完${currentConversation?.isGroup == true ? '群聊当前内容' : '用户最新消息'}并完成正文回复后，'
         '由你自己判断此刻心绪。上一轮心绪是“$previousMood”。'
         '不要为了显得有变化而强行变化；确实没有实质变化时可以延续上一轮。'
         '心绪只描述此刻感受，最多10个字符，可用文字、emoji、符号或混合表达，但不要使用颜文字。'
@@ -83,19 +74,6 @@ class ChatContextBuilder {
     final hiddenModelPrompt = modelPrompt.isEmpty
         ? ''
         : '${modelPrompt.trim()}\n\n';
-
-    final userFields = <String>[
-      if (userProfile.name.trim().isNotEmpty)
-        '名字：${userProfile.name.trim()}',
-      if (userProfile.gender.trim().isNotEmpty)
-        '性别：${userProfile.gender.trim()}',
-      if (userProfile.description.trim().isNotEmpty)
-        '设定：${userProfile.description.trim()}',
-    ];
-    final userProfileText = userFields.isEmpty
-        ? ''
-        : '\n\n正在与你对话的用户资料（这是用户的信息，不是你的角色设定）：\n'
-              '${userFields.join('\n')}';
 
     final isGroup = currentConversation?.isGroup == true;
     final intimacyInstruction = isGroup
@@ -124,12 +102,54 @@ class ChatContextBuilder {
 
     return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
         '$intimacyInstruction'
-        '$groupInstruction$userProfileText'
-        '$memoryText$preferenceText$worldBookText'
+        '$groupInstruction$characterFacts'
         '$summaryText$context$locationText$stateInstruction'
-        '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
-        '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
-        '提及真正的第三方时才用第三人称。';
+        '${isGroup
+            ? '\n\n群聊中回应用户时用“你”称呼用户；回应其他角色时直接称呼对方。'
+                  '不要把其他角色的话误当作用户说的，也不要替其他角色发言。'
+            : '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
+                  '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
+                  '提及真正的第三方时才用第三人称。'}';
+  }
+
+  static String buildCharacterFacts({
+    required UserProfile userProfile,
+    required List<String> activeMemories,
+    required List<String> stylePreferences,
+    required List<WorldBookEntry> worldBooks,
+    required List<ChatMessage> visibleMessages,
+  }) {
+    final memoryText = activeMemories.isEmpty
+        ? ''
+        : '\n\n你和用户的共同记忆（仅属于你们这段关系）：\n'
+              '${activeMemories.map((memory) => '- $memory').join('\n')}\n'
+              '这些是已保存的事实。情境相关时据此行动，不能因近期聊天没提到就当作不存在；'
+              '记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。'
+              '不要机械复述。若用户在当前对话明确更新事实，以新信息为准。';
+    final preferenceText = stylePreferences.isEmpty
+        ? ''
+        : '\n\n用户偏好的回应方式（仅在当前情境明确吻合时轻量参考；'
+              '不得覆盖角色设定或固有语气）：\n'
+              '${stylePreferences.map((item) => '- $item').join('\n')}';
+    final worldBookText = matchedWorldBookPrompt(
+      worldBooks: worldBooks,
+      visibleMessages: visibleMessages,
+    );
+
+    final userFields = <String>[
+      if (userProfile.name.trim().isNotEmpty)
+        '名字：${userProfile.name.trim()}',
+      if (userProfile.gender.trim().isNotEmpty)
+        '性别：${userProfile.gender.trim()}',
+      if (userProfile.description.trim().isNotEmpty)
+        '设定：${userProfile.description.trim()}',
+    ];
+    final userProfileText = userFields.isEmpty
+        ? ''
+        : '\n\n正在与你对话的用户资料（这是用户的信息，不是你的角色设定）：\n'
+              '${userFields.join('\n')}';
+
+    return '$userProfileText$memoryText$preferenceText$worldBookText';
   }
 
   static String matchedWorldBookPrompt({
@@ -146,7 +166,9 @@ class ChatContextBuilder {
     final matched = worldBooks.where((entry) {
       if (!entry.enabled || entry.keywords.isEmpty) return false;
       return entry.keywords.any(
-        (keyword) => recentText.contains(keyword.trim().toLowerCase()),
+        (keyword) =>
+            keyword.trim().isNotEmpty &&
+            recentText.contains(keyword.trim().toLowerCase()),
       );
     });
     final sections = <String>[];

@@ -1,7 +1,10 @@
 import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
+import '../models/user_profile.dart';
+import '../models/world_book_entry.dart';
 import 'ai_chat_service.dart';
+import 'chat_context_builder.dart';
 import 'group_reply_policy.dart';
 
 class GroupIntentEvaluator {
@@ -22,6 +25,10 @@ class GroupIntentEvaluator {
     required String spokenNames,
     required String lastSpeakerName,
     required Map<String, List<String>> characterMemories,
+    required Map<String, List<String>> characterStylePreferences,
+    required UserProfile userProfile,
+    required List<WorldBookEntry> worldBooks,
+    required List<ChatMessage> visibleMessages,
     required String Function(String characterId) moodForCharacter,
     required String Function(int value) intimacyBehavior,
   }) async {
@@ -36,6 +43,11 @@ class GroupIntentEvaluator {
           spokenNames: spokenNames,
           lastSpeakerName: lastSpeakerName,
           memories: characterMemories[character.id] ?? const <String>[],
+          stylePreferences:
+              characterStylePreferences[character.id] ?? const <String>[],
+          userProfile: userProfile,
+          worldBooks: worldBooks,
+          visibleMessages: visibleMessages,
           currentMood: moodForCharacter(character.id),
           intimacyBehavior: intimacyBehavior(character.userIntimacy),
         ),
@@ -52,6 +64,10 @@ class GroupIntentEvaluator {
     required String spokenNames,
     required String lastSpeakerName,
     required List<String> memories,
+    required List<String> stylePreferences,
+    required UserProfile userProfile,
+    required List<WorldBookEntry> worldBooks,
+    required List<ChatMessage> visibleMessages,
     required String currentMood,
     required String intimacyBehavior,
   }) async {
@@ -60,10 +76,13 @@ class GroupIntentEvaluator {
     var raw = '';
     try {
       final modelPrompt = provider.systemPromptForModel().trim();
-      final memoryPrompt = memories.isEmpty
-          ? ''
-          : '\n\n你和用户的共同记忆：\n'
-                '${memories.map((item) => '- $item').join('\n')}';
+      final characterFacts = ChatContextBuilder.buildCharacterFacts(
+        userProfile: userProfile,
+        activeMemories: memories,
+        stylePreferences: stylePreferences,
+        worldBooks: worldBooks,
+        visibleMessages: visibleMessages,
+      );
       final statePrompt =
           '\n\n你此刻的心绪：${currentMood.isEmpty ? '未记录' : currentMood}。';
       final request = ChatMessage(
@@ -84,7 +103,7 @@ class GroupIntentEvaluator {
         apiKey: apiKey,
         systemPrompt:
             '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
-            '${character.systemPrompt}$memoryPrompt$statePrompt\n\n'
+            '${character.systemPrompt}$characterFacts$statePrompt\n\n'
             '【群聊内部意愿判断】你现在不是正式发言，也不生成回复正文。'
             '请完全依据“${character.name}”的完整设定、当前关系和最近对话，'
             '用户对这个角色的亲密度：$intimacyBehavior'

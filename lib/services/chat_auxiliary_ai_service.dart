@@ -4,7 +4,9 @@ import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 import '../models/provider_profile.dart';
 import '../models/user_profile.dart';
+import '../models/world_book_entry.dart';
 import 'ai_chat_service.dart';
+import 'chat_context_builder.dart';
 import 'mood_codec.dart';
 
 class ChatAuxiliaryAiService {
@@ -124,6 +126,9 @@ class ChatAuxiliaryAiService {
     required CharacterProfile character,
     required UserProfile userProfile,
     required List<String> memories,
+    required List<String> stylePreferences,
+    required List<WorldBookEntry> worldBooks,
+    required List<ChatMessage> visibleMessages,
     required String recentTranscript,
     required String currentMood,
     String? currentPlace,
@@ -132,22 +137,19 @@ class ChatAuxiliaryAiService {
     final service = proactiveServiceFactory?.call() ?? AiChatService();
     var raw = '';
     try {
-      final userFields = <String>[
-        if (userProfile.name.trim().isNotEmpty)
-          '名字：${userProfile.name.trim()}',
-        if (userProfile.gender.trim().isNotEmpty)
-          '性别：${userProfile.gender.trim()}',
-        if (userProfile.description.trim().isNotEmpty)
-          '设定：${userProfile.description.trim()}',
-      ];
+      final characterFacts = ChatContextBuilder.buildCharacterFacts(
+        userProfile: userProfile,
+        activeMemories: memories,
+        stylePreferences: stylePreferences,
+        worldBooks: worldBooks,
+        visibleMessages: visibleMessages,
+      );
       final request = ChatMessage(
         id: 'proactive-${DateTime.now().microsecondsSinceEpoch}',
         author: MessageAuthor.user,
         text:
             '最近单聊：\n'
-            '${recentTranscript.trim().isEmpty ? '暂无最近对话' : recentTranscript.trim()}\n\n'
-            '用户资料：\n'
-            '${userFields.isEmpty ? '暂无' : userFields.join('\n')}',
+            '${recentTranscript.trim().isEmpty ? '暂无最近对话' : recentTranscript.trim()}',
         sentAt: DateTime.now(),
       );
       final modelPrompt = provider.systemPromptForModel().trim();
@@ -157,7 +159,9 @@ class ChatAuxiliaryAiService {
         systemPrompt:
             '${modelPrompt.isEmpty ? '' : '$modelPrompt\n\n'}'
             '${character.systemPrompt}\n\n'
-            '${memories.isEmpty ? '' : '你和用户的共同记忆（仅属于你们这段关系）：\n${memories.map((item) => '- $item').join('\n')}\n这些是已保存的事实，始终已知；情境相关时据此行动，不要等用户再次提及。记忆若明确说无需某个动作，不得按惯常情节要求用户做那个动作。\n\n'}'
+            '$characterFacts\n\n'
+            '${memories.isEmpty ? '' : '共同记忆始终已知，情境相关时据此行动，不要等用户再次提及。'}'
+            '当前本地日期和时间（以此为准）：${ChatContextBuilder.formatPromptTime(DateTime.now().toLocal())}。'
             '【主动消息】现在不是在回复用户刚发来的新消息，而是你隔了一段时间后自然地主动找用户。'
             '根据你的性格、共同记忆和最近单聊，决定此刻最自然的一句话。'
             '可以接续未完话题、问候、想起某件事、表达惦记或提出新的小话题；'

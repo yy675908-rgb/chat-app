@@ -201,5 +201,56 @@ void main() {
       expect(ChatContextBuilder.intimacyLabel(60), '较高');
       expect(ChatContextBuilder.intimacyLabel(80), '很高');
     });
+
+    test('group prompt addresses other characters without forcing user address', () {
+      final now = DateTime.utc(2026, 10, 18);
+      final character = CharacterProfile.lin(now);
+      final prompt = ChatContextBuilder.buildSystemPrompt(
+        activeCharacter: character,
+        selectedProvider: null,
+        userProfile: const UserProfile(),
+        activeMemories: const [],
+        stylePreferences: const [],
+        worldBooks: const [],
+        visibleMessages: const [],
+        currentConversation: Conversation(
+          id: 'group',
+          characterId: Conversation.groupSpaceId,
+          participantIds: [character.id, 'other'],
+          title: '群聊',
+          createdAt: now,
+          updatedAt: now,
+        ),
+        branchKey: 'root',
+        groupParticipants: [character],
+        savedMood: '',
+        contextMessages: const [],
+        now: now,
+      );
+      expect(prompt, contains('回应其他角色时直接称呼对方'));
+      expect(prompt, isNot(contains('你正在直接和用户说话')));
+    });
+
+    test('blank world-book keywords do not activate every rule', () {
+      final prompt = ChatContextBuilder.matchedWorldBookPrompt(
+        worldBooks: const [
+          WorldBookEntry(
+            id: 'blank',
+            title: '不相关',
+            keywords: ['  '],
+            content: '不要带入这条设定',
+          ),
+        ],
+        visibleMessages: [
+          ChatMessage(
+            id: 'recent',
+            author: MessageAuthor.user,
+            text: '你好',
+            sentAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      expect(prompt, isEmpty);
+    });
   });
 }
