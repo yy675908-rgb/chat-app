@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
+import 'package:character_chat_app/models/world_book_entry.dart';
 import 'package:character_chat_app/screens/chat_screen.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
 import 'package:character_chat_app/services/chat_store.dart';
@@ -146,6 +147,36 @@ void main() {
     expect(services.first.systemPrompt, contains('不得按惯常情节要求用户做那个动作'));
     expect(services.first.systemPrompt, contains('都用“你”指代正在聊天的用户'));
     services.first.finish('我自己开门进来了');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('world-book match uses four real messages before the blank reply', (
+    tester,
+  ) async {
+    final store = ChatStore();
+    final conversation =
+        (await store.loadConversations(characterId: 'character-lin')).first;
+    final now = DateTime.utc(2026, 10, 18);
+    await store.saveWorldBooks(const [
+      WorldBookEntry(
+        id: 'sea',
+        title: '海边',
+        keywords: ['海边'],
+        content: '周日再去海边',
+      ),
+    ]);
+    await store.saveMessages(conversation.id, [
+      ChatMessage(id: 'greeting', author: MessageAuthor.character, text: '你好', sentAt: now),
+      ChatMessage(id: 'sea', author: MessageAuthor.user, text: '海边', sentAt: now),
+      ChatMessage(id: 'answer', author: MessageAuthor.character, text: '记得', sentAt: now),
+      ChatMessage(id: 'next', author: MessageAuthor.user, text: '好', sentAt: now),
+    ]);
+    final services = <_ControlledReply>[];
+    await openChat(tester, services);
+    await send(tester, '继续');
+    expect(services, hasLength(1));
+    expect(services.first.systemPrompt, contains('周日再去海边'));
+    services.first.finish('周日见');
     await tester.pumpAndSettle();
   });
 

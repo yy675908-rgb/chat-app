@@ -1,3 +1,4 @@
+import '../models/character_profile.dart';
 import '../models/chat_message.dart';
 
 class GroupReplyIntent {
@@ -29,19 +30,32 @@ class GroupReplyPolicy {
     List<String> participantIds, {
     required String lastSpeakerId,
     required String seed,
+    List<String> addressedIds = const [],
   }) {
     if (participantIds.isEmpty) return null;
+    final addressed = participantIds
+        .where((id) => addressedIds.contains(id))
+        .toList();
+    final eligible = addressed.isNotEmpty
+        ? addressed
+        : participantIds.where((id) => id != lastSpeakerId).toList();
+    final choices = eligible.isEmpty ? participantIds : eligible;
     var hash = 0;
     for (final unit in seed.codeUnits) {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
-    var index = hash % participantIds.length;
-    if (participantIds.length > 1 &&
-        participantIds[index] == lastSpeakerId) {
-      index = (index + 1) % participantIds.length;
-    }
-    return participantIds[index];
+    return choices[hash % choices.length];
   }
+
+  static List<String> addressedCharacterIds(
+    List<CharacterProfile> participants,
+    String message,
+  ) => [
+    for (final character in participants)
+      if (character.name.trim().isNotEmpty &&
+          message.contains(character.name.trim()))
+        character.id,
+  ];
 
   static GroupReplyIntent parseIntent(String raw) {
     final normalized = raw.trim().toUpperCase();
@@ -65,14 +79,20 @@ class GroupReplyPolicy {
     required List<String> spokenIds,
     required String lastSpeakerId,
     required String seed,
+    bool allowLastSpeaker = false,
+    List<String> addressedIds = const [],
   }) {
     final entries = intents.entries
         .where(
           (entry) =>
-              entry.value.wantsToReply && entry.key != lastSpeakerId,
+              entry.value.wantsToReply &&
+              (allowLastSpeaker || entry.key != lastSpeakerId),
         )
         .toList();
     entries.sort((a, b) {
+      final aAddressed = addressedIds.contains(a.key);
+      final bAddressed = addressedIds.contains(b.key);
+      if (aAddressed != bAddressed) return aAddressed ? -1 : 1;
       final byPriority = b.value.priority.compareTo(a.value.priority);
       if (byPriority != 0) return byPriority;
       final aSpoke = spokenIds.contains(a.key);

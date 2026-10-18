@@ -303,4 +303,37 @@ void main() {
 
     expect(ranked, ['character-b']);
   });
+
+  test('a newly addressed character can answer again after a user message', () {
+    final now = DateTime.utc(2026, 10, 18);
+    final first = CharacterProfile.lin(now);
+    final second = CharacterProfile.newCharacter(now).copyWith(name: '阿野');
+    final addressed = GroupReplyPolicy.addressedCharacterIds(
+      [first, second],
+      '阿野，你刚才说的继续讲。',
+    );
+    expect(addressed, [second.id]);
+
+    final ranked = GroupReplyPolicy.rankWillingSpeakers(
+      {
+        first.id: const GroupReplyIntent(wantsToReply: true, priority: 95),
+        second.id: const GroupReplyIntent(wantsToReply: true, priority: 70),
+      },
+      spokenIds: const [],
+      lastSpeakerId: second.id,
+      seed: 'new-user-message',
+      allowLastSpeaker: true,
+      addressedIds: addressed,
+    );
+    expect(ranked.first, second.id);
+    expect(
+      GroupReplyPolicy.fallbackSpeakerId(
+        [first.id, second.id],
+        lastSpeakerId: second.id,
+        seed: 'new-user-message',
+        addressedIds: addressed,
+      ),
+      second.id,
+    );
+  });
 }

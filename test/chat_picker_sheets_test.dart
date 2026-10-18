@@ -15,6 +15,34 @@ void main() {
     selectedModel: 'model-a',
   );
 
+  testWidgets('group character picker selects the member to edit', (
+    tester,
+  ) async {
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            pageContext = context;
+            return const Scaffold(body: SizedBox.expand());
+          },
+        ),
+      ),
+    );
+    final now = DateTime.utc(2026);
+    final first = CharacterProfile.lin(now);
+    final second = CharacterProfile.newCharacter(now).copyWith(name: '阿野');
+    final choice = showGroupCharacterPickerSheet(
+      context: pageContext,
+      participants: [first, second],
+      title: '选择要编辑的角色',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('阿野'));
+    await tester.pumpAndSettle();
+    expect((await choice)?.id, second.id);
+  });
+
   testWidgets('model picker returns manage action after the sheet closes', (
     tester,
   ) async {

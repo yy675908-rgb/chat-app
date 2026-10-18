@@ -10,6 +10,47 @@ class ChatModelChoice {
   final String model;
 }
 
+Future<CharacterProfile?> showGroupCharacterPickerSheet({
+  required BuildContext context,
+  required List<CharacterProfile> participants,
+  required String title,
+}) {
+  if (participants.isEmpty) return Future.value(null);
+  return showModalBottomSheet<CharacterProfile>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.65,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final character in participants)
+                    ListTile(
+                      title: Text(character.name),
+                      onTap: () => Navigator.pop(context, character),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 sealed class ChatModelPickerResult {
   const ChatModelPickerResult();
 }
