@@ -103,13 +103,13 @@ class ChatContextBuilder {
     return '$hiddenModelPrompt${activeCharacter.systemPrompt}'
         '$intimacyInstruction'
         '$groupInstruction$characterFacts'
-        '$summaryText$context$locationText$stateInstruction' +
-        (isGroup
+        '$summaryText$context$locationText$stateInstruction'
+        '${isGroup
             ? '\n\n群聊中回应用户时用“你”称呼用户；回应其他角色时直接称呼对方。'
                   '不要把其他角色的话误当作用户说的，也不要替其他角色发言。'
             : '\n\n你正在直接和用户说话。正文里无论是对话、叙述还是动作描写，'
                   '都用“你”指代正在聊天的用户，不要用“她”“他”或“用户”来称呼对方。'
-                  '提及真正的第三方时才用第三人称。');
+                  '提及真正的第三方时才用第三人称。'}';
   }
 
   static String buildCharacterFacts({
