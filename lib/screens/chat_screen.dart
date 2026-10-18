@@ -557,9 +557,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _reloadRelationshipState() async {
     final characters = await _chatStore.loadCharacters();
     final memories = <String, List<String>>{};
+    final stylePreferences = <String, List<String>>{};
     final moods = <String, String>{};
     for (final character in characters) {
       memories[character.id] = await _chatStore.loadMemories(
+        characterId: character.id,
+      );
+      stylePreferences[character.id] = await _chatStore.loadStylePreferences(
         characterId: character.id,
       );
     }
@@ -574,6 +578,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _profile = active;
       _characterMemories = memories;
       _memories = memories[active.id] ?? const <String>[];
+      _characterStylePreferences = stylePreferences;
+      _stylePreferences = stylePreferences[active.id] ?? const <String>[];
       _characterMoods = moods;
       _characterMood = moods[active.id] ?? '';
     });
@@ -1120,6 +1126,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         spokenNames: spokenNames,
         lastSpeakerName: lastSpeakerName,
         characterMemories: _characterMemories,
+        characterStylePreferences: _characterStylePreferences,
+        userProfile: _userProfile,
+        worldBooks: _worldBooks,
+        visibleMessages: visible,
         moodForCharacter: _moodForCharacter,
         intimacyBehavior: _intimacyBehavior,
       );
@@ -2898,6 +2908,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final memories =
         _characterMemories[character.id] ??
         await _chatStore.loadMemories(characterId: character.id);
+    final stylePreferences =
+        _characterStylePreferences[character.id] ??
+        await _chatStore.loadStylePreferences(characterId: character.id);
     final mood = await _chatStore.loadConversationMood(
       targetConversation.id,
       character.id,
@@ -2912,6 +2925,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       character: character,
       userProfile: _userProfile,
       memories: memories,
+      stylePreferences: stylePreferences,
+      worldBooks: _worldBooks,
+      visibleMessages: visible,
       recentTranscript: transcript,
       currentMood: mood,
       currentPlace: currentPlace,

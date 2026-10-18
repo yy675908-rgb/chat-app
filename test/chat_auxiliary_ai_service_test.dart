@@ -4,6 +4,7 @@ import 'package:character_chat_app/models/character_profile.dart';
 import 'package:character_chat_app/models/chat_message.dart';
 import 'package:character_chat_app/models/provider_profile.dart';
 import 'package:character_chat_app/models/user_profile.dart';
+import 'package:character_chat_app/models/world_book_entry.dart';
 import 'package:character_chat_app/services/ai_chat_service.dart';
 import 'package:character_chat_app/services/chat_auxiliary_ai_service.dart';
 
@@ -29,6 +30,23 @@ void main() {
       character: CharacterProfile.lin(DateTime.utc(2026)),
       userProfile: const UserProfile(),
       memories: const [memory],
+      stylePreferences: const ['当用户说晚安时：简短回应'],
+      worldBooks: const [
+        WorldBookEntry(
+          id: 'book',
+          title: '天气',
+          keywords: ['天气'],
+          content: '约定下雨时带伞',
+        ),
+      ],
+      visibleMessages: [
+        ChatMessage(
+          id: 'recent',
+          author: MessageAuthor.user,
+          text: '今天天气不错。',
+          sentAt: DateTime.utc(2026),
+        ),
+      ],
       recentTranscript: '今天天气不错。',
       currentMood: '',
     );
@@ -38,6 +56,8 @@ void main() {
     expect(reply.systemPrompt, contains('不要等用户再次提及'));
     expect(reply.systemPrompt, contains('不得按惯常情节要求用户做那个动作'));
     expect(reply.systemPrompt, contains('用“你”称呼对方'));
+    expect(reply.systemPrompt, contains('当用户说晚安时：简短回应'));
+    expect(reply.systemPrompt, contains('约定下雨时带伞'));
   });
 
   group('ChatAuxiliaryAiService normalization', () {
