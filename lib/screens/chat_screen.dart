@@ -1264,6 +1264,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       systemPrompt = _assembledSystemPrompt(
         contextMessages: contextMessages,
         character: speakingCharacter,
+        provider: provider,
         currentPlace: currentPlace,
         locationEnabled: locationEnabled,
       );
@@ -1886,7 +1887,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   String _currentBranchKey() {
-    final entries = _activeBranchBindings().entries.toList()
+    return _branchKeyForMessages(_messages);
+  }
+
+  String _branchKeyForMessages(List<ChatMessage> messages) {
+    final entries = _activeBranchBindingsFor(messages).entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     if (entries.isEmpty) return 'root';
     return entries.map((entry) => '${entry.key}=${entry.value}').join('|');
@@ -1895,13 +1900,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _assembledSystemPrompt({
     List<ChatMessage>? contextMessages,
     CharacterProfile? character,
+    ProviderProfile? provider,
     String? currentPlace,
     bool locationEnabled = false,
   }) {
     final activeCharacter = character ?? _profile;
     return ChatContextBuilder.buildSystemPrompt(
       activeCharacter: activeCharacter,
-      selectedProvider: _selectedProvider,
+      selectedProvider: provider ?? _selectedProvider,
       userProfile: _userProfile,
       activeMemories:
           _characterMemories[activeCharacter.id] ?? const <String>[],
@@ -2166,10 +2172,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     List<ChatMessage> messages,
     String systemPrompt,
   ) {
-    final summarizedThrough =
-        _currentConversation
-            ?.summarizedThroughMessageIds[_currentBranchKey()] ??
-        '';
+    final branchKey = _currentBranchKey();
+    final summarizedThrough = ChatContextBuilder.summaryForContext(
+      conversation: _currentConversation,
+      branchKey: branchKey,
+      messages: messages,
+    ).isEmpty
+        ? ''
+        : _currentConversation?.summarizedThroughMessageIds[branchKey] ?? '';
     return ChatContextBuilder.messagesWithinBudget(
       messages: messages,
       systemPrompt: systemPrompt,
@@ -2956,6 +2966,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       targetConversation.id,
       character.id,
     );
+    final summary = ChatContextBuilder.summaryForContext(
+      conversation: targetConversation,
+      branchKey: _branchKeyForMessages(storedMessages),
+      messages: visible,
+    );
     final locationEnabled = await _locationService.isEnabled();
     final currentPlace = await _locationService.currentPlace();
     _locationService.markSharedWithCharacter(currentPlace);
@@ -2971,6 +2986,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       visibleMessages: visible,
       recentTranscript: transcript,
       currentMood: mood,
+      conversationSummary: summary,
       currentPlace: currentPlace,
       locationEnabled: locationEnabled,
     );
