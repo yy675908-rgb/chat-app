@@ -1012,7 +1012,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
     final spokenIds = <String>[];
-    final scheduledSpeakers = <CharacterProfile>[];
     var userReplyCovered = !GroupReplyPolicy.latestUserNeedsReply(visible);
     var lastSpeakerId = '';
     for (var index = visible.length - 1; index >= 0; index--) {
@@ -1027,29 +1026,33 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     for (var turn = 0; turn < maxGroupTurns; turn++) {
       if (!mounted || _cancelled) return;
       final requireSpeaker = latestUser != null && !userReplyCovered;
-      if (scheduledSpeakers.isEmpty) {
-        scheduledSpeakers.addAll(
-          await _selectGroupSpeakers(
-            participants: participants,
-            spokenIds: spokenIds,
-            lastSpeakerId: lastSpeakerId,
-          ),
-        );
-      }
+      final addressedIds = requireSpeaker
+          ? GroupReplyPolicy.addressedCharacterIds(
+              participants,
+              latestUser.text,
+            )
+          : const <String>[];
+      final willing = await _selectGroupSpeakers(
+        participants: participants,
+        spokenIds: spokenIds,
+        lastSpeakerId: lastSpeakerId,
+        allowLastSpeaker: requireSpeaker,
+        addressedIds: addressedIds,
+      );
       if (!mounted || _cancelled) return;
-      if (scheduledSpeakers.isEmpty && requireSpeaker) {
+      CharacterProfile? speaker = willing.isEmpty ? null : willing.first;
+      if (speaker == null && requireSpeaker) {
         final fallbackId = GroupReplyPolicy.fallbackSpeakerId(
           participants.map((item) => item.id).toList(),
           lastSpeakerId: lastSpeakerId,
           seed: latestUser.id,
+          addressedIds: addressedIds,
         );
-        final fallback = fallbackId == null
+        speaker = fallbackId == null
             ? null
             : _characterForId(fallbackId);
-        if (fallback != null) scheduledSpeakers.add(fallback);
       }
-      if (scheduledSpeakers.isEmpty) break;
-      final speaker = scheduledSpeakers.removeAt(0);
+      if (speaker == null) break;
       final beforeCount = _messages.length;
       await _requestReply(characterOverride: speaker);
       if (_cancelled || _messages.length <= beforeCount) break;
@@ -1078,6 +1081,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     required List<CharacterProfile> participants,
     required List<String> spokenIds,
     required String lastSpeakerId,
+    required bool allowLastSpeaker,
+    required List<String> addressedIds,
   }) async {
     final provider = _selectedProvider;
     if (provider == null) return const [];
@@ -1106,7 +1111,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         })
         .join('\n');
     final candidates = participants
-        .where((character) => character.id != lastSpeakerId)
+        .where(
+          (character) =>
+              allowLastSpeaker || character.id != lastSpeakerId,
+        )
         .toList();
     if (candidates.isEmpty) candidates.addAll(participants);
     final spokenNames = spokenIds
@@ -1140,6 +1148,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         spokenIds: spokenIds,
         lastSpeakerId: lastSpeakerId,
         seed: seed,
+        allowLastSpeaker: allowLastSpeaker,
+        addressedIds: addressedIds,
       );
       return rankedIds
           .map(_characterForId)
@@ -1901,7 +1911,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ? _stylePreferences
               : const <String>[]),
       worldBooks: _worldBooks,
-      visibleMessages: _visibleMessagesFor(_messages),
+      visibleMessages: contextMessages ?? _visibleMessagesFor(_messages),
       currentConversation: _currentConversation,
       branchKey: _currentBranchKey(),
       groupParticipants: _groupParticipants,
@@ -2408,27 +2418,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _openMemories() async {
     _scaffoldKey.currentState?.closeDrawer();
+    final target = _groupScope
+        ? await showGroupCharacterPickerSheet(
+            context: context,
+            participants: _groupParticipants,
+            title: '选择要查看记忆的角色',
+          )
+        : _profile;
+    if (target == null || !mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => MemoryScreen(
-          characterId: _profile.id,
-          characterName: _profile.name,
+          characterId: target.id,
+          characterName: target.name,
         ),
       ),
     );
-    final memories = await _chatStore.loadMemories(characterId: _profile.id);
+    final memories = await _chatStore.loadMemories(characterId: target.id);
     final preferences = await _chatStore.loadStylePreferences(
-      characterId: _profile.id,
+      characterId: target.id,
     );
     final worldBooks = await _chatStore.loadWorldBooks();
     if (!mounted) return;
     setState(() {
-      _memories = memories;
-      _characterMemories = {..._characterMemories, _profile.id: memories};
-      _stylePreferences = preferences;
+      if (_profile.id == target.id) {
+        _memories = memories;
+        _stylePreferences = preferences;
+      }
+      _characterMemories = {..._characterMemories, target.id: memories};
       _characterStylePreferences = {
         ..._characterStylePreferences,
-        _profile.id: preferences,
+        target.id: preferences,
       };
       _worldBooks = worldBooks;
     });
@@ -2615,11 +2635,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final remainingMemoryMap = Map<String, List<String>>.from(
       _characterMemories,
     )..remove(character.id);
+    final remainingPreferenceMap = Map<String, List<String>>.from(
+      _characterStylePreferences,
+    )..remove(character.id);
     final remainingMoodMap = Map<String, String>.from(_characterMoods)
       ..remove(character.id);
     var nextProfile = _profile;
     var nextMood = _characterMood;
     var nextMemories = _memories;
+    var nextPreferences = _stylePreferences;
     if (_profile.id == character.id) {
       nextProfile = remainingCharacters.first;
       await _chatStore.saveSelectedCharacterId(nextProfile.id);
@@ -2630,7 +2654,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
       );
       nextMemories = await _chatStore.loadMemories(characterId: nextProfile.id);
+      nextPreferences = await _chatStore.loadStylePreferences(
+        characterId: nextProfile.id,
+      );
       remainingMemoryMap[nextProfile.id] = nextMemories;
+      remainingPreferenceMap[nextProfile.id] = nextPreferences;
       if (nextMood.isNotEmpty) remainingMoodMap[nextProfile.id] = nextMood;
     }
     if (!mounted) return;
@@ -2657,6 +2685,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _profile = nextProfile;
         _memories = nextMemories;
         _characterMemories = remainingMemoryMap;
+        _stylePreferences = nextPreferences;
+        _characterStylePreferences = remainingPreferenceMap;
         _characterMood = scopedMoods[nextProfile.id] ?? '';
         _characterMoods = scopedMoods;
         _conversations = groups;
@@ -2671,6 +2701,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _profile = nextProfile;
         _memories = nextMemories;
         _characterMemories = remainingMemoryMap;
+        _stylePreferences = nextPreferences;
+        _characterStylePreferences = remainingPreferenceMap;
         _characterMood = nextMood;
         _characterMoods = remainingMoodMap;
       });
@@ -2679,6 +2711,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _characters = remainingCharacters;
         _characterMemories = remainingMemoryMap;
+        _characterStylePreferences = remainingPreferenceMap;
         _characterMoods = remainingMoodMap;
       });
     }
@@ -2765,10 +2798,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _editCharacter() async {
     _scaffoldKey.currentState?.closeDrawer();
+    final target = _groupScope
+        ? await showGroupCharacterPickerSheet(
+            context: context,
+            participants: _groupParticipants,
+            title: '选择要编辑的角色',
+          )
+        : _profile;
+    if (target == null || !mounted) return;
     final updated = await Navigator.of(context).push<CharacterProfile>(
       MaterialPageRoute<CharacterProfile>(
         builder: (_) => CharacterScreen(
-          profile: _profile.copyWith(status: _normalizeMood(_characterMood)),
+          profile: target.copyWith(status: _moodForCharacter(target.id)),
         ),
       ),
     );
@@ -2776,7 +2817,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _chatStore.saveProfile(updated);
     if (!mounted) return;
     setState(() {
-      _profile = updated;
+      if (_profile.id == updated.id) _profile = updated;
       _characters = _characters
           .map((item) => item.id == updated.id ? updated : item)
           .toList();
