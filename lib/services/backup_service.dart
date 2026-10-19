@@ -298,9 +298,11 @@ class BackupService {
             : characters.first.id,
       );
     } else if (data['profile'] case final Map profileRaw) {
-      await _chatStore.saveProfile(
-        CharacterProfile.fromJson(Map<String, Object?>.from(profileRaw)),
+      final profile = CharacterProfile.fromJson(
+        Map<String, Object?>.from(profileRaw),
       );
+      await _chatStore.saveProfile(profile);
+      await _chatStore.saveSelectedCharacterId(profile.id);
     }
 
     final hasConversationData = data.containsKey('conversations');

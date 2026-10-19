@@ -1065,6 +1065,5 @@ class ChatStore {
       characters[index] = profile;
     }
     await saveCharacters(characters);
-    await saveSelectedCharacterId(profile.id);
   }
 }

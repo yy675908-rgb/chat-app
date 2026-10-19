@@ -282,5 +282,81 @@ void main() {
       );
       expect(prompt, isEmpty);
     });
+
+    test('keyword-free world-book rules reach old and new roles every turn', () {
+      final now = DateTime.utc(2026);
+      const books = [
+        WorldBookEntry(
+          id: 'permanent',
+          title: '常驻规则',
+          keywords: [],
+          content: '无论对话多久，都记得周六的约定。',
+        ),
+        WorldBookEntry(
+          id: 'conditional',
+          title: '海边',
+          keywords: ['海边'],
+          content: '带上蓝伞。',
+        ),
+        WorldBookEntry(
+          id: 'disabled',
+          title: '关闭',
+          keywords: [],
+          content: '不应出现。',
+          enabled: false,
+        ),
+      ];
+      for (final character in [
+        CharacterProfile.lin(now),
+        CharacterProfile.newCharacter(now).copyWith(name: '阿野'),
+      ]) {
+        final prompt = ChatContextBuilder.buildSystemPrompt(
+          activeCharacter: character,
+          selectedProvider: null,
+          userProfile: const UserProfile(),
+          activeMemories: const [],
+          stylePreferences: const [],
+          worldBooks: books,
+          visibleMessages: [
+            ChatMessage(
+              id: 'latest',
+              author: MessageAuthor.user,
+              text: '继续',
+              sentAt: now,
+            ),
+          ],
+          currentConversation: null,
+          branchKey: 'root',
+          groupParticipants: const [],
+          savedMood: '',
+          contextMessages: null,
+          now: now,
+        );
+        expect(prompt, contains('无论对话多久，都记得周六的约定。'));
+        expect(prompt, isNot(contains('带上蓝伞。')));
+        expect(prompt, isNot(contains('不应出现。')));
+      }
+    });
+
+    test('permanent rules are not silently dropped by the lore limit', () {
+      final prompt = ChatContextBuilder.matchedWorldBookPrompt(
+        worldBooks: [
+          WorldBookEntry(
+            id: 'large',
+            title: '长设定',
+            keywords: const [],
+            content: List.filled(6100, '设').join(),
+          ),
+          const WorldBookEntry(
+            id: 'rule',
+            title: '常驻规则',
+            keywords: [],
+            content: '始终遵守约定。',
+          ),
+        ],
+        visibleMessages: const [],
+      );
+      expect(prompt, contains('始终遵守约定。'));
+    });
   });
 }
