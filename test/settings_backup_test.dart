@@ -69,6 +69,31 @@ void main() {
     expect(restored.systemPrompt, '保持原设定。');
   });
 
+  test('a partially imported custom role never inherits Lin’s persona', () {
+    final restored = CharacterProfile.fromJson({
+      'id': 'character-old',
+      'name': '阿野',
+      'firstMetAt': '2026-01-01T00:00:00.000Z',
+    });
+    expect(restored.systemPrompt, isNot(contains('你叫林')));
+    expect(restored.name, '阿野');
+  });
+
+  test('editing another role does not switch the selected character', () async {
+    final store = ChatStore();
+    final now = DateTime.utc(2026);
+    final lin = CharacterProfile.lin(now);
+    final other = CharacterProfile.newCharacter(now).copyWith(name: '阿野');
+    await store.saveCharacters([lin, other]);
+    await store.saveSelectedCharacterId(lin.id);
+    await store.saveProfile(other.copyWith(systemPrompt: '新规则'));
+    expect(await store.loadSelectedCharacterId(), lin.id);
+    expect(
+      (await store.loadCharacters()).last.systemPrompt,
+      '新规则',
+    );
+  });
+
   test('user profile survives JSON round trip', () {
     const original = UserProfile(
       name: '小满',

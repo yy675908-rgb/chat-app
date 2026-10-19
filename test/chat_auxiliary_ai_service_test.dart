@@ -38,6 +38,12 @@ void main() {
           keywords: ['天气'],
           content: '约定下雨时带伞',
         ),
+        WorldBookEntry(
+          id: 'permanent',
+          title: '常驻规则',
+          keywords: [],
+          content: '主动联系也要记得周六约定',
+        ),
       ],
       visibleMessages: [
         ChatMessage(
@@ -59,6 +65,7 @@ void main() {
     expect(reply.systemPrompt, contains('用“你”称呼对方'));
     expect(reply.systemPrompt, contains('当用户说晚安时：简短回应'));
     expect(reply.systemPrompt, contains('约定下雨时带伞'));
+    expect(reply.systemPrompt, contains('主动联系也要记得周六约定'));
     expect(reply.systemPrompt, contains('此前约好周六看展。'));
     expect(reply.systemPrompt, contains('当前角色的名字是“林”'));
   });

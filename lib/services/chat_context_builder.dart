@@ -168,34 +168,39 @@ class ChatContextBuilder {
     required List<WorldBookEntry> worldBooks,
     required List<ChatMessage> visibleMessages,
   }) {
-    if (worldBooks.isEmpty || visibleMessages.isEmpty) return '';
+    if (worldBooks.isEmpty) return '';
     final start =
         visibleMessages.length > 4 ? visibleMessages.length - 4 : 0;
     final recentText = visibleMessages
         .sublist(start)
         .map((message) => message.text.toLowerCase())
         .join('\n');
-    final matched = worldBooks.where((entry) {
-      if (!entry.enabled || entry.keywords.isEmpty) return false;
+    bool applies(WorldBookEntry entry) {
+      if (!entry.enabled || entry.content.trim().isEmpty) return false;
+      if (entry.keywords.isEmpty) return true;
       return entry.keywords.any(
         (keyword) =>
             keyword.trim().isNotEmpty &&
             recentText.contains(keyword.trim().toLowerCase()),
       );
-    });
+    }
+    // Keep permanent entries ahead of keyword matches when the prompt is long.
+    final matched = [
+      ...worldBooks.where((entry) => entry.keywords.isEmpty && applies(entry)),
+      ...worldBooks.where((entry) => entry.keywords.isNotEmpty && applies(entry)),
+    ];
     final sections = <String>[];
     var used = 0;
     for (final entry in matched) {
       final section = '【${entry.title}】\n${entry.content.trim()}';
       final cost = estimateTokens(section);
-      if (sections.isNotEmpty && used + cost > 6000) break;
+      if (entry.keywords.isNotEmpty && used + cost > 6000) continue;
       sections.add(section);
       used += cost;
-      if (used >= 6000) break;
     }
     return sections.isEmpty
         ? ''
-        : '\n\n当前对话命中的世界书设定：\n${sections.join('\n\n')}';
+        : '\n\n当前生效的世界书设定：\n${sections.join('\n\n')}';
   }
 
   static List<ChatMessage> messagesWithinBudget({

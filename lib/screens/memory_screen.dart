@@ -235,7 +235,7 @@ class _MemoryScreenState extends State<MemoryScreen>
                 decoration: const InputDecoration(
                   labelText: '触发关键词',
                   hintText: '例如：王都，银塔，北境',
-                  helperText: '只有最近对话出现关键词时，才把条目交给模型',
+                  helperText: '所有角色共用。留空则每次生效；填写后按关键词触发',
                   filled: true,
                   border: OutlineInputBorder(),
                 ),
@@ -459,7 +459,7 @@ class _MemoryScreenState extends State<MemoryScreen>
                 ),
                 if (entry.keywords.isEmpty)
                   const Text(
-                    '未设置触发词：当前不会自动加入对话',
+                    '常驻：每次回复都会加入对话',
                     style: TextStyle(fontSize: 12.5),
                   )
                 else
@@ -518,7 +518,7 @@ class _MemoryScreenState extends State<MemoryScreen>
           tabs: [
             Tab(text: '共同记忆·${widget.characterName}'),
             Tab(text: '回应偏好·${widget.characterName}'),
-            const Tab(text: '世界书'),
+            const Tab(text: '世界书·共用'),
           ],
         ),
       ),

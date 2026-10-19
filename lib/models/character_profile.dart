@@ -76,9 +76,12 @@ class CharacterProfile {
   factory CharacterProfile.fromJson(Map<String, Object?> json) {
     final firstMetAt = DateTime.tryParse(json['firstMetAt'] as String? ?? '') ??
         DateTime.now();
-    final fallback = CharacterProfile.lin(firstMetAt);
+    final id = json['id'] as String? ?? 'character-lin';
+    final fallback = id == 'character-lin'
+        ? CharacterProfile.lin(firstMetAt)
+        : CharacterProfile.newCharacter(firstMetAt);
     return CharacterProfile(
-      id: json['id'] as String? ?? fallback.id,
+      id: id,
       name: json['name'] as String? ?? fallback.name,
       status: json['status'] as String? ?? fallback.status,
       firstMetAt: firstMetAt,
